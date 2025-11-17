@@ -454,7 +454,7 @@
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
       <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
-      <button class="nav-tab" onclick="showTab('search')">ეძიება</button>
+      <button class="nav-tab" onclick="showTab('search')">ძიება</button>
       <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
       <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
       <button class="nav-tab" onclick="showTab('export')">ექსპორტი</button>
