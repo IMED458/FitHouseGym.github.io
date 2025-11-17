@@ -4,11 +4,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Fit House Gym</title>
 
-  <!-- Firebase v9+ -->
+  <!-- Firebase v9+ Modular SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
+    // Firebase Config
     const firebaseConfig = {
       apiKey: "AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8",
       authDomain: "fit-house-gym-d3595.firebaseapp.com",
@@ -22,7 +23,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // === GLOBAL ===
+    // === GLOBALS ===
     window.members = [];
     window.selectedSubscription = null;
     window.currentRecordCount = 0;
@@ -51,6 +52,16 @@
         await setDoc(doc(db, "members", updated.id), updated);
       } catch (e) {
         showToast("განახლება ვერ მოხერხდა", 'error');
+      }
+    }
+
+    async function deleteMember(id) {
+      if (!confirm("დარწმუნებული ხართ?")) return;
+      try {
+        await deleteDoc(doc(db, "members", id));
+        showToast("წაიშალა!");
+      } catch (e) {
+        showToast("წაშლა ვერ მოხერხდა", 'error');
       }
     }
 
@@ -129,20 +140,20 @@
 
       const editDiv = document.createElement('div');
       editDiv.id = `editForm_${id}`;
-      editDiv.className = 'mt-4 p-4 bg-blue-50 border-2 border-blue-400 rounded-lg';
+      editDiv.style.cssText = 'margin-top:15px; padding:15px; background:#f0f8ff; border-radius:8px; border:2px solid #4299e1;';
       editDiv.innerHTML = `
         <h4 class="font-bold mb-3">რედაქტირება</h4>
         <div class="form-grid">
-          <input type="text" id="edit_firstName_${id}" value="${member.firstName}" class="form-input" placeholder="სახელი">
-          <input type="text" id="edit_lastName_${id}" value="${member.lastName}" class="form-input" placeholder="გვარი">
-          <input type="tel" id="edit_phone_${id}" value="${member.phone}" class="form-input" placeholder="ტელეფონი">
-          <input type="text" id="edit_personalId_${id}" value="${member.personalId}" class="form-input" placeholder="პირადი">
-          <input type="email" id="edit_email_${id}" value="${member.email || ''}" class="form-input" placeholder="ელ.ფოსტა">
-          <input type="date" id="edit_birthDate_${id}" value="${member.birthDate}" class="form-input">
+          <div class="form-group"><label>სახელი</label><input type="text" id="edit_firstName_${id}" value="${member.firstName}" class="form-input"></div>
+          <div class="form-group"><label>გვარი</label><input type="text" id="edit_lastName_${id}" value="${member.lastName}" class="form-input"></div>
+          <div class="form-group"><label>ტელეფონი</label><input type="tel" id="edit_phone_${id}" value="${member.phone}" class="form-input"></div>
+          <div class="form-group"><label>პირადი</label><input type="text" id="edit_personalId_${id}" value="${member.personalId}" class="form-input"></div>
+          <div class="form-group"><label>ელ.ფოსტა</label><input type="email" id="edit_email_${id}" value="${member.email || ''}", "form-input"}"></div>
+          <div class="form-group"><label>დაბადება</label><input type="date" id="edit_birthDate_${id}" value="${member.birthDate}" class="form-input"></div>
         </div>
         <div class="mt-3">
           <button class="btn btn-success" onclick="saveEdit('${id}')">შენახვა</button>
-          <button class="btn" onclick="this.closest('.member-card').querySelector('#editForm_${id}').remove()" style="background:#e53e3e; margin-left:10px;">გაუქმება</button>
+          <button class="btn" onclick="document.getElementById('editForm_${id}').remove()" style="background:#e53e3e; margin-left:10px;">გაუქმება</button>
         </div>
       `;
 
@@ -168,6 +179,7 @@
       document.getElementById(`editForm_${id}`).remove();
     };
 
+    // === EXPORT EXCEL (.xlsx) ===
     window.exportToExcel = function() {
       const data = window.members.map(m => ({
         "სახელი": m.firstName,
@@ -180,21 +192,24 @@
         "ბოლო ვიზიტი": m.lastVisit ? formatDate(m.lastVisit) : "—"
       }));
 
+      const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(data);
-      const csv = XLSX.utils.sheet_to_csv(ws, { FS: ",", forceQuotes: true });
-      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `Gym_წევრები_${new Date().toISOString().split('T')[0]}.csv`;
-      a.click();
-      showToast("CSV ჩამოიტვირთა!");
+      XLSX.utils.book_append_sheet(wb, ws, "წევრები");
+      XLSX.writeFile(wb, `Gym_წევრები_${new Date().toISOString().split('T')[0]}.xlsx`);
+      showToast("Excel ჩამოიტვირთა!");
     };
 
+    // === EXPORT PDF (ქართული) ===
     window.exportToPDF = function() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
-      doc.setFont("helvetica");
+      
+      // DejaVuSans (ქართული)
+      const font = "AAEAAAALAIAAAwAgT...[სრული Base64]";
+      doc.addFileToVFS('DejaVuSans.ttf', font);
+      doc.addFont('DejaVuSans.ttf', 'DejaVu', 'normal');
+      doc.setFont('DejaVu');
+
       doc.text("Fit House Gym - ანგარიში", 20, 20);
       doc.text(`თარიღი: ${new Date().toLocaleDateString('ka-GE')}`, 20, 30);
       let y = 50;
@@ -231,9 +246,9 @@
       document.getElementById('pausedMembers').textContent = paused;
 
       document.getElementById('expiringList').innerHTML = expiringSoon.length > 0 ? `
-        <h3 class="mt-4 text-lg font-bold">3 დღეში ვადაგასული:</h3>
-        ${expiringSoon.map(m => `<div class="member-card p-3 mb-2 bg-gray-100 rounded"><strong>${m.firstName} ${m.lastName}</strong> — ${formatDate(m.subscriptionEndDate)}</div>`).join('')}
-      ` : '<p class="text-gray-500">არ არის</p>';
+        <h3 class="mt-4">3 დღეში ვადაგასული:</h3>
+        ${expiringSoon.map(m => `<div class="member-card p-3 mb-2"><strong>${m.firstName} ${m.lastName}</strong> — ${formatDate(m.subscriptionEndDate)}</div>`).join('')}
+      ` : '';
     }
 
     function updateExpiredList() {
@@ -243,16 +258,17 @@
         : expired.map(m => {
             const daysOver = Math.floor((new Date() - new Date(m.subscriptionEndDate)) / 86400000);
             const reason = m.subscriptionType === '12visits' && m.remainingVisits === 0 ? 'ვიზიტები ამოწურულია' : `ვადა გასულია ${daysOver} დღით`;
-            return `<div class="member-card p-4 mb-3 bg-white rounded shadow">
+            return `<div class="member-card p-4 mb-3">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 <div><strong>${m.firstName} ${m.lastName}</strong></div>
                 <div><strong>პირადი:</strong> ${m.personalId}</div>
                 <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
                 <div><strong>მიზეზი:</strong> ${reason}</div>
               </div>
-              <div class="mt-3 flex gap-2">
+              <div class="mt-3 flex gap-2 flex-wrap">
                 <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
                 <button class="btn" onclick="showEditForm('${m.id}')" style="background:#4299e1">რედაქტირება</button>
+                <button class="btn" onclick="deleteMember('${m.id}')" style="background:#e53e3e">წაშლა</button>
               </div>
             </div>`;
           }).join('');
@@ -269,7 +285,7 @@
       container.innerHTML = filtered.length === 0
         ? '<p class="text-red-600">ვერ მოიძებნა</p>'
         : filtered.map(m => `
-            <div class="member-card p-4 mb-3 bg-white rounded shadow">
+            <div class="member-card p-4 mb-3">
               <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
                 <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
                 <div><strong>პირადი:</strong> ${m.personalId}</div>
@@ -277,9 +293,10 @@
                 <div><strong>დღეები:</strong> ${Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000)}</div>
                 <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(m.status)}">${getStatusText(m.status)}</span></div>
               </div>
-              <div class="mt-3 flex gap-2">
+              <div class="mt-3 flex gap-2 flex-wrap">
                 <button class="btn btn-warning text-sm" onclick="renewMembership('${m.id}')">განახლება</button>
                 <button class="btn text-sm" onclick="showEditForm('${m.id}')" style="background:#4299e1">რედაქტირება</button>
+                <button class="btn text-sm" onclick="deleteMember('${m.id}')" style="background:#e53e3e">წაშლა</button>
               </div>
             </div>
           `).join('');
@@ -298,7 +315,7 @@
         await window.checkMemberAccess(matches[0]);
       } else {
         container.innerHTML = `<div class="member-card p-4">
-          <h3 class="font-bold mb-2">აირჩიეთ:</h3>
+          <h3 class="font-bold mb-2">აირჩიეთ წევრი:</h3>
           ${matches.map(m => `
             <div class="p-2 border rounded mb-2 cursor-pointer hover:bg-gray-100" 
                  onclick="window.checkMemberAccess(window.members.find(x => x.id === '${m.id}'))">
@@ -407,8 +424,17 @@
     });
   </script>
 
+  <!-- Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- DejaVuSans Base64 (PDF ქართულად) -->
+  <script>
+    // სრული Base64: https://raw.githubusercontent.com/MrRio/jsPDF/master/fonts/DejaVuSans-normal.js
+    const dejavuFont = "AAEAAAALAIAAAwAgT...[ჩასვით სრული Base64]";
+    window.jspdf.jsPDF.API.addFileToVFS('DejaVuSans.ttf', dejavuFont);
+    window.jspdf.jsPDF.API.addFont('DejaVuSans.ttf', 'DejaVu', 'normal');
+  </script>
 
   <style>
     body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:linear-gradient(135deg,#667eea,#764ba2); min-height:100vh; }
@@ -451,12 +477,13 @@
 </head>
 <body>
   <div class="container">
-    <!-- Logo - GitHub URL -->
+    <!-- LOGO: იგივე ფოლდერში -->
     <div class="header">
-      <img src="https://raw.githubusercontent.com/თქვენი-იუზერი/თქვენი-რეპო/main/fithause%20logo.png" alt="Fit House Logo" class="logo" onerror="this.style.display='none'">
+      <img src="./fithause logo.png" alt="Fit House Logo" class="logo" onerror="this.style.display='none'">
       <h1 class="gym-title">Fit House Gym</h1>
     </div>
 
+    <!-- Navigation -->
     <div class="nav-tabs">
       <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
       <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
@@ -470,11 +497,11 @@
     <div id="dashboard" class="tab-content active">
       <h2>დეშბორდი</h2>
       <div class="dashboard-stats">
-        <div class="stat-card"><div class="text-3xl font-bold" id="todayVisits">0</div><div>დღევანდელი</div></div>
-        <div class="stat-card"><div class="text-3xl font-bold" id="activeMembers">0</div><div>აქტიური</div></div>
-        <div class="stat-card"><div class="text-3xl font-bold" id="expiredMembers">0</div><div>ვადაგასული</div></div>
-        <div class="stat-card"><div class="text-3xl font-bold" id="expiringMembers">0</div><div>3 დღეში</div></div>
-        <div class="stat-card" style="background:linear-gradient(135deg,#ed8936,#dd6b20);"><div class="text-3xl font-bold" id="pausedMembers">0</div><div>შეჩერებული</div></div>
+        <div class="stat-card"><div class="stat-number" id="todayVisits">0</div><div class="stat-label">დღევანდელი</div></div>
+        <div class="stat-card"><div class="stat-number" id="activeMembers">0</div><div class="stat-label">აქტიური</div></div>
+        <div class="stat-card"><div class="stat-number" id="expiredMembers">0</div><div class="stat-label">ვადაგასული</div></div>
+        <div class="stat-card"><div class="stat-number" id="expiringMembers">0</div><div class="stat-label">3 დღეში</div></div>
+        <div class="stat-card" style="background:linear-gradient(135deg,#ed8936,#dd6b20);"><div class="stat-number" id="pausedMembers">0</div><div class="stat-label">შეჩერებული</div></div>
       </div>
       <div id="expiringList"></div>
     </div>
@@ -484,37 +511,38 @@
       <h2>რეგისტრაცია</h2>
       <form id="registrationForm">
         <div class="form-grid">
-          <input type="text" id="firstName" class="form-input" placeholder="სახელი *" required>
-          <input type="text" id="lastName" class="form-input" placeholder="გვარი *" required>
-          <input type="tel" id="phone" class="form-input" placeholder="ტელეფონი *" required>
-          <input type="date" id="birthDate" class="form-input" required>
-          <input type="email" id="email" class="form-input" placeholder="ელ.ფოსტა">
-          <input type="text" id="personalId" class="form-input" placeholder="პირადი *" required>
+          <div class="form-group"><label class="form-label" for="firstName">სახელი *</label><input type="text" id="firstName" class="form-input" required></div>
+          <div class="form-group"><label class="form-label" for="lastName">გვარი *</label><input type="text" id="lastName" class="form-input" required></div>
+          <div class="form-group"><label class="form-label" for="phone">ტელეფონი *</label><input type="tel" id="phone" class="form-input" required></div>
+          <div class="form-group"><label class="form-label" for="birthDate">დაბადება *</label><input type="date" id="birthDate" class="form-input" required></div>
+          <div class="form-group"><label class="form-label" for="email">ელ.ფოსტა</label><input type="email" id="email" class="form-input"></div>
+          <div class="form-group"><label class="form-label" for="personalId">პირადი *</label><input type="text" id="personalId" class="form-input" required></div>
         </div>
         <h3>აბონემენტი</h3>
         <div class="subscription-cards">
-          <div class="subscription-card" data-type="12visits" data-price="70"><div class="font-bold">12 ვარჯიში</div><div class="text-2xl">70₾</div><div>30 დღე</div></div>
-          <div class="subscription-card" data-type="morning" data-price="90"><div class="font-bold">დილის</div><div class="text-2xl">90₾</div><div>09:00–16:00</div></div>
-          <div class="subscription-card" data-type="unlimited" data-price="110"><div class="font-bold">ულიმიტო</div><div class="text-2xl">110₾</div><div>60 დღე</div></div>
-          <div class="subscription-card" data-type="other" data-price="0"><div class="font-bold">სხვა</div><div class="text-2xl">0₾</div><div>თავისუფალი</div></div>
+          <div class="subscription-card" data-type="12visits" data-price="70"><div class="subscription-title">12 ვარჯიში</div><div class="subscription-price">70₾</div><div class="subscription-details">30 დღე<br>12 შესვლა</div></div>
+          <div class="subscription-card" data-type="morning" data-price="90"><div class="subscription-title">დილის</div><div class="subscription-price">90₾</div><div class="subscription-details">09:00–16:00<br>30 დღე</div></div>
+          <div class="subscription-card" data-type="unlimited" data-price="110"><div class="subscription-title">ულიმიტო</div><div class="subscription-price">110₾</div><div class="subscription-details">60 დღე</div></div>
+          <div class="subscription-card" data-type="other" data-price="0"><div class="subscription-title">სხვა</div><div class="subscription-price">0₾</div><div class="subscription-details">თავისუფალი</div></div>
         </div>
         <div id="customSubscriptionFields" style="display:none; margin-top:20px; padding:20px; background:#f7fafc; border-radius:12px;">
+          <h4>დეტალები</h4>
           <div class="form-grid">
-            <input type="number" id="customPrice" class="form-input" placeholder="ფასი *">
-            <input type="number" id="customDuration" class="form-input" placeholder="ვადა (დღე) *">
-            <input type="number" id="customVisits" class="form-input" placeholder="ვიზიტები">
-            <input type="text" id="customDescription" class="form-input" placeholder="აღწერა">
+            <div class="form-group"><label class="form-label" for="customPrice">ფასი *</label><input type="number" id="customPrice" class="form-input" min="0"></div>
+            <div class="form-group"><label class="form-label" for="customDuration">ვადა *</label><input type="number" id="customDuration" class="form-input" min="1"></div>
+            <div class="form-group"><label class="form-label" for="customVisits">ვიზიტები</label><input type="number" id="customVisits" class="form-input" min="1" placeholder="ცარიელი = ულიმიტო"></div>
+            <div class="form-group"><label class="form-label" for="customDescription">აღწერა</label><input type="text" id="customDescription" class="form-input"></div>
           </div>
         </div>
         <button type="submit" class="btn btn-success" id="registerBtn"><span class="btn-text">რეგისტრაცია</span><div class="spinner" style="display:none;"></div></button>
       </form>
     </div>
 
-    <!-- Other Tabs -->
-    <div id="search" class="tab-content"><h2>ძიება</h2><input type="text" id="searchInput" class="search-input" placeholder="ძიება..."><div id="searchResults"></div></div>
-    <div id="checkin" class="tab-content"><h2>შესვლა</h2><input type="text" id="checkinSearch" class="search-input" placeholder="ძიება..."><div id="checkinResult"></div></div>
+    <!-- Search, Check-in, Expired, Export -->
+    <div id="search" class="tab-content"><h2>ძიება</h2><div class="search-container"><input type="text" id="searchInput" class="search-input" placeholder="პირადი, სახელი..."></div><div id="searchResults"></div></div>
+    <div id="checkin" class="tab-content"><h2>შესვლა</h2><div class="search-container"><input type="text" id="checkinSearch" class="search-input" placeholder="ძიება..."></div><div id="checkinResult"></div></div>
     <div id="expired" class="tab-content"><h2>ვადაგასული</h2><div id="expiredList"></div></div>
-    <div id="export" class="tab-content"><h2>ექსპორტი</h2><button class="btn" onclick="exportToExcel()">CSV</button><button class="btn" onclick="exportToPDF()">PDF</button></div>
+    <div id="export" class="tab-content"><h2>ექსპორტი</h2><div class="export-buttons"><button class="btn" onclick="exportToExcel()">Excel (.xlsx)</button><button class="btn" onclick="exportToPDF()">PDF</button></div></div>
   </div>
 </body>
 </html>
