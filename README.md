@@ -1,8 +1,10 @@
+<!DOCTYPE html>
 <html lang="ka">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Fit House Gym - მენეჯმენტი</title>
+  <meta name="description" content="Fit House Gym - წევრთა მართვის სისტემა">
 
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
@@ -126,7 +128,7 @@
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
-            <div><strong>სტატუსი:</strong> <span class="status-badge ${allowed?'status-active':'status-expired'}">${msg}</span></div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge status-small ${allowed?'status-active':'status-expired'}">${msg}</span></div>
             ${member.remainingVisits != null ? `<div><strong>დარჩენილი ვიზიტები:</strong> ${member.remainingVisits}</div>` : ''}
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
@@ -144,7 +146,7 @@
 
       if (m.subscriptionType === '12visits') { end.setDate(start.getDate() + 30); visits = 12; }
       else if (m.subscriptionType === 'morning') end.setDate(start.getDate() + 30);
-      else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 60);
+      else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 30);
 
       await updateMember({ ...m, subscriptionEndDate: end.toISOString(), remainingVisits: visits, status: 'active' });
       showToast("აბონემენტი განახლდა!");
@@ -164,7 +166,7 @@
       div.innerHTML = `
         <div class="bg-slate-800 dark:bg-slate-900 p-6 rounded-2xl border-2 border-blue-500 mt-6 shadow-2xl">
           <h4 class="text-2xl font-bold mb-5 text-blue-400 flex items-center gap-2">
-            <i class="fas fa-edit"></i> რედაქტირება — ${m.firstName} ${m.lastName}
+            რედაქტირება — ${m.firstName} ${m.lastName}
           </h4>
           <div class="form-grid">
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">სახელი</label><input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input"></div>
@@ -199,12 +201,8 @@
           </div>
 
           <div class="mt-6 flex gap-4">
-            <button class="btn btn-success text-lg px-8 py-3" onclick="saveEdit('${id}')">
-              <i class="fas fa-save mr-2"></i> შენახვა
-            </button>
-            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-8 py-3" onclick="this.closest('.edit-form').remove()">
-              <i class="fas fa-times mr-2"></i> გაუქმება
-            </button>
+            <button class="btn btn-success text-lg px-8 py-3" onclick="saveEdit('${id}')">შენახვა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-8 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
 
@@ -228,7 +226,7 @@
       } else if (type === 'unlimited') {
         document.getElementById(`e_price_${id}`).value = 110;
         document.getElementById(`e_visits_${id}`).value = '';
-        end.setDate(today.getDate() + 60);
+        end.setDate(today.getDate() + 30);
       } else {
         document.getElementById(`e_price_${id}`).value = '';
         document.getElementById(`e_visits_${id}`).value = '';
@@ -294,7 +292,7 @@
       const today = new Date().toDateString();
       const todayVisits = window.members.filter(m => m.lastVisit && new Date(m.lastVisit).toDateString() === today).length;
       const active = window.members.filter(m => m.status === 'active').length;
-      const expired = window.members.filter(m => ['expired','blocked'].includes(m.status)).length;
+      const expired = window.members.filter(m => m.status === 'expired').length;
       const paused = window.members.filter(m => m.status === 'paused').length;
       const soon = new Date(); soon.setDate(soon.getDate() + 3);
       const expiring = window.members.filter(m => m.status === 'active' && new Date(m.subscriptionEndDate) <= soon && new Date(m.subscriptionEndDate) > new Date()).length;
@@ -344,11 +342,11 @@
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>დარჩენილი დღეები:</strong> ${Math.max(0, Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000))}</div>
-            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(m.status)}">${getStatusText(m.status)}</span></div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge status-small ${getStatusClass(m.status)}">${getStatusText(m.status)}</span></div>
             ${m.remainingVisits != null ? `<div><strong>დარჩენილი ვიზიტები:</strong> ${m.remainingVisits}</div>` : ''}
           </div>
           <div class="mt-4 flex flex-wrap gap-3">
-            <button class="btn btn-warning" onclick "renewMembership('${m.id}')">განახლება</button>
+            <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
             <button class="btn bg-red-600 hover:bg-red-700" onclick="deleteMember('${m.id}')">წაშლა</button>
           </div>
@@ -371,7 +369,7 @@
     function showToast(msg, type='success') {
       const t = document.createElement('div');
       t.className = `toast ${type}`;
-      t.innerHTML = `<i class="fas ${type==='success'?'fa-check-circle':type==='error'?'fa-times-circle':'fa-exclamation-triangle'} mr-2"></i>${msg}`;
+      t.innerHTML = `${msg}`;
       document.body.appendChild(t);
       setTimeout(() => t.classList.add('show'), 100);
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3500);
@@ -408,7 +406,7 @@
           const start = new Date(); let end = new Date(); let visits = null; let price = window.selectedSubscription.price; let type = window.selectedSubscription.type;
           if (type === '12visits') { end.setDate(start.getDate() + 30); visits = 12; }
           else if (type === 'morning') end.setDate(start.getDate() + 30);
-          else if (type === 'unlimited') end.setDate(start.getDate() + 60);
+          else if (type === 'unlimited') end.setDate(start.getDate() + 30);
           else if (type === 'other') {
             const cp = +document.getElementById('customPrice').value;
             const cd = +document.getElementById('customDuration').value;
@@ -443,7 +441,7 @@
           showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } finally {
           btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-user-plus mr-2"></i> რეგისტრაცია';
+          btn.innerHTML = 'რეგისტრაცია';
         }
       });
 
@@ -489,15 +487,15 @@
       position:fixed; top:20px; right:20px; z-index:1000; width:64px; height:64px; border-radius:50%;
       background:var(--card-bg); border:3px solid var(--border); box-shadow:0 8px 30px var(--shadow);
       display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:28px; color:#fbbf24;
-      transition:all 0.4s; animation: float 6s ease-in-out infinite;
+      transition:all 0.4s;
     }
     .theme-toggle:hover { transform:scale(1.2) rotate(360deg); }
-    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
 
-    .header { background:rgba(30,41,59,0.95); backdrop-filter:blur(12px); border-radius:24px; padding:30px; margin-bottom:30px; text-align:center; box-shadow:0 20px 50px var(--shadow); border:1px solid var(--border); }
+    .header { background:rgba(30,41,59,0.95); backdrop-filter:blur(12px); border-radius:24px; padding:30px; margin-bottom:30px; text-align:center; box-shadow:0 20px 50px var(--shadow); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:20px; }
     .light-mode .header { background:rgba(255,255,255,0.95); }
 
-    .logo { height:80px; border-radius:20px; box-shadow:0 10px 30px var(--shadow); }
+    .logo { height:100px; border-radius:20px; box-shadow:0 10px 30px var(--shadow); object-fit:contain; }
+
     .gym-title { font-size:3.5rem; font-weight:900; background:linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
 
     .nav-tabs { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:30px; justify-content:center; }
@@ -526,9 +524,11 @@
     .member-card { background:var(--card-bg); border:1px solid var(--border); border-radius:20px; padding:28px; margin-bottom:24px; box-shadow:0 10px 30px var(--shadow); transition:all 0.3s; }
     .member-card:hover { transform:translateY(-4px); box-shadow:0 15px 40px var(--shadow); }
 
-    .status-active { background:#065f46; color:#6ee7b7; padding:8px 16px; border-radius:50px; font-weight:700; }
-    .status-expired { background:#7f1d1d; color:#fca5a5; padding:8px 16px; border-radius:50px; font-weight:700; }
-    .status-paused { background:#78350f; color:#fdba74; padding:8px 16px; border-radius:50px; font-weight:700; }
+    .status-badge { padding:4px 10px; border-radius:12px; font-size:0.75rem; font-weight:700; }
+    .status-active { background:#065f46; color:#6ee7b7; }
+    .status-expired { background:#7f1d1d; color:#fca5a5; }
+    .status-paused { background:#78350f; color:#fdba74; }
+    .status-small { font-size:0.7rem; padding:3px 8px; }
 
     .dashboard-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:24px; margin-bottom:40px; }
     .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:32px; border-radius:24px; text-align:center; box-shadow:0 15px 40px rgba(59,130,246,0.5); color:white; }
@@ -544,14 +544,14 @@
     @media (max-width:768px) { .gym-title{font-size:2.5rem} .header{flex-direction:column} }
   </style>
 </head>
-<body class="dark">
+<body>
   <div class="theme-toggle" onclick="toggleTheme()">
     <i class="fas fa-sun"></i>
   </div>
 
   <div class="container">
     <div class="header">
-      <img src="fithouse-logo.png" alt="Fit House" class="logo" onerror="this.style.display='none'">
+      <img src="fithause logo.png" alt="Fit House Gym" class="logo" onerror="this.style.display='none'">
       <h1 class="gym-title">Fit House Gym</h1>
     </div>
 
@@ -561,7 +561,7 @@
       <button class="nav-tab" onclick="showTab('search')">ძიება</button>
       <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
       <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
-      <button class="nav-tab" onclick="exportToExcel()">Excel ექსპორტი</button>
+      <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel ექსპორტი</button>
     </div>
 
     <div id="dashboard" class="tab-content active">
@@ -601,7 +601,7 @@
           <div class="subscription-card" data-type="unlimited" data-price="110">
             <div class="text-2xl font-bold">ულიმიტო</div>
             <div class="text-5xl font-bold my-4">110₾</div>
-            <div class="text-lg">60 დღე</div>
+            <div class="text-lg">30 დღე</div>
           </div>
           <div class="subscription-card" data-type="other" data-price="0">
             <div class="text-2xl font-bold">სხვა</div>
@@ -616,9 +616,7 @@
             <input type="text" id="customDescription" class="form-input" placeholder="აღწერა">
           </div>
         </div>
-        <button type="submit" id="registerBtn" class="btn btn-success text-2xl px-12 py-5 mt-8">
-          <i class="fas fa-user-plus mr-3"></i> რეგისტრაცია
-        </button>
+        <button type="submit" id="registerBtn" class="btn btn-success text-2xl px-12 py-5 mt-8">რეგისტრაცია</button>
       </form>
     </div>
 
