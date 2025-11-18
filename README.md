@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Fit House Gym</title>
+  <title>Fit House Gym - მენეჯმენტი</title>
+
+  <!-- Font Awesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
 
   <!-- Firebase v9+ Modular -->
   <script type="module">
@@ -95,7 +98,6 @@
           updated.status = 'expired';
           await updateMember(updated);
           showToast("ვიზიტები ამოიწურა — აბონემენტი დასრულდა", 'warning');
-          checkMemberAccess(updated);
           return;
         }
       }
@@ -120,8 +122,8 @@
       else if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { allowed = false; msg = 'მხოლოდ 09:00–16:00'; }
 
       document.getElementById('checkinResult').innerHTML = `
-        <div class="member-card">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+        <div class="member-card p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
@@ -131,7 +133,7 @@
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
             <div><strong>ჯამში:</strong> ${member.totalVisits || 0}</div>
           </div>
-          ${allowed ? `<button class="btn btn-success mt-4 w-full" onclick="processCheckIn('${member.id}')">შესვლის დადასტურება</button>` : ''}
+          ${allowed ? `<button class="btn btn-success mt-5 w-full text-lg py-3" onclick="processCheckIn('${member.id}')">შესვლის დადასტურება</button>` : ''}
         </div>`;
     };
 
@@ -140,10 +142,10 @@
       if (!m) return;
       const start = new Date(), end = new Date();
       let visits = null;
+
       if (m.subscriptionType === '12visits') { end.setDate(start.getDate() + 30); visits = 12; }
       else if (m.subscriptionType === 'morning') end.setDate(start.getDate() + 30);
       else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 60);
-      else if (m.remainingVisits !== null) { end.setDate(start.getDate() + 30); visits = m.remainingVisits > 0 ? m.remainingVisits : 10; }
 
       await updateMember({ ...m, subscriptionEndDate: end.toISOString(), remainingVisits: visits, status: 'active' });
       showToast("აბონემენტი განახლდა!");
@@ -151,45 +153,89 @@
 
     window.showEditForm = function(e, id) {
       if (e) e.stopPropagation();
+      document.querySelectorAll('.edit-form').forEach(f => f.remove());
       const m = window.members.find(x => x.id === id);
       if (!m) return;
+
       const div = document.createElement('div');
-      div.id = `edit_${id}`;
       div.className = 'edit-form';
       const todayISO = new Date().toISOString().split('T')[0];
       const endDate = m.subscriptionEndDate ? new Date(m.subscriptionEndDate).toISOString().split('T')[0] : todayISO;
 
       div.innerHTML = `
-        <h4 class="font-bold mb-4">რედაქტირება</h4>
-        <div class="form-grid">
-          <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
-          <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
-          <input type="tel" value="${m.phone}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
-          <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
-          <input type="email" value="${m.email||''}" id="e_em_${id}" class="form-input" placeholder="ელ.ფოსტა">
-          <input type="date" value="${m.birthDate||''}" id="e_bd_${id}" class="form-input">
-        </div>
-        <div class="form-grid mt-4">
-          <select id="e_subtype_${id}" class="form-input">
-            <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში</option>
-            <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის</option>
-            <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო</option>
-            <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
-          </select>
-          <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი ₾">
-          <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
-          <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="დარჩენილი ვიზიტები">
-          <select id="e_status_${id}" class="form-input">
-            <option value="active" ${m.status==='active'?'selected':''}>აქტიური</option>
-            <option value="expired" ${m.status==='expired'?'selected':''}>ვადაგასული</option>
-            <option value="paused" ${m.status==='paused'?'selected':''}>შეჩერებული</option>
-          </select>
-        </div>
-        <div class="mt-4 flex gap-3">
-          <button class="btn btn-success" onclick="saveEdit('${id}')">შენახვა</button>
-          <button class="btn" style="background:#e53e3e" onclick="document.getElementById('edit_${id}').remove()">გაუქმება</button>
+        <div class="bg-slate-800 dark:bg-slate-900 p-6 rounded-2xl border-2 border-blue-500 mt-6 shadow-2xl">
+          <h4 class="text-2xl font-bold mb-5 text-blue-400 flex items-center gap-2">
+            <i class="fas fa-edit"></i> რედაქტირება — ${m.firstName} ${m.lastName}
+          </h4>
+          <div class="form-grid">
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">სახელი</label><input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">გვარი</label><input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ტელეფონი</label><input type="tel" value="${m.phone}" id="e_ph_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">პირადი ნომერი</label><input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ელ.ფოსტა</label><input type="email" value="${m.email||''}" id="e_em_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">დაბადების თარიღი</label><input type="date" value="${m.birthDate||''}" id="e_bd_${id}" class="form-input"></div>
+          </div>
+
+          <div class="form-grid mt-6">
+            <div>
+              <label class="block text-sm font-semibold mb-1 text-gray-300">აბონემენტის ტიპი</label>
+              <select id="e_subtype_${id}" class="form-input text-lg" onchange="autoFillSubscription('${id}')">
+                <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
+                <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის (90₾)</option>
+                <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
+                <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
+              </select>
+            </div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ფასი (₾)</label><input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ვადის გასვლა</label><input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">დარჩენილი ვიზიტები</label><input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ცარიელი = ულიმიტო"></div>
+            <div>
+              <label class="block text-sm font-semibold mb-1 text-gray-300">სტატუსი</label>
+              <select id="e_status_${id}" class="form-input">
+                <option value="active" ${m.status==='active'?'selected':''}>აქტიური</option>
+                <option value="expired" ${m.status==='expired'?'selected':''}>ვადაგასული</option>
+                <option value="paused" ${m.status==='paused'?'selected':''}>შეჩერებული</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mt-6 flex gap-4">
+            <button class="btn btn-success text-lg px-8 py-3" onclick="saveEdit('${id}')">
+              <i class="fas fa-save mr-2"></i> შენახვა
+            </button>
+            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-8 py-3" onclick="this.closest('.edit-form').remove()">
+              <i class="fas fa-times mr-2"></i> გაუქმება
+            </button>
+          </div>
         </div>`;
+
       e ? e.target.closest('.member-card').appendChild(div) : document.querySelector(`[onclick*="${id}"]`).closest('.member-card').appendChild(div);
+      autoFillSubscription(id);
+    };
+
+    window.autoFillSubscription = function(id) {
+      const type = document.getElementById(`e_subtype_${id}`).value;
+      const today = new Date();
+      let end = new Date();
+
+      if (type === '12visits') {
+        document.getElementById(`e_price_${id}`).value = 70;
+        document.getElementById(`e_visits_${id}`).value = 12;
+        end.setDate(today.getDate() + 30);
+      } else if (type === 'morning') {
+        document.getElementById(`e_price_${id}`).value = 90;
+        document.getElementById(`e_visits_${id}`).value = '';
+        end.setDate(today.getDate() + 30);
+      } else if (type === 'unlimited') {
+        document.getElementById(`e_price_${id}`).value = 110;
+        document.getElementById(`e_visits_${id}`).value = '';
+        end.setDate(today.getDate() + 60);
+      } else {
+        document.getElementById(`e_price_${id}`).value = '';
+        document.getElementById(`e_visits_${id}`).value = '';
+        end.setDate(today.getDate() + 30);
+      }
+      document.getElementById(`e_enddate_${id}`).value = end.toISOString().split('T')[0];
     };
 
     window.saveEdit = async function(id) {
@@ -197,6 +243,7 @@
       if (!m) return;
       const endDateInput = document.getElementById(`e_enddate_${id}`).value;
       if (!endDateInput) { showToast("ვადა სავალდებულოა!", 'error'); return; }
+
       const updated = {
         ...m,
         firstName: document.getElementById(`e_fn_${id}`).value.trim(),
@@ -211,9 +258,10 @@
         remainingVisits: document.getElementById(`e_visits_${id}`).value === '' ? null : parseInt(document.getElementById(`e_visits_${id}`).value),
         status: document.getElementById(`e_status_${id}`).value
       };
+
       await updateMember(updated);
       showToast("ცვლილებები შენახულია!");
-      document.getElementById(`edit_${id}`).remove();
+      document.querySelectorAll('.edit-form').forEach(f => f.remove());
     };
 
     window.exportToExcel = function() {
@@ -221,6 +269,7 @@
         "სახელი": m.firstName,
         "გვარი": m.lastName,
         "პირადი": m.personalId,
+        "ტელეფონი": m.phone,
         "აბონემენტი": getSubscriptionName(m.subscriptionType),
         "ფასი": m.subscriptionPrice + "₾",
         "დასრულება": formatDate(m.subscriptionEndDate),
@@ -232,8 +281,8 @@
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(data);
       XLSX.utils.book_append_sheet(wb, ws, "წევრები");
-      XLSX.writeFile(wb, `Gym_წევრები_${new Date().toISOString().slice(0,10)}.xlsx`);
-      showToast("Excel ჩამოიტვირთა!");
+      XLSX.writeFile(wb, `FitHouse_წევრები_${new Date().toISOString().slice(0,10)}.xlsx`);
+      showToast("Excel ფაილი ჩამოიტვირთა!");
     };
 
     function updateAll() {
@@ -256,17 +305,11 @@
       document.getElementById('expiredMembers').textContent = expired;
       document.getElementById('expiringMembers').textContent = expiring;
       document.getElementById('pausedMembers').textContent = paused;
-
-      document.getElementById('expiringList').innerHTML = expiring ? 
-        `<h3 class="mt-6 text-xl font-bold">3 დღეში ვადაგასული:</h3>` + 
-        window.members.filter(m=>m.status==='active' && new Date(m.subscriptionEndDate)<=soon && new Date(m.subscriptionEndDate)>new Date())
-          .map(m=>`<div class="member-card p-3 mb-2"><strong>${m.firstName} ${m.lastName}</strong> — ${formatDate(m.subscriptionEndDate)}</div>`).join('')
-        : '';
     }
 
     function updateExpiredList() {
       const list = window.members.filter(m => m.status === 'expired');
-      document.getElementById('expiredList').innerHTML = list.length === 0 ? '<p class="text-gray-500">ვადაგასული არ არის</p>' : list.map(m => {
+      document.getElementById('expiredList').innerHTML = list.length === 0 ? '<p class="text-gray-500 text-center py-10">ვადაგასული წევრები არ არის</p>' : list.map(m => {
         const over = Math.floor((new Date() - new Date(m.subscriptionEndDate)) / 86400000);
         const reason = (m.remainingVisits != null && m.remainingVisits <= 0) ? 'ვიზიტები ამოწურულია' : `ვადა გასულია ${over} დღით`;
         return `<div class="member-card">
@@ -274,12 +317,12 @@
             <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
-            <div><strong>მიზეზი:</strong> ${reason}</div>
+            <div><strong>მიზეზი:</strong> <span class="text-red-400 font-bold">${reason}</span></div>
           </div>
-          <div class="mt-4 flex gap-3 flex-wrap">
+          <div class="mt-4 flex flex-wrap gap-3">
             <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
-            <button class="btn" onclick="showEditForm(event, '${m.id}')" style="background:#3b82f6">რედაქტირება</button>
-            <button class="btn" onclick="deleteMember('${m.id}')" style="background:#ef4444">წაშლა</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-red-600 hover:bg-red-700" onclick="deleteMember('${m.id}')">წაშლა</button>
           </div>
         </div>`;
       }).join('');
@@ -295,31 +338,30 @@
           (m.firstName + ' ' + m.lastName).toLowerCase().includes(searchValue)
         );
       }
-      container.innerHTML = filtered.length === 0 ? (searchValue ? '<p class="text-red-500">ვერ მოიძებნა</p>' : '<p class="text-gray-500">ჯერ არ არის წევრები</p>') : filtered.map(m => `
+      container.innerHTML = filtered.length === 0 ? `<p class="text-center py-10 text-gray-500">${searchValue ? 'ვერ მოიძებნა' : 'ჯერ არ არის წევრები'}</p>` : filtered.map(m => `
         <div class="member-card">
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-            <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
+            <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>დარჩენილი დღეები:</strong> ${Math.max(0, Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000))}</div>
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(m.status)}">${getStatusText(m.status)}</span></div>
             ${m.remainingVisits != null ? `<div><strong>დარჩენილი ვიზიტები:</strong> ${m.remainingVisits}</div>` : ''}
-            <div><strong>ჯამური ვიზიტები:</strong> ${m.totalVisits || 0}</div>
           </div>
-          <div class="mt-4 flex gap-3 flex-wrap">
-            <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
-            <button class="btn" onclick="showEditForm(event, '${m.id}')" style="background:#3b82f6">რედაქტირება</button>
-            <button class="btn" onclick="deleteMember('${m.id}')" style="background:#ef4444">წაშლა</button>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <button class="btn btn-warning" onclick "renewMembership('${m.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-red-600 hover:bg-red-700" onclick="deleteMember('${m.id}')">წაშლა</button>
           </div>
         </div>`).join('');
     }
 
-    async function searchAndCheckAccess(term) {
+    function searchAndCheckAccess(term) {
       const matches = window.members.filter(m => m.personalId.includes(term) || (m.firstName+' '+m.lastName).toLowerCase().includes(term.toLowerCase()));
       const el = document.getElementById('checkinResult');
-      if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 font-bold">ვერ მოიძებნა</div>';
-      else if (matches.length === 1) await window.checkMemberAccess(matches[0]);
-      else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-3">აირჩიეთ:</h3>${matches.map(m=>`<div class="p-3 border rounded mb-2 cursor-pointer hover:bg-gray-700" onclick="window.checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
+      if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 font-bold text-center py-10">ვერ მოიძებნა</div>';
+      else if (matches.length === 1) checkMemberAccess(matches[0]);
+      else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-4">აირჩიეთ წევრი:</h3>${matches.map(m=>`<div class="p-4 border border-gray-600 rounded-lg mb-3 cursor-pointer hover:bg-gray-700" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
     }
 
     function getSubscriptionName(t) { const map = {'12visits':'12 ვარჯიში','morning':'დილის','unlimited':'ულიმიტო','other':'სხვა'}; return map[t] || t; }
@@ -330,19 +372,24 @@
     function showToast(msg, type='success') {
       const t = document.createElement('div');
       t.className = `toast ${type}`;
-      t.textContent = msg;
+      t.innerHTML = `<i class="fas ${type==='success'?'fa-check-circle':type==='error'?'fa-times-circle':'fa-exclamation-triangle'} mr-2"></i>${msg}`;
       document.body.appendChild(t);
       setTimeout(() => t.classList.add('show'), 100);
-      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3000);
+      setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3500);
     }
 
     window.toggleTheme = function() {
-      document.body.classList.toggle('light-mode');
-      localStorage.setItem('gym-theme', document.body.classList.contains('light-mode') ? 'light' : 'dark');
+      const isLight = document.body.classList.toggle('light-mode');
+      localStorage.setItem('gym-theme', isLight ? 'light' : 'dark');
+      document.querySelector('.theme-toggle i').className = isLight ? 'fas fa-moon' : 'fas fa-sun';
     };
 
     document.addEventListener('DOMContentLoaded', () => {
-      if (localStorage.getItem('gym-theme') === 'light') document.body.classList.add('light-mode');
+      if (localStorage.getItem('gym-theme') === 'light') {
+        document.body.classList.add('light-mode');
+        document.querySelector('.theme-toggle i').className = 'fas fa-moon';
+      }
+
       loadMembers();
 
       document.querySelectorAll('.subscription-card').forEach(c => c.addEventListener('click', function() {
@@ -356,7 +403,7 @@
         e.preventDefault();
         if (!window.selectedSubscription) { showToast("აირჩიეთ აბონემენტი", 'error'); return; }
         const btn = document.getElementById('registerBtn');
-        btn.disabled = true; btn.querySelector('.btn-text').style.display = 'none'; btn.querySelector('.spinner').style.display = 'block';
+        btn.disabled = true; btn.innerHTML = '<div class="spinner"></div> მიმდინარეობს...';
 
         try {
           const start = new Date(); let end = new Date(); let visits = null; let price = window.selectedSubscription.price; let type = window.selectedSubscription.type;
@@ -367,9 +414,9 @@
             const cp = +document.getElementById('customPrice').value;
             const cd = +document.getElementById('customDuration').value;
             const cv = document.getElementById('customVisits').value ? +document.getElementById('customVisits').value : null;
-            const desc = document.getElementById('customDescription').value;
+            const desc = document.getElementById('customDescription').value.trim() || 'სხვა';
             if (!cp || !cd) { showToast("ფასი და ვადა სავალდებულოა", 'error'); return; }
-            price = cp; end.setDate(start.getDate() + cd); visits = cv; type = desc || 'სხვა';
+            price = cp; end.setDate(start.getDate() + cd); visits = cv; type = desc;
           }
 
           await createMember({
@@ -394,29 +441,27 @@
           window.selectedSubscription = null;
           document.querySelectorAll('.subscription-card').forEach(c => c.classList.remove('selected'));
           document.getElementById('customSubscriptionFields').style.display = 'none';
+          showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } finally {
-          btn.disabled = false; btn.querySelector('.btn-text').style.display = 'inline'; btn.querySelector('.spinner').style.display = 'none';
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-user-plus mr-2"></i> რეგისტრაცია';
         }
       });
 
       document.getElementById('searchInput')?.addEventListener('input', updateFullMemberList);
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
-        if (v.length > 2) searchAndCheckAccess(v);
+        if (v.length >= 2) searchAndCheckAccess(v);
         else document.getElementById('checkinResult').innerHTML = '';
       });
     });
   </script>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script>
-    window.jspdf.jsPDF.API.addFont('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/fonts/DejaVuSans.ttf', 'DejaVu', 'normal');
-  </script>
 
   <style>
     :root {
-      --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);
+      --bg: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);
       --card-bg: #1e293b;
       --text: #f1f5f9;
       --text-light: #cbd5e1;
@@ -426,89 +471,88 @@
       --warning: #f59e0b;
       --danger: #ef4444;
       --border: #334155;
-      --shadow: rgba(0,0,0,0.4);
+      --shadow: rgba(0,0,0,0.5);
     }
-
     body.light-mode {
-      --bg-gradient: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      --bg: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
       --card-bg: #ffffff;
       --text: #1e293b;
       --text-light: #475569;
       --accent: #3b82f6;
       --accent-hover: #2563eb;
       --border: #e2e8f0;
-      --shadow: rgba(0,0,0,0.08);
+      --shadow: rgba(0,0,0,0.1);
     }
-
-    body { margin:0; padding:0; font-family: 'Segoe UI', sans-serif; background: var(--bg-gradient); color: var(--text); min-height:100vh; transition: all 0.4s ease; }
-    .container { max-width: 1280px; margin: 0 auto; padding: 20px; }
-
-    .header { background: rgba(30,41,59,0.95); backdrop-filter: blur(12px); border-radius: 20px; padding: 24px; margin-bottom: 30px; text-align: center; box-shadow: 0 20px 40px var(--shadow); display: flex; align-items: center; justify-content: center; gap: 20px; border: 1px solid var(--border); }
-    .light-mode .header { background: rgba(255,255,255,0.95); }
-
-    .logo { height: 70px; border-radius: 16px; box-shadow: 0 8px 20px var(--shadow); }
-    .gym-title { font-size: 2.8rem; font-weight: 800; background: linear-gradient(to right, #60a5fa, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 0; }
-
-    .nav-tabs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 30px; justify-content: center; }
-    .nav-tab { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-light); padding: 14px 28px; border-radius: 16px; cursor: pointer; font-weight: 600; transition: all 0.3s; box-shadow: 0 4px 15px var(--shadow); }
-    .nav-tab:hover { background: var(--card-hover, #334155); transform: translateY(-3px); color: white; }
-    .nav-tab.active { background: var(--accent); color: white; box-shadow: 0 8px 25px rgba(59,130,246,0.5); }
-
-    .tab-content { display: none; background: var(--card-bg); border: 1px solid var(--border); border-radius: 20px; padding: 32px; box-shadow: 0 20px 50px var(--shadow); }
-    .tab-content.active { display: block; }
-
-    h2 { font-size: 2rem; margin-bottom: 24px; font-weight: 700; }
-
-    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-bottom: 30px; }
-    .form-input, .search-input { width: 100%; padding: 16px 20px; background: #334155; border: 1px solid var(--border); border-radius: 14px; color: white; font-size: 16px; }
-    .light-mode .form-input, .light-mode .search-input { background: #f8fafc; color: #1e293b; }
-    .form-input:focus, .search-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 4px rgba(59,130,246,0.2); }
-
-    .btn { background: var(--accent); color: white; border: none; padding: 14px 28px; border-radius: 14px; cursor: pointer; font-weight: 600; transition: all 0.3s; box-shadow: 0 6px 20px rgba(59,130,246,0.4); }
-    .btn:hover { background: var(--accent-hover); transform: translateY(-3px); }
-    .btn-success { background: var(--success); box-shadow: 0 6px 20px rgba(16,185,129,0.4); }
-    .btn-warning { background: var(--warning); box-shadow: 0 6px 20px rgba(245,158,11,0.4); }
-
-    .subscription-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 30px; }
-    .subscription-card { background: linear-gradient(135deg, #1e40af, #7c3aed); color: white; padding: 32px 24px; border-radius: 20px; text-align: center; cursor: pointer; transition: all 0.4s; border: 3px solid transparent; box-shadow: 0 15px 35px rgba(0,0,0,0.3); }
-    .subscription-card:hover { transform: translateY(-10px) scale(1.03); }
-    .subscription-card.selected { border-color: #fbbf24; box-shadow: 0 0 30px rgba(251,191,36,0.6); }
-
-    .member-card { background: #334155; border: 1px solid var(--border); border-radius: 18px; padding: 24px; margin-bottom: 20px; box-shadow: 0 8px 25px var(--shadow); }
-    .light-mode .member-card { background: #f8fafc; }
-
-    .status-active { background: #065f46; color: #6ee7b7; }
-    .status-expired { background: #7f1d1d; color: #fca5a5; }
-    .status-paused { background: #78350f; color: #fdba74; }
-    .status-badge { padding: 6px 14px; border-radius: 30px; font-weight: 700; font-size: 0.85rem; }
-
-    .dashboard-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 24px; margin-bottom: 40px; }
-    .stat-card { background: linear-gradient(135deg, #1e40af, #3b82f6); padding: 28px; border-radius: 20px; text-align: center; box-shadow: 0 15px 35px rgba(59,130,246,0.4); color: white; }
+    body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition:all 0.4s ease; }
+    .container { max-width:1280px; margin:0 auto; padding:20px; }
 
     .theme-toggle {
-      position: fixed; top: 20px; right: 20px; background: var(--card-bg); border: 2px solid var(--border);
-      width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      cursor: pointer; z-index: 1000; box-shadow: 0 4px 15px var(--shadow); font-size: 28px; transition: all 0.3s;
+      position:fixed; top:20px; right:20px; z-index:1000; width:64px; height:64px; border-radius:50%;
+      background:var(--card-bg); border:3px solid var(--border); box-shadow:0 8px 30px var(--shadow);
+      display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:28px; color:#fbbf24;
+      transition:all 0.4s; animation: float 6s ease-in-out infinite;
     }
-    .theme-toggle:hover { transform: scale(1.1); }
+    .theme-toggle:hover { transform:scale(1.2) rotate(360deg); }
+    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
 
-    .toast { position: fixed; top: 20px; right: 20px; background: #10b981; color: white; padding: 16px 24px; border-radius: 12px; box-shadow: 0 10px 30px var(--shadow); z-index: 1000; transform: translateX(400px); transition: transform 0.4s; font-weight: 600; }
-    .toast.show { transform: translateX(0); }
-    .toast.error { background: #ef4444; }
-    .toast.warning { background: #f59e0b; color: #000; }
+    .header { background:rgba(30,41,59,0.95); backdrop-filter:blur(12px); border-radius:24px; padding:30px; margin-bottom:30px; text-align:center; box-shadow:0 20px 50px var(--shadow); border:1px solid var(--border); }
+    .light-mode .header { background:rgba(255,255,255,0.95); }
 
-    .spinner { border: 3px solid #f3f3f3; border-top: 3px solid white; border Explosion-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; margin: 0 auto; }
-    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .logo { height:80px; border-radius:20px; box-shadow:0 10px 30px var(--shadow); }
+    .gym-title { font-size:3.5rem; font-weight:900; background:linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
 
-    @media (max-width: 768px) { .header { flex-direction: column; } .gym-title { font-size: 2.2rem; } }
+    .nav-tabs { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:30px; justify-content:center; }
+    .nav-tab { background:var(--card-bg); border:1px solid var(--border); color:var(--text-light); padding:16px 32px; border-radius:16px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 6px 20px var(--shadow); }
+    .nav-tab:hover { background:var(--accent); color:white; transform:translateY(-4px); }
+    .nav-tab.active { background:var(--accent); color:white; box-shadow:0 10px 30px rgba(59,130,246,0.6); }
+
+    .tab-content { display:none; background:var(--card-bg); border:1px solid var(--border); border-radius:24px; padding:40px; box-shadow:0 20px 60px var(--shadow); }
+    .tab-content.active { display:block; }
+
+    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
+    .form-input, .search-input { width:100%; padding:16px 20px; background:#334155; border:1px solid var(--border); border-radius:16px; color:white; font-size:16px; transition:all 0.3s; }
+    .light-mode .form-input, .light-mode .search-input { background:#f8fafc; color:#1e293b; }
+    .form-input:focus, .search-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 4px rgba(59,130,246,0.3); }
+
+    .btn { background:var(--accent); color:white; border:none; padding:14px 32px; border-radius:16px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 8px 25px rgba(59,130,246,0.4); }
+    .btn:hover { background:var(--accent-hover); transform:translateY(-3px); }
+    .btn-success { background:var(--success); box-shadow:0 8px 25px rgba(16,185,129,0.4); }
+    .btn-warning { background:var(--warning); box-shadow:0 8px 25px rgba(245,158,11,0.4); }
+
+    .subscription-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:24px; margin:30px 0; }
+    .subscription-card { background:linear-gradient(135deg,#1e40af,#7c3aed); color:white; padding:40px 24px; border-radius:24px; text-align:center; cursor:pointer; transition:all 0.4s; border:4px solid transparent; box-shadow:0 20px 40px rgba(0,0,0,0.4); }
+    .subscription-card:hover { transform:translateY(-12px) scale(1.05); }
+    .subscription-card.selected { border-color:#fbbf24; box-shadow:0 0 40px rgba(251,191,36,0.7); }
+
+    .member-card { background:var(--card-bg); border:1px solid var(--border); border-radius:20px; padding:28px; margin-bottom:24px; box-shadow:0 10px 30px var(--shadow); transition:all 0.3s; }
+    .member-card:hover { transform:translateY(-4px); box-shadow:0 15px 40px var(--shadow); }
+
+    .status-active { background:#065f46; color:#6ee7b7; padding:8px 16px; border-radius:50px; font-weight:700; }
+    .status-expired { background:#7f1d1d; color:#fca5a5; padding:8px 16px; border-radius:50px; font-weight:700; }
+    .status-paused { background:#78350f; color:#fdba74; padding:8px 16px; border-radius:50px; font-weight:700; }
+
+    .dashboard-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:24px; margin-bottom:40px; }
+    .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:32px; border-radius:24px; text-align:center; box-shadow:0 15px 40px rgba(59,130,246,0.5); color:white; }
+
+    .toast { position:fixed; top:20px; right:20px; background:#10b981; color:white; padding:16px 28px; border-radius:16px; box-shadow:0 10px 30px var(--shadow); z-index:1000; transform:translateX(400px); transition:transform 0.4s; font-weight:600; }
+    .toast.show { transform:translateX(0); }
+    .toast.error { background:#ef4444; }
+    .toast.warning { background:#f59e0b; color:#000; }
+
+    .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:28px; height:28px; animation:spin 1s linear infinite; margin:0 auto; }
+    @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+    @media (max-width:768px) { .gym-title{font-size:2.5rem} .header{flex-direction:column} }
   </style>
 </head>
-<body>
-  <button class="theme-toggle" onclick="toggleTheme()" title="თემის გადართვა">Dark/Light</button>
+<body class="dark">
+  <div class="theme-toggle" onclick="toggleTheme()">
+    <i class="fas fa-sun"></i>
+  </div>
 
   <div class="container">
     <div class="header">
-      <img src="./fithause logo.png" alt="Fit House Logo" class="logo" onerror="this.style.display='none'">
+      <img src="fithouse-logo.png" alt="Fit House" class="logo" onerror="this.style.display='none'">
       <h1 class="gym-title">Fit House Gym</h1>
     </div>
 
@@ -518,23 +562,22 @@
       <button class="nav-tab" onclick="showTab('search')">ძიება</button>
       <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
       <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
-      <button class="nav-tab" onclick="showTab('export')">ექსპორტი</button>
+      <button class="nav-tab" onclick="exportToExcel()">Excel ექსპორტი</button>
     </div>
 
     <div id="dashboard" class="tab-content active">
-      <h2>დეშბორდი</h2>
+      <h2 class="text-3xl font-bold mb-8">დეშბორდი</h2>
       <div class="dashboard-stats">
-        <div class="stat-card"><div class="text-4xl font-bold" id="todayVisits">0</div><div class="text-lg mt-2">დღევანდელი ვიზიტები</div></div>
-        <div class="stat-card"><div class="text-4xl font-bold" id="activeMembers">0</div><div class="text-lg mt-2">აქტიური წევრები</div></div>
-        <div class="stat-card"><div class="text-4xl font-bold" id="expiredMembers">0</div><div class="text-lg mt-2">ვადაგასული</div></div>
-        <div class="stat-card"><div class="text-4xl font-bold" id="expiringMembers">0</div><div class="text-lg mt-2">3 დღეში ვადაგასული</div></div>
-        <div class="stat-card" style="background: linear-gradient(135deg, #ea580c, #f97316);"><div class="text-4xl font-bold" id="pausedMembers">0</div><div class="text-lg mt-2">შეჩერებული</div></div>
+        <div class="stat-card"><div class="text-5xl font-bold" id="todayVisits">0</div><div class="text-xl mt-3">დღევანდელი ვიზიტები</div></div>
+        <div class="stat-card"><div class="text-5xl font-bold" id="activeMembers">0</div><div class="text-xl mt-3">აქტიური წევრები</div></div>
+        <div class="stat-card"><div class="text-5xl font-bold" id="expiredMembers">0</div><div class="text-xl mt-3">ვადაგასული</div></div>
+        <div class="stat-card"><div class="text-5xl font-bold" id="expiringMembers">0</div><div class="text-xl mt-3">3 დღეში ვადაგასული</div></div>
+        <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)"><div class="text-5xl font-bold" id="pausedMembers">0</div><div class="text-xl mt-3">შეჩერებული</div></div>
       </div>
-      <div id="expiringList"></div>
     </div>
 
     <div id="register" class="tab-content">
-      <h2>რეგისტრაცია</h2>
+      <h2 class="text-3xl font-bold mb-8">ახალი წევრის რეგისტრაცია</h2>
       <form id="registrationForm">
         <div class="form-grid">
           <input type="text" id="firstName" class="form-input" placeholder="სახელი *" required>
@@ -544,14 +587,29 @@
           <input type="email" id="email" class="form-input" placeholder="ელ.ფოსტა">
           <input type="text" id="personalId" class="form-input" placeholder="პირადი ნომერი *" required>
         </div>
-        <h3 class="mb-4">აირჩიეთ აბონემენტი</h3>
+        <h3 class="text-2xl font-bold my-8">აირჩიეთ აბონემენტი</h3>
         <div class="subscription-cards">
-          <div class="subscription-card" data-type="12visits" data-price="70"><div class="font-bold text-xl">12 ვარჯიში</div><div class="text-3xl">70₾</div><div>30 დღე</div></div>
-          <div class="subscription-card" data-type="morning" data-price="90"><div class="font-bold text-xl">დილის</div><div class="text-3xl">90₾</div><div>09:00–16:00</div></div>
-          <div class="subscription-card" data-type="unlimited" data-price="110"><div class="font-bold text-xl">ულიმიტო</div><div class="text-3xl">110₾</div><div>60 დღე</div></div>
-          <div class="subscription-card" data-type="other" data-price="0"><div class="font-bold text-xl">სხვა</div><div class="text-3xl">თავისუფალი</div></div>
+          <div class="subscription-card" data-type="12visits" data-price="70">
+            <div class="text-2xl font-bold">12 ვარჯიში</div>
+            <div class="text-5xl font-bold my-4">70₾</div>
+            <div class="text-lg">30 დღე</div>
+          </div>
+          <div class="subscription-card" data-type="morning" data-price="90">
+            <div class="text-2xl font-bold">დილის</div>
+            <div class="text-5xl font-bold my-4">90₾</div>
+            <div class="text-lg">09:00–16:00</div>
+          </div>
+          <div class="subscription-card" data-type="unlimited" data-price="110">
+            <div class="text-2xl font-bold">ულიმიტო</div>
+            <div class="text-5xl font-bold my-4">110₾</div>
+            <div class="text-lg">60 დღე</div>
+          </div>
+          <div class="subscription-card" data-type="other" data-price="0">
+            <div class="text-2xl font-bold">სხვა</div>
+            <div class="text-5xl font-bold my-4">თავისუფალი</div>
+          </div>
         </div>
-        <div id="customSubscriptionFields" style="display:none; margin-top:20px; padding:20px; background:#334155; border-radius:16px;">
+        <div id="customSubscriptionFields" class="bg-slate-800 p-6 rounded-2xl" style="display:none">
           <div class="form-grid">
             <input type="number" id="customPrice" class="form-input" placeholder="ფასი ₾ *">
             <input type="number" id="customDuration" class="form-input" placeholder="ვადა (დღე) *">
@@ -559,34 +617,27 @@
             <input type="text" id="customDescription" class="form-input" placeholder="აღწერა">
           </div>
         </div>
-        <button type="submit" id="registerBtn" class="btn btn-success mt-6">
-          <span class="btn-text">რეგისტრაცია</span>
-          <div class="spinner" style="display:none"></div>
+        <button type="submit" id="registerBtn" class="btn btn-success text-2xl px-12 py-5 mt-8">
+          <i class="fas fa-user-plus mr-3"></i> რეგისტრაცია
         </button>
       </form>
     </div>
 
     <div id="search" class="tab-content">
-      <h2>ძიება</h2>
-      <input type="text" id="searchInput" class="search-input" placeholder="ფილტრი: პირადი ან სახელი...">
-      <div id="searchResults" class="mt-6"></div>
+      <h2 class="text-3xl font-bold mb-8">წევრების ძიება</h2>
+      <input type="text" id="searchInput" class="search-input text-xl" placeholder="ძიება პირადით ან სახელით...">
+      <div id="searchResults" class="mt-8"></div>
     </div>
 
     <div id="checkin" class="tab-content">
-      <h2>შესვლა</h2>
-      <input type="text" id="checkinSearch" class="search-input" placeholder="ძიება პირადით ან სახელით...">
-      <div id="checkinResult" class="mt-6"></div>
+      <h2 class="text-3xl font-bold mb-8">შესვლა</h2>
+      <input type="text" id="checkinSearch" class="search-input text-xl" placeholder="ძიება პირადით ან სახელით...">
+      <div id="checkinResult" class="mt-8"></div>
     </div>
 
     <div id="expired" class="tab-content">
-      <h2>ვადაგასული წევრები</h2>
-      <div id="expiredList" class="mt-6"></div>
-    </div>
-
-    <div id="export" class="tab-content">
-      <h2>ექსპორტი</h2>
-      <button class="btn mr-4" onclick="exportToExcel()">Excel (.xlsx)</button>
-      <button class="btn" onclick="alert('PDF მალე დაემატება')">PDF (მალე)</button>
+      <h2 class="text-3xl font-bold mb-8">ვადაგასული წევრები</h2>
+      <div id="expiredList" class="mt-8"></div>
     </div>
   </div>
 </body>
