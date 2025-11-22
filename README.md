@@ -24,7 +24,6 @@
     let isAuthenticated = false;
     window.members = [];
     window.selectedSubscription = null;
-    window.selectedMemberForDetails = null;
 
     function formatDate(iso) {
       if (!iso) return '—';
@@ -84,10 +83,8 @@
         await deleteDoc(doc(db, "members", id));
         showToast("წევრი წაიშალა!");
         modal.remove();
-        if (window.selectedMemberForDetails?.id === id) {
-          document.getElementById('memberDetailsContainer').innerHTML = '';
-          window.selectedMemberForDetails = null;
-        }
+        const details = document.getElementById(`details-${id}`);
+        if (details) details.remove();
       } catch (e) {
         showToast("შეცდომა", "error");
       }
@@ -117,21 +114,27 @@
       document.getElementById(tab).classList.add('active');
       document.querySelector(`[onclick="showTab('${tab}')"]`).classList.add('active');
       if (tab === 'search') {
+        document.getElementById('searchResults').innerHTML = '';
         updateSearchMemberList();
-        document.getElementById('memberDetailsContainer').innerHTML = '';
-        window.selectedMemberForDetails = null;
       }
       if (tab === 'dashboard') document.getElementById('expiringSoonSection').style.display = 'none';
     };
 
-    window.showMemberDetails = function(member) {
-      window.selectedMemberForDetails = member;
-      const noteBanner = member.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
+    window.toggleMemberDetails = function(id) {
+      const member = window.members.find(m => m.id === id);
+      if (!member) return;
+      const detailsDiv = document.getElementById(`details-${id}`);
+      if (detailsDiv) {
+        detailsDiv.remove();
+        return;
+      }
 
-      document.getElementById('memberDetailsContainer').innerHTML = `
-        <div class="member-card mt-8 animate-fadeIn">
+      const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
+
+      const detailsHTML = `
+        <div id="details-${id}" class="member-details-card animate-fadeIn">
           ${noteBanner}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-lg mb-8">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>ტელეფონი:</strong> ${member.phone || '—'}</div>
@@ -139,19 +142,19 @@
             <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(member.status)}">${getStatusText(member.status)}</span></div>
-            <div><strong>დარჩენილი ვიზიტები:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
+            <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
-            <div><strong>ჯამში:</strong> ${member.totalVisits || 0}</div>
           </div>
-          <div class="flex flex-wrap gap-4 justify-center">
-            <button class="btn btn-warning text-lg px-10 py-4" onclick="renewMembership('${member.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700 text-lg px-10 py-4" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
-            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-4" onclick="deleteMember('${member.id}')">წაშლა</button>
+          <div class="flex flex-wrap gap-3 justify-center">
+            <button class="btn btn-warning text-sm px-6 py-2" onclick="renewMembership('${member.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
+            <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="deleteMember('${member.id}')">წაშლა</button>
           </div>
         </div>
       `;
-      document.getElementById('memberDetailsContainer').scrollIntoView({ behavior: 'smooth' });
-      updateSearchMemberList();
+
+      const card = document.querySelector(`[data-member-id="${id}"]`);
+      card.insertAdjacentHTML('afterend', detailsHTML);
     };
 
     window.processCheckIn = async function(id) {
@@ -165,7 +168,7 @@
       updated.totalVisits = (updated.totalVisits || 0) + 1;
       if (m.remainingVisits !== null) {
         updated.remainingVisits = m.remainingVisits - 1;
-        if (updated.remainingVisits <= 0) { updated.status = 'expired'; }
+        if (updated.remainingVisits <= 0) updated.status = 'expired';
       }
       await updateMember(updated);
       showToast("შესვლა დაფიქსირდა!");
@@ -181,21 +184,19 @@
       else if (member.remainingVisits !== null && member.remainingVisits <= 0) { allowed = false; msg = 'ვიზიტები ამოწურულია'; await updateMember({...member, status:'expired'}); }
       else if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { allowed = false; msg = 'მხოლოდ 09:00–16:00'; }
 
-      const noteBanner = member.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
+      const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
       document.getElementById('checkinResult').innerHTML = `
-        <div class="member-card p-8">
+        <div class="member-card p-6">
           ${noteBanner}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-lg">
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
-            <div><strong>სტატუსი:</strong> <span class="status-badge status-small ${allowed?'status-active':'status-expired'}">${msg}</span></div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge ${allowed?'status-active':'status-expired'} text-xs px-3 py-1">${msg}</span></div>
             ${member.remainingVisits != null ? `<div><strong>დარჩენილი:</strong> ${member.remainingVisits}</div>` : ''}
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
-            <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
-            <div><strong>ჯამში:</strong> ${member.totalVisits || 0}</div>
           </div>
-          ${allowed ? `<button class="btn btn-success mt-8 w-full text-2xl py-6" onclick="processCheckIn('${member.id}')">შესვლა</button>` : ''}
+          ${allowed ? `<button class="btn btn-success w-full text-lg py-4" onclick="processCheckIn('${member.id}')">შესვლა</button>` : ''}
         </div>`;
     };
 
@@ -220,37 +221,36 @@
       div.className = 'edit-form';
       const endDate = m.subscriptionEndDate ? new Date(m.subscriptionEndDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
       div.innerHTML = `
-        <div class="bg-slate-800 p-10 rounded-3xl border-4 border-blue-500 mt-8 shadow-2xl">
-          <h4 class="text-3xl font-bold mb-8 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
-          <div class="form-grid gap-6">
-            <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input text-lg" placeholder="სახელი">
-            <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input text-lg" placeholder="გვარი">
-            <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input text-lg" placeholder="ტელეფონი">
-            <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input text-lg" placeholder="პირადი">
-            <textarea id="e_note_${id}" class="form-input text-lg" placeholder="შენიშვნა" style="height:120px;">${m.note || ''}</textarea>
-          </div>
-          <div class="form-grid mt-8 gap-6">
-            <select id="e_subtype_${id}" class="form-input text-lg" onchange="autoFillSubscription('${id}')">
+        <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
+          <h4 class="text-2xl font-bold mb-6 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
+          <div class="form-grid gap-4 text-sm">
+            <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
+            <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
+            <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
+            <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
+            <textarea id="e_note_${id}" class="form-input" style="height:90px;">${m.note || ''}</textarea>
+            <select id="e_subtype_${id}" class="form-input" onchange="autoFillSubscription('${id}')">
               <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
               <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის (90₾)</option>
               <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
               <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
             </select>
-            <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input text-lg" placeholder="ფასი">
-            <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input text-lg">
-            <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input text-lg" placeholder="ვიზიტები">
-            <select id="e_status_${id}" class="form-input text-lg">
+            <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
+            <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
+            <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
+            <select id="e_status_${id}" class="form-input">
               <option value="active" ${m.status==='active'?'selected':''}>აქტიური</option>
               <option value="expired" ${m.status==='expired'?'selected':''}>ვადაგასული</option>
               <option value="paused" ${m.status==='paused'?'selected':''}>შეჩერებული</option>
             </select>
           </div>
-          <div class="mt-10 flex gap-6 justify-center">
-            <button class="btn btn-success text-xl px-12 py-4" onclick="saveEdit('${id}')">შენახვა</button>
-            <button class="btn bg-red-600 hover:bg-red-700 text-xl px-12 py-4" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
+          <div class="mt-6 flex gap-4 justify-center">
+            <button class="btn btn-success text-lg px-10 py-3" onclick="saveEdit('${id}')">შენახვა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
-      document.getElementById('memberDetailsContainer').appendChild(div);
+      const container = document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
+      container.after(div);
       autoFillSubscription(id);
     };
 
@@ -284,7 +284,7 @@
       await updateMember(updated);
       showToast("შენახულია!");
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
-      showMemberDetails(updated);
+      updateSearchMemberList();
     };
 
     window.exportToExcel = function() {
@@ -325,15 +325,15 @@
     function updateExpiredList() {
       const list = window.members.filter(m => m.status === 'expired');
       document.getElementById('expiredList').innerHTML = list.length === 0 ? '<p class="text-center py-10 text-gray-500">ვადაგასული წევრები არ არის</p>' : list.map(m => {
-        const noteBanner = m.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
+        const noteBanner = m.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
         return `<div class="member-card">${noteBanner}
-          <div class="info-grid"><div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div><div><strong>პირადი:</strong> ${m.personalId}</div>
+          <div class="info-grid text-sm"><div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div><div><strong>პირადი:</strong> ${m.personalId}</div>
           <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
           <div><strong>ვადა გავიდა:</strong> <span class="text-red-400 font-bold">${formatDate(m.subscriptionEndDate)}</span></div></div>
-          <div class="mt-6 flex gap-3 justify-center">
-            <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
-            <button class="btn bg-red-600 hover:bg-red-700" onclick="deleteMember('${m.id}')">წაშლა</button>
+          <div class="mt-4 flex gap-3 justify-center text-sm">
+            <button class="btn btn-warning px-5 py-2" onclick="renewMembership('${m.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
       }).join('');
     }
@@ -348,7 +348,7 @@
         return;
       }
       container.innerHTML = filtered.map(m => `
-        <div class="search-member-card ${window.selectedMemberForDetails?.id === m.id ? 'selected' : ''}" onclick="showMemberDetails(window.members.find(x => x.id === '${m.id}'))">
+        <div class="search-member-card" data-member-id="${m.id}" onclick="toggleMemberDetails('${m.id}')">
           <div class="search-card-content">
             <div class="search-card-info">
               <div class="search-name">${m.firstName} ${m.lastName}</div>
@@ -356,7 +356,7 @@
               <div class="search-sub">${getSubscriptionName(m.subscriptionType)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
             </div>
-            <div class="search-arrow">></div>
+            <div class="search-arrow">${document.getElementById(`details-${m.id}`) ? '−' : '+'}</div>
           </div>
         </div>
       `).join('');
@@ -370,17 +370,17 @@
       if (list.length === 0) { container.innerHTML = '<p class="text-center py-10 text-gray-500">3 დღეში ვადაგასული არ არის</p>'; return; }
       container.innerHTML = list.map(m => {
         const days = Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000);
-        const note = m.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
-        return `<div class="member-card">${note}
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
+        const note = Chance.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
+        return `<div class="member-card text-sm">${note}
+          <div class="grid grid-cols-2 gap-3">
             <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>ვადა:</strong> <span class="text-orange-400 font-bold">${formatDate(m.subscriptionEndDate)} (${days} დღე)</span></div>
           </div>
-          <div class="mt-6 flex gap-3 justify-center">
-            <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
+          <div class="mt-4 flex gap-3 justify-center">
+            <button class="btn btn-warning text-sm px-5 py-2" onclick="renewMembership('${m.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
           </div></div>`;
       }).join('');
     }
@@ -470,7 +470,7 @@
           const el = document.getElementById('checkinResult');
           if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 text-center py-10">ვერ მოიძებნა</div>';
           else if (matches.length === 1) checkMemberAccess(matches[0]);
-          else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-6 text-center">აირჩიეთ:</h3>${matches.map(m=>`<div class="p-6 border border-gray-600 rounded-xl mb-4 cursor-pointer hover:bg-gray-700 text-center" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
+          else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-6 text-center">აირჩიეთ:</h3>${matches.map(m=>`<div class="p-5 border border-gray-600 rounded-xl mb-3 cursor-pointer hover:bg-gray-700 text-center" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
         } else document.getElementById('checkinResult').innerHTML = '';
       });
     });
@@ -481,64 +481,70 @@
     body.light-mode { --bg: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); --card-bg: #ffffff; --text: #1e293b; --text-light: #475569; --accent: #3b82f6; --accent-hover: #2563eb; --border: #e2e8f0; --shadow: rgba(0,0,0,0.1); }
     body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition:all 0.4s; }
     .container { max-width:1280px; margin:0 auto; padding:20px; }
-    .theme-toggle { position:fixed; top:20px; right:20px; z-index:1000; width:64px; height:64px; border-radius:50%; background:var(--card-bg); border:3px solid var(--border); box-shadow:0 8px 30px var(--shadow); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:28px; color:#fbbf24; }
-    .header { background:rgba(30,41,59,0.95); backdrop-filter:blur(12px); border-radius:24px; padding:30px; margin-bottom:30px; text-align:center; box-shadow:0 20px 50px var(--shadow); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:20px; }
-    .logo { height:100px; border-radius:20px; box-shadow:0 10px 30px var(--shadow); object-fit:contain; }
-    .gym-title { font-size:3.5rem; font-weight:900; background:linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
-    .nav-tabs { display:flex; flex-wrap:wrap; gap:12px; margin-bottom:30px; justify-content:center; }
-    .nav-tab { background:var(--card-bg); border:1px solid var(--border); color:var(--text-light); padding:14px 22px; border-radius:16px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 6px 20px var(--shadow); min-width:130px; text-align:center; }
+    .theme-toggle { position:fixed; top:20px; right:20px; z-index:1000; width:60px; height:60px; border-radius:50%; background:var(--card-bg); border:3px solid var(--border); box-shadow:0 8px 30px var(--shadow); display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:26px; color:#fbbf24; }
+    .header { background:rgba(30,41,59,0.95); backdrop-filter:blur(12px); border-radius:24px; padding:24px; margin-bottom:30px; text-align:center; box-shadow:0 20px 50px var(--shadow); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; gap:16px; }
+    .logo { height:90px; border-radius:16px; box-shadow:0 10px 30px var(--shadow); }
+    .gym-title { font-size:3rem; font-weight:900; background:linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
+    .nav-tabs { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:30px; justify-content:center; }
+    .nav-tab { background:var(--card-bg); border:1px solid var(--border); color:var(--text-light); padding:12px 20px; border-radius:14px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 6px 20px var(--shadow); min-width:120px; text-align:center; font-size:0.95rem; }
     .nav-tab:hover { background:var(--accent); color:white; transform:translateY(-4px); }
     .nav-tab.active { background:var(--accent); color:white; }
-    .tab-content { display:none; background:var(--card-bg); border:1px solid var(--border); border-radius:24px; padding:40px; box-shadow:0 20px 60px var(--shadow); }
+    .tab-content { display:none; background:var(--card-bg); border:1px solid var(--border); border-radius:20px; padding:30px; box-shadow:0 20px 60px var(--shadow); }
     .tab-content.active { display:block; }
-    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:20px; }
-    .form-input, .search-input { width:100%; padding:16px 20px; background:#334155; border:1px solid var(--border); border-radius:16px; color:white; font-size:16px; }
+    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; }
+    .form-input, .search-input { width:100%; padding:14px 18px; background:#334155; border:1px solid var(--border); border-radius:14px; color:white; font-size:15px; }
     .light-mode .form-input, .light-mode .search-input { background:#f8fafc; color:#1e293b; }
     .form-input:focus, .search-input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 4px rgba(59,130,246,0.3); }
-    .btn { background:var(--accent); color:white; border:none; padding:14px 28px; border-radius:16px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 8px 25px rgba(59,130,246,0.4); }
-    .btn:hover { background:var(--accent-hover); transform:translateY(-3px); }
+    .btn { background:var(--accent); color:white; border:none; padding:10px 20px; border-radius:12px; cursor:pointer; font-weight:600; transition:all 0.3s; box-shadow:0 6px 20px rgba(59,130,246,0.4); font-size:0.9rem; }
+    .btn:hover { background:var(--accent-hover); transform:translateY(-2px); }
     .btn-success { background:var(--success); }
     .btn-warning { background:var(--warning); }
-    .subscription-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:20px; margin:30px 0; }
-    .subscription-card { background:linear-gradient(135deg,#1e40af,#7c3aed); color:white; padding:24px 16px; border-radius:20px; text-align:center; cursor:pointer; transition:all 0.4s; border:4px solid transparent; box-shadow:0 12px 30px rgba(0,0,0,0.4); }
-    .subscription-card:hover { transform:translateY(-8px) scale(1.03); }
-    .subscription-card.selected { border-color:#fbbf24; box-shadow:0 0 35px rgba(251,191,36,0.7); }
-    .member-card { background:var(--card-bg); border:2px solid var(--border); border-radius:20px; padding:28px; margin-bottom:24px; box-shadow:0 12px 35px var(--shadow); }
-    .note-banner { background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#ffcccc; padding:16px 24px; border-radius:16px; font-weight:bold; text-align:center; margin:20px 0; border:2px solid #ef4444; }
-    .status-badge { padding:6px 14px; border-radius:12px; font-weight:700; }
+    .subscription-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin:24px 0; }
+    .subscription-card { background:linear-gradient(135deg,#1e40af,#7c3aed); color:white; padding:20px 14px; border-radius:18px; text-align:center; cursor:pointer; transition:all 0.4s; border:4px solid transparent; box-shadow:0 10px 25px rgba(0,0,0,0.4); }
+    .subscription-card:hover { transform:translateY(-6px) scale(1.03); }
+    .subscription-card.selected { border-color:#fbbf24; box-shadow:0 0 30px rgba(251,191,36,0.7); }
+    .member-card { background:var(--card-bg); border:2px solid var(--border); border-radius:18px; padding:20px; margin-bottom:16px; box-shadow:0 10px 30px var(--shadow); }
+    .note-banner { background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#ffcccc; padding:10px 16px; border-radius:12px; font-weight:bold; text-align:center; margin:12px 0; border:2px solid #ef4444; font-size:0.85rem; }
+    .status-badge { padding:4px 10px; border-radius:10px; font-size:0.75rem; font-weight:700; }
     .status-active { background:#065f46; color:#6ee7b7; }
     .status-expired { background:#7f1d1d; color:#fca5a5; }
     .status-paused { background:#78350f; color:#fdba74; }
-    .dashboard-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:24px; margin-bottom:40px; }
-    .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:32px; border-radius:24px; text-align:center; box-shadow:0 15px 40px rgba(59,130,246,0.5); color:white; }
+    .dashboard-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:20px; margin-bottom:32px; }
+    .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:24px; border-radius:20px; text-align:center; box-shadow:0 12px 35px rgba(59,130,246,0.5); color:white; }
     #expiringMembersCard { background:linear-gradient(135deg,#ea580c,#f97316); cursor:pointer; }
-    .toast { position:fixed; top:20px; right:20px; background:#10b981; color:white; padding:16px 32px; border-radius:16px; box-shadow:0 10px 30px var(--shadow); z-index:1000; transform:translateX(400px); transition:transform 0.4s; }
+    .toast { position:fixed; top:20px; right:20px; background:#10b981; color:white; padding:14px 28px; border-radius:14px; box-shadow:0 10px 30px var(--shadow); z-index:1000; transform:translateX(400px); transition:transform 0.4s; font-weight:600; }
     .toast.show { transform:translateX(0); }
     .toast.error { background:#ef4444; }
-    .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:32px; height:32px; animation:spin 1s linear infinite; margin:0 auto; }
+    .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:28px; height:28px; animation:spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+    @keyframes fadeIn { from {opacity:0; transform:translateY(10px);} to {opacity:1; transform:translateY(0);} }
+    .animate-fadeIn { animation: fadeIn 0.4s ease-out; }
 
-    /* ძიების ლამაზი კარდები */
+    /* ძიების გრაფები — უფრო მცირე და ლამაზი */
     .search-member-card {
-      background:var(--card-bg); border:2px solid var(--border); border-radius:20px; padding:20px; margin-bottom:16px;
+      background:var(--card-bg); border:2px solid var(--border); border-radius:18px; padding:16px; margin-bottom:12px;
       cursor:pointer; transition:all 0.3s; box-shadow:0 8px 25px var(--shadow); display:flex; align-items:center; justify-content:space-between;
     }
-    .search-member-card:hover { transform:translateY(-6px); box-shadow:0 15px 40px var(--shadow); border-color:var(--accent); }
-    .search-member-card.selected { border-color:#60a5fa; background:linear-gradient(135deg,#1e293b,#334155); box-shadow:0 0 30px rgba(96,165,250,0.5); }
+    .search-member-card:hover { transform:translateY(-4px); box-shadow:0 12px 35px var(--shadow); border-color:var(--accent); }
     .search-card-content { display:flex; width:100%; justify-content:space-between; align-items:center; }
-    .search-card-info { display:grid; gap:6px; }
-    .search-name { font-size:1.4rem; font-weight:bold; }
-    .search-id { font-size:1.1rem; color:var(--text-light); }
-    .search-sub { font-size:1rem; color:var(--text-light); }
-    .search-end { font-size:1rem; color:#fbbf24; font-weight:600; }
-    .search-arrow { font-size:2.5rem; color:var(--accent); font-weight:bold; transition:transform 0.3s; }
-    .search-member-card:hover .search-arrow { transform:translateX(10px); }
+    .search-card-info { display:grid; gap:4px; }
+    .search-name { font-size:1.25rem; font-weight:bold; }
+    .search-id { font-size:1rem; color:var(--text-light); }
+    .search-sub { font-size:0.9rem;; color:var(--text-light); }
+    .search-end { font-size:0.9rem; color:#fbbf24; font-weight:600; }
+    .search-arrow { font-size:2rem; color:var(--accent); font-weight:bold; transition:transform 0.3s; width:36px; text-align:center; }
+    .search-member-card:hover .search-arrow { transform:scale(1.3); }
+
+    /* გაშლილი დეტალები — პირდაპირ ქვემოთ */
+    .member-details-card {
+      background:var(--card-bg); border:2px solid var(--accent); border-radius:16px; padding:20px; margin:12px 0 20px; box-shadow:0 12px 40px rgba(96,165,250,0.3);
+    }
 
     #loginScreen { position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:9999; }
-    .login-box { background:rgba(30,41,59,0.95); padding:60px 80px; border-radius:32px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,0.8); border:1px solid #334155; }
-    #adminPassword { width:100%; padding:20px; font-size:1.5rem; text-align:center; letter-spacing:8px; background:#334155; border:2px solid #475569; border-radius:20px; color:white; margin-bottom:30px; }
-    #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:24px; padding:30px; margin-top:40px; display:none; }
-    @media (max-width:768px) { .gym-title{font-size:2.5rem} .header{flex-direction:column} }
+    .login-box { background:rgba(30,41,59,0.95); padding:50px 70px; border-radius:28px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,0.8); border:1px solid #334155; }
+    #adminPassword { width:100%; padding:18px; font-size:1.4rem; text-align:center; letter-spacing:8px; background:#334155; border:2px solid #475569; border-radius:18px; color:white; margin-bottom:24px; }
+    #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:20px; padding:24px; margin-top:32px; display:none; }
+    @media (max-width:768px) { .gym-title{font-size:2.3rem} .header{flex-direction:column} .form-grid{grid-template-columns:1fr} }
   </style>
 </head>
 <body>
@@ -571,13 +577,13 @@
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
-          <div class="stat-card"><div class="text-5xl font-bold" id="todayVisits">0</div><div class="text-xl mt-3">დღეს</div></div>
-          <div class="stat-card"><div class="text-5xl font-bold" id="activeMembers">0</div><div class="text-xl mt-3">აქტიური</div></div>
-          <div class="stat-card"><div class="text-5xl font-bold" id="expiredMembers">0</div><div class="text-xl mt-3">ვადაგასული</div></div>
-          <div class="stat-card" id="expiringMembersCard"><div class="text-5xl font-bold" id="expiringMembers">0</div><div class="text-xl mt-3">3 დღეში</div></div>
-          <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)"><div class="text-5xl font-bold" id="pausedMembers">0</div><div class="text-xl mt-3">შეჩერებული</div></div>
+          <div class="stat-card"><div class="text-4xl font-bold" id="todayVisits">0</div><div class="text-lg mt-2">დღეს</div></div>
+          <div class="stat-card"><div class="text-4xl font-bold" id="activeMembers">0</div><div class="text-lg mt-2">აქტიური</div></div>
+          <div class="stat-card"><div class="text-4xl font-bold" id="expiredMembers">0</div><div class="text-lg mt-2">ვადაგასული</div></div>
+          <div class="stat-card" id="expiringMembersCard"><div class="text-4xl font-bold" id="expiringMembers">0</div><div class="text-lg mt-2">3 დღეში</div></div>
+          <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)"><div class="text-4xl font-bold" id="pausedMembers">0</div><div class="text-lg mt-2">შეჩერებული</div></div>
         </div>
-        <div id="expiringSoonSection"><h2 class="text-3xl font-bold text-center mb-8">3 დღეში ვადაგასული</h2><div id="expiringSoonList"></div></div>
+        <div id="expiringSoonSection"><h2 class="text-2xl font-bold text-center mb-6">3 დღეში ვადაგასული</h2><div id="expiringSoonList"></div></div>
       </div>
 
       <div id="register" class="tab-content">
@@ -591,38 +597,37 @@
             <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
             <input type="text" id="note" placeholder="შენიშვნა" class="form-input">
           </div>
-          <h3 class="text-2xl font-bold mt-10 mb-6 text-center">აბონემენტი</h3>
+          <h3 class="text-xl font-bold mt-10 mb-6 text-center">აბონემენტი</h3>
           <div class="subscription-cards">
-            <div class="subscription-card" data-type="12visits" data-price="70">12 ვარჯიში<br><span class="text-3xl font-bold">70₾</span></div>
-            <div class="subscription-card" data-type="morning" data-price="90">დილის<br><span class="text-3xl font-bold">90₾</span></div>
-            <div class="subscription-card" data-type="unlimited" data-price="110">ულიმიტო<br><span class="text-3xl font-bold">110₾</span></div>
+            <div class="subscription-card" data-type="12visits" data-price="70">12 ვარჯიში<br><span class="text-2xl font-bold">70₾</span></div>
+            <div class="subscription-card" data-type="morning" data-price="90">დილის<br><span class="text-2xl font-bold">90₾</span></div>
+            <div class="subscription-card" data-type="unlimited" data-price="110">ულიმიტო<br><span class="text-2xl font-bold">110₾</span></div>
             <div class="subscription-card" data-type="other">სხვა</div>
           </div>
           <div id="customSubscriptionFields" style="display:none" class="form-grid mt-6">
-            <input type="text" id="customDescription" placeholder="სახელი" class="form-input">
+            <input type="text" id="customDescription" placeholder="აღწერა" class="form-input">
             <input type="number" id="customPrice" placeholder="ფასი ₾" class="form-input">
             <input type="number" id="customDuration" placeholder="ვადა (დღე)" class="form-input">
-            <input type="number" id="customVisits" placeholder="ვიზიტები" class="form-input">
+            <input type="number" id="customVisits" placeholder="ვიზიტები (ცარიელი = ულიმიტო)" class="form-input">
           </div>
-          <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-5 mt-8 w-full">რეგისტრაცია</button>
+          <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-4 mt-8 w-full">რეგისტრაცია</button>
         </form>
       </div>
 
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ძიება</h2>
-        <input type="text" id="searchInput" placeholder="სახელი ან პირადი..." class="search-input w-full text-2xl py-5 mb-8">
+        <input type="text" id="searchInput" placeholder="სახელი ან პირადი ნომერი..." class="search-input w-full text-xl py-4 mb-6">
         <div id="searchResults"></div>
-        <div id="memberDetailsContainer" class="mt-10"></div>
       </div>
 
       <div id="checkin" class="tab-content">
-        <h2 class="text-3xl font-bold mb-8 text-center">შესვლა</h2>
-        <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-2xl py-5">
+        <h2 class="text-3xl font-bold mb-8 text-center">შესვლა სალონში</h2>
+        <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-xl py-4">
         <div id="checkinResult" class="mt-8"></div>
       </div>
 
       <div id="expired" class="tab-content">
-        <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული</h2>
+        <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული წევრები</h2>
         <div id="expiredList"></div>
       </div>
     </div>
