@@ -675,7 +675,7 @@
           </div>
           <div class="mt-6">
             <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
-            <textarea id="note" class="form-input h-32 resize-none" placeholder="მაგ: აქვს ტრავმა, სიფრთხილე..."></textarea>
+            <textarea id="note" class="form-input h-32 resize-none" placeholder="მაგ: აქვს ტრავმა, არასრულწლოვანია..."></textarea>
           </div>
           <h3 class="text-2xl font-bold my-8">აირჩიეთ აბონემენტი</h3>
           <div class="subscription-cards">
