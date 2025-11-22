@@ -261,7 +261,7 @@
           </div>
           <div class="mt-6">
             <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
-            <textarea id="e_note_${id}" class="form-input h-24 resize-none">${m.note || ''}</textarea>
+            <textarea id="e_note_${id}" class="form-input h-20 resize-none">${m.note || ''}</textarea>
           </div>
           <div class="form-grid mt-6">
             <div>
