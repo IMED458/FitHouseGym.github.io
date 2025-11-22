@@ -22,8 +22,7 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    // === ადმინის პაროლი (აქ შეცვალეთ თქვენთვის სასურველი პაროლი) ===
-    const ADMIN_PASSWORD = "1234";
+    const ADMIN_PASSWORD = "1234"; // ← შეცვალეთ თქვენთვის სასურველი პაროლით
 
     let isAuthenticated = false;
     window.members = [];
@@ -60,7 +59,7 @@
           <p class="mb-6">დარწმუნებული ხართ? წაშლა შეუქცევადია!</p>
           <input type="password" id="deletePassword" placeholder="შეიყვანეთ პაროლი" class="form-input mb-6">
           <div class="flex gap-4">
-            <button class="btn bg-red-600 hover:bg-red-700 px-8 py-3" onclick="confirmDelete('${id}', this.closest('.fixed'))">წაშ, წაშლა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 px-8 py-3" onclick="confirmDelete('${id}', this.closest('.fixed'))">წაშლა</button>
             <button class="btn bg-gray-600 hover:bg-gray-700 px-8 py-3" onclick="this.closest('.fixed').remove()">გაუქმება</button>
           </div>
         </div>
@@ -109,7 +108,7 @@
       if (tab === 'search') updateFullMemberList();
     };
 
-    // === ახალი: 3 დღეში ვადაგასული წევრების ჩვენება ===
+    // 3 დღეში ვადაგასული წევრების სია
     window.showExpiringSoon = function() {
       const soon = new Date();
       soon.setDate(soon.getDate() + 3);
@@ -117,7 +116,7 @@
         m.status === 'active' && 
         new Date(m.subscriptionEndDate) <= soon && 
         new Date(m.subscriptionEndDate) >= new Date()
-      ).	sort((a, b) => new Date(a.subscriptionEndDate) - new Date(b.subscriptionEndDate));
+      ).sort((a, b) => new Date(a.subscriptionEndDate) - new Date(b.subscriptionEndDate));
 
       const container = document.getElementById('expiringSoonList');
       if (expiringMembers.length === 0) {
@@ -127,10 +126,14 @@
 
       container.innerHTML = expiringMembers.map(m => {
         const daysLeft = Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000);
-        const note = m.note ? `<div class="mt-3 p-3 bg-red-900 bg-opacity-50 border border-red-600 rounded-lg text-red-300 font-bold">${m.note}</div>` : '';
+        const noteBanner = m.note ? `
+          <div class="note-banner">
+            <i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}
+          </div>` : '';
+
         return `
           <div class="member-card">
-            ${note}
+            ${noteBanner}
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
               <div><strong>${m.firstName} ${m.lastName}</strong></div>
               <div><strong>პირადი:</strong> ${m.personalId}</div>
@@ -195,11 +198,14 @@
         allowed = false; msg = 'ვიზიტები ამოწურულია'; await updateMember({...member, status:'expired'}); }
       else if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { allowed = false; msg = 'მხოლოდ 09:00–16:00'; }
 
-      const note = member.note ? `<div class="mt-4 p-4 bg-red-900 bg-opacity-50 border border-red-600 rounded-xl text-red-300 font-bold text-center">${member.note}</div>` : '';
+      const noteBanner = member.note ? `
+        <div class="note-banner">
+          <i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}
+        </div>` : '';
 
       document.getElementById('checkinResult').innerHTML = `
         <div class="member-card p-6">
-          ${note}
+          ${noteBanner}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
@@ -243,8 +249,6 @@
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">გვარი</label><input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input"></div>
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">ტელეფონი</label><input type="tel" value="${m.phone}" id="e_ph_${id}" class="form-input"></div>
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">პირადი ნომერი</label><input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input"></div>
-            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ელ.ფოსტა</label><input type="email" value="${m.email||''}" id="e_em_${id}" class="form-input"></div>
-            <div><label class="block text-sm font-semibold mb-1 text-gray-300">დაბადების თარიღი</label><input type="date" value="${m.birthDate||''}" id="e_bd_${id}" class="form-input"></div>
           </div>
           <div class="mt-6">
             <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
@@ -298,10 +302,6 @@
         document.getElementById(`e_price_${id}`).value = 110;
         document.getElementById(`e_visits_${id}`).value = '';
         end.setDate(today.getDate() + 30);
-      } else {
-        document.getElementById(`e_price_${id}`).value = '';
-        document.getElementById(`e_visits_${id}`).value = '';
-        end.setDate(today.getDate() + 30);
       }
       document.getElementById(`e_enddate_${id}`).value = end.toISOString().split('T')[0];
     };
@@ -317,8 +317,6 @@
         lastName: document.getElementById(`e_ln_${id}`).value.trim(),
         phone: document.getElementById(`e_ph_${id}`).value.trim(),
         personalId: document.getElementById(`e_pid_${id}`).value.trim(),
-        email: document.getElementById(`e_em_${id}`).value.trim(),
-        birthDate: document.getElementById(`e_bd_${id}`).value || null,
         note: document.getElementById(`e_note_${id}`).value.trim() || null,
         subscriptionType: document.getElementById(`e_subtype_${id}`).value,
         subscriptionPrice: parseFloat(document.getElementById(`e_price_${id}`).value) || 0,
@@ -342,7 +340,6 @@
         "დასრულება": formatDate(m.subscriptionEndDate),
         "სტატუსი": getStatusText(m.status),
         "დარჩენილი ვიზიტები": m.remainingVisits != null ? m.remainingVisits : "ულიმიტო",
-        "ჯამური ვიზიტები": m.totalVisits || 0,
         "შენიშვნა": m.note || "",
         "ბოლო ვიზიტი": m.lastVisit ? formatDate(m.lastVisit) : "—"
       }));
@@ -357,7 +354,7 @@
       updateDashboard();
       updateExpiredList();
       updateFullMemberList();
-      showExpiringSoon(); // განახლდება ყოველ ჯერზე
+      showExpiringSoon();
     }
 
     function updateDashboard() {
@@ -375,8 +372,6 @@
       document.getElementById('expiringMembers').textContent = expiring;
       document.getElementById('pausedMembers').textContent = paused;
 
-      // განახლება: დაჭერით გამოჩნდება სია
-      document.getElementById('expiringMembersCard').style.cursor = 'pointer';
       document.getElementById('expiringMembersCard').onclick = function() {
         document.getElementById('expiringSoonSection').style.display = 'block';
         document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
@@ -389,9 +384,9 @@
       document.getElementById('expiredList').innerHTML = list.length === 0 ? '<p class="text-gray-500 text-center py-10">ვადაგასული წევრები არ არის</p>' : list.map(m => {
         const over = Math.floor((new Date() - new Date(m.subscriptionEndDate)) / 86400000);
         const reason = (m.remainingVisits != null && m.remainingVisits <= 0) ? 'ვიზიტები ამოწურულია' : `ვადა გასულია ${over} დღით`;
-        const note = m.note ? `<div class="mt-3 p-3 bg-red-900 bg-opacity-50 border border-red-600 rounded-lg text-red-300 font-bold">${m.note}</div>` : '';
+        const noteBanner = m.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
         return `<div class="member-card">
-          ${note}
+          ${noteBanner}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
@@ -418,10 +413,10 @@
         );
       }
       container.innerHTML = filtered.length === 0 ? `<p class="text-center py-10 text-gray-500">${searchValue ? 'ვერ მოიძებნა' : 'ჯერ არ არის წევრები'}</p>` : filtered.map(m => {
-        const note = m.note ? `<div class="mt-4 p-4 bg-red-900 bg-opacity-50 border border-red-600 rounded-xl text-red-300 font-bold text-center">${m.note}</div>` : '';
+        const noteBanner = m.note ? `<div class="note-banner"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
         return `
         <div class="member-card">
-          ${note}
+          ${noteBanner}
           <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
             <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
@@ -476,7 +471,6 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       checkAuth();
-
       if (localStorage.getItem('gym-theme') === 'light') {
         document.body.classList.add('light-mode');
         document.querySelector('.theme-toggle i').className = 'fas fa-moon';
@@ -512,7 +506,6 @@
             lastName: document.getElementById('lastName').value.trim(),
             phone: document.getElementById('phone').value.trim(),
             birthDate: document.getElementById('birthDate').value,
-            email: document.getElementById('email').value.trim(),
             personalId: document.getElementById('personalId').value.trim(),
             note: document.getElementById('note').value.trim() || null,
             subscriptionType: type,
@@ -546,7 +539,6 @@
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
-    /* ... ყველა წინა სტილი უცვლელი ... */
     :root { --bg: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%); --card-bg: #1e293b; --text: #f1f5f9; --text-light: #cbd5e1; --accent: #60a5fa; --accent-hover: #3b82f6; --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --border: #334155; --shadow: rgba(0,0,0,0.5); }
     body.light-mode { --bg: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); --card-bg: #ffffff; --text: #1e293b; --text-light: #475569; --accent: #3b82f6; --accent-hover: #2563eb; --border: #e2e8f0; --shadow: rgba(0,0,0,0.1); }
     body { margin:0; padding:0; font-family:'Segoe UI',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; transition:all 0.4s ease; }
@@ -557,7 +549,7 @@
     .light-mode .header { background:rgba(255,255,255,0.95); }
     .logo { height:100px; border-radius:20px; box-shadow:0 10px 30px var(--shadow); object-fit:contain; }
     .gym-title { font-size:3.5rem; font-weight:900; background:linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip:text; -webkit-text-fill-color:transparent; margin:0; }
-    .nav-tabs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 30px; justify-content: center; padding: 10px 0; overflow-x: auto; scrollbar-width: thin; }
+    .nav-tabs { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 30px; justify-content: center; padding: 10px 0; }
     .nav-tab { background:var(--card-bg); border:1px solid var(--border); color:var(--text-light); padding: 14px 22px; border-radius: 16px; cursor: pointer; font-weight: 600; white-space: nowrap; transition: all 0.3s; box-shadow: 0 6px 20px var(--shadow); min-width: 130px; text-align: center; }
     .nav-tab:hover { background:var(--accent); color:white; transform:translateY(-4px); }
     .nav-tab.active { background:var(--accent); color:white; box-shadow:0 10px 30px rgba(59,130,246,0.6); }
@@ -583,14 +575,38 @@
     .status-paused { background:#78350f; color:#fdba74; }
     .status-small { font-size:0.7rem; padding:3px 8px; }
     .dashboard-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:24px; margin-bottom:40px; }
-    .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:32px; border-radius:24px; text-align:center; box-shadow:0 15px 40px rgba(59,130,246,0.5); color:white; transition:transform 0.3s; }
+    .stat-card { background:linear-gradient(135deg,#1e40af,#3b82f6); padding:32px; border-radius:24px; text-align:center; box-shadow:0 15px 40px rgba(59,130,246,0.5); color:white; transition:transform 0.3s; cursor:default; }
     .stat-card:hover { transform:scale(1.05); }
+    #expiringMembersCard { background:linear-gradient(135deg,#ea580c,#f97316); cursor:pointer !important; }
     .toast { position:fixed; top:20px; right:20px; background:#10b981; color:white; padding:16px 28px; border-radius:16px; box-shadow:0 10px 30px var(--shadow); z-index:1000; transform:translateX(400px); transition:transform 0.4s; font-weight:600; }
     .toast.show { transform:translateX(0); }
     .toast.error { background:#ef4444; }
     .toast.warning { background:#f59e0b; color:#000; }
     .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:28px; height:28px; animation:spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+    /* წითელი შენიშვნის ბანერი */
+    .note-banner {
+      background: linear-gradient(135deg, #7f1d1d, #991b1b);
+      color: #ff6b6b;
+      padding: 16px 20px;
+      border-radius: 16px;
+      font-weight: bold;
+      font-size: 1.15rem;
+      text-align: center;
+      margin-bottom: 24px;
+      border: 3px solid #ef4444;
+      box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5);
+      animation: pulse 2.5s infinite;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5); }
+      50% { box-shadow: 0 10px 50px rgba(239, 68, 68, 0.8); }
+    }
 
     #loginScreen { position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
     .login-box { background: rgba(30,41,59,0.95); padding: 60px 80px; border-radius: 32px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border: 1px solid #334155; max-width: 500px; }
@@ -599,16 +615,15 @@
     #adminPassword { width: 100%; padding: 20px; font-size: 1.5rem; text-align: center; letter-spacing: 8px; background: #334155; border: 2px solid #475569; border-radius: 20px; color: white; margin-bottom: 30px; }
     #adminPassword:focus { border-color: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.3); }
 
-    /* ახალი სექცია */
-    #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:24px; padding:30px; margin-top:30px; display:none; }
-    #expiringSoonSection h2 { color:#f59e0b; text-align:center; margin-bottom:20px; }
+    #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:24px; padding:30px; margin-top:40px; display:none; }
+    #expiringSoonSection h2 { color:#f59e0b; text-align:center; margin-bottom:20px; font-size:2.2rem; }
 
     @media (max-width:768px) {
       .gym-title {font-size:2.5rem}
       .header {flex-direction:column}
-      .nav-tabs { justify-content: flex-start; }
-      .login-box { padding: 40px; }
+      .login-box { padding: 40px; width: 90%; }
       .login-box h1 { font-size: 3rem; }
+      .note-banner { font-size: 1rem; padding: 14px; }
     }
   </style>
 </head>
@@ -647,21 +662,20 @@
           <div class="stat-card"><div class="text-5xl font-bold" id="todayVisits">0</div><div class="text-xl mt-3">დღევანდელი ვიზიტები</div></div>
           <div class="stat-card"><div class="text-5xl font-bold" id="activeMembers">0</div><div class="text-xl mt-3">აქტიური წევრები</div></div>
           <div class="stat-card"><div class="text-5xl font-bold" id="expiredMembers">0</div><div class="text-xl mt-3">ვადაგასული</div></div>
-          <div class="stat-card" id="expiringMembersCard" style="background:linear-gradient(135deg,#ea580c,#f97316)">
+          <div class="stat-card" id="expiringMembersCard">
             <div class="text-5xl font-bold" id="expiringMembers">0</div>
             <div class="text-xl mt-3">3 დღეში ვადაგასული</div>
           </div>
           <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)"><div class="text-5xl font-bold" id="pausedMembers">0</div><div class="text-xl mt-3">შეჩერებული</div></div>
         </div>
 
-        <!-- ახალი სექცია: 3 დღეში ვადაგასული წევრების სია -->
         <div id="expiringSoonSection">
           <h2 class="text-3xl font-bold">3 დღეში ან ნაკლებში ვადაგასული წევრები</h2>
           <div id="expiringSoonList" class="mt-8"></div>
         </div>
       </div>
 
-      <!-- დანარჩენი ტაბები უცვლელია... -->
+      <!-- დანარჩენი ტაბები უცვლელი -->
       <div id="register" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">ახალი წევრის რეგისტრაცია</h2>
         <form id="registrationForm">
@@ -670,12 +684,11 @@
             <input type="text" id="lastName" class="form-input" placeholder="გვარი *" required>
             <input type="tel" id="phone" class="form-input" placeholder="ტელეფონი *" required>
             <input type="date" id="birthDate" class="form-input" required>
-            <input type="email" id="email" class="form-input" placeholder="ელ.ფოსტა">
             <input type="text" id="personalId" class="form-input" placeholder="პირადი ნომერი *" required>
           </div>
           <div class="mt-6">
-            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
-            <textarea id="note" class="form-input h-32 resize-none" placeholder="მაგ: აქვს ტრავმა, არასრულწლოვანია..."></textarea>
+            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა (ჩანს დიდი წითელი ბანერით)</label>
+            <textarea id="note" class="form-input h-32 resize-none" placeholder="მაგ: აქვს ტრავმა, სიფრთხილე..."></textarea>
           </div>
           <h3 class="text-2xl font-bold my-8">აირჩიეთ აბონემენტი</h3>
           <div class="subscription-cards">
@@ -713,13 +726,13 @@
 
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">წევრების ძიება</h2>
-        <input type="text" id="searchInput" class="search-input text-xl" placeholder="ძიება პირადით ან სახელით...">
+        <input type="text" id="searchInput" class="search-input text-xl" placeholder="ძიება პირადით ან სახელ-გვარით...">
         <div id="searchResults" class="mt-8"></div>
       </div>
 
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">შესვლა</h2>
-        <input type="text" id="checkinSearch" class="search-input text-xl" placeholder="ძიება პირადით ან სახელით...">
+        <input type="text" id="checkinSearch" class="search-input text-xl" placeholder="ძიება პირადით ან სახელ-გვარით...">
         <div id="checkinResult" class="mt-8"></div>
       </div>
 
