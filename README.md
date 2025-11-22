@@ -7,7 +7,6 @@
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-
     const firebaseConfig = {
       apiKey: "AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8",
       authDomain: "fit-house-gym-d3595.firebaseapp.com",
@@ -17,16 +16,12 @@
       appId: "1:548276737406:web:12286429916b8c751fcf2f",
       measurementId: "G-F4Y4CLVNFH"
     };
-
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-
     const ADMIN_PASSWORD = "1234";
-
     let isAuthenticated = false;
     window.members = [];
     window.selectedSubscription = null;
-
     function formatDate(iso) {
       if (!iso) return '—';
       const d = new Date(iso);
@@ -35,7 +30,6 @@
       const year = d.getFullYear();
       return `${day}.${month}.${year}`;
     }
-
     function checkAuth() {
       if (!isAuthenticated) {
         document.getElementById('loginScreen').style.display = 'flex';
@@ -45,7 +39,6 @@
         document.getElementById('mainApp').style.display = 'block';
       }
     }
-
     window.login = function() {
       const input = document.getElementById('adminPassword').value;
       if (input === ADMIN_PASSWORD) {
@@ -57,7 +50,6 @@
         showToast("პაროლი არასწორია!", "error");
       }
     };
-
     window.deleteMember = function(id) {
       const modal = document.createElement('div');
       modal.className = 'fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50';
@@ -74,7 +66,6 @@
       `;
       document.body.appendChild(modal);
     };
-
     window.confirmDelete = async function(id, modal) {
       const pass = document.getElementById('deletePassword').value;
       if (pass !== ADMIN_PASSWORD) {
@@ -89,7 +80,6 @@
         showToast("წაშლა ვერ მოხერხდა", "error");
       }
     };
-
     function loadMembers() {
       const q = query(collection(db, "members"));
       onSnapshot(q, (snapshot) => {
@@ -97,17 +87,14 @@
         updateAll();
       }, err => showToast("Firestore შეცდომა: " + err.message, 'error'));
     }
-
     async function createMember(m) {
       try { await addDoc(collection(db, "members"), m); showToast("წევრი დარეგისტრირდა!"); }
       catch (e) { showToast("რეგისტრაცია ვერ მოხერხდა", 'error'); }
     }
-
     async function updateMember(m) {
       try { await setDoc(doc(db, "members", m.id), m, { merge: true }); }
       catch (e) { console.error(e); }
     }
-
     window.showTab = function(tab) {
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
@@ -116,33 +103,29 @@
       if (tab === 'search') updateFullMemberList();
       if (tab === 'dashboard') document.getElementById('expiringSoonSection').style.display = 'none';
     };
-
     window.showExpiringSoon = function() {
       const soon = new Date();
       soon.setDate(soon.getDate() + 3);
-      const expiringMembers = window.members.filter(m => 
-        m.status === 'active' && 
-        new Date(m.subscriptionEndDate) <= soon && 
+      const expiringMembers = window.members.filter(m =>
+        m.status === 'active' &&
+        new Date(m.subscriptionEndDate) <= soon &&
         new Date(m.subscriptionEndDate) >= new Date()
       ).sort((a, b) => new Date(a.subscriptionEndDate) - new Date(b.subscriptionEndDate));
-
       const container = document.getElementById('expiringSoonList');
       if (expiringMembers.length === 0) {
         container.innerHTML = '<p class="text-gray-500 text-center py-10">3 დღეში ვადაგასული წევრები არ არის</p>';
         return;
       }
-
       container.innerHTML = expiringMembers.map(m => {
         const daysLeft = Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000);
         const noteBanner = m.note ? `
           <div class="note-banner">
             <i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}
           </div>` : '';
-
         return `
           <div class="member-card">
             ${noteBanner}
-            <div class="info-grid">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
               <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
               <div><strong>პირადი:</strong> ${m.personalId}</div>
               <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
@@ -156,7 +139,6 @@
           </div>`;
       }).join('');
     };
-
     window.processCheckIn = async function(id) {
       const m = window.members.find(x => x.id === id);
       if (!m || m.status !== 'active') {
@@ -193,7 +175,6 @@
       document.getElementById('checkinSearch').value = '';
       document.getElementById('checkinResult').innerHTML = '';
     };
-
     window.checkMemberAccess = async function(member) {
       const now = new Date();
       const end = new Date(member.subscriptionEndDate);
@@ -205,16 +186,14 @@
       else if (member.remainingVisits !== null && member.remainingVisits !== undefined && member.remainingVisits <= 0) {
         allowed = false; msg = 'ვიზიტები ამოწურულია'; await updateMember({...member, status:'expired'}); }
       else if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { allowed = false; msg = 'მხოლოდ 09:00–16:00'; }
-
       const noteBanner = member.note ? `
         <div class="note-banner">
           <i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}
         </div>` : '';
-
       document.getElementById('checkinResult').innerHTML = `
         <div class="member-card p-6">
           ${noteBanner}
-          <div class="info-grid">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
@@ -224,10 +203,9 @@
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
             <div><strong>ჯამში:</strong> ${member.totalVisits || 0}</div>
           </div>
-          ${allowed ? `<button class="btn btn-success mt-6 w-full text-lg py-4" onclick="processCheckIn('${member.id}')">შესვლის დადასტურება</button>` : ''}
+          ${allowed ? `<button class="btn btn-success mt-6 w-full text-2xl py-5" onclick="processCheckIn('${member.id}')">შესვლის დადასტურება</button>` : ''}
         </div>`;
     };
-
     window.renewMembership = async function(id) {
       const m = window.members.find(x => x.id === id);
       if (!m) return;
@@ -239,7 +217,6 @@
       await updateMember({ ...m, subscriptionEndDate: end.toISOString(), remainingVisits: visits, status: 'active' });
       showToast("აბონემენტი განახლდა!");
     };
-
     window.showEditForm = function(e, id) {
       if (e) e.stopPropagation();
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
@@ -292,7 +269,6 @@
       else document.getElementById('dashboard').appendChild(div);
       autoFillSubscription(id);
     };
-
     window.autoFillSubscription = function(id) {
       const type = document.getElementById(`e_subtype_${id}`).value;
       const today = new Date();
@@ -312,7 +288,6 @@
       }
       document.getElementById(`e_enddate_${id}`).value = end.toISOString().split('T')[0];
     };
-
     window.saveEdit = async function(id) {
       const m = window.members.find(x => x.id === id);
       if (!m) return;
@@ -335,7 +310,6 @@
       showToast("ცვლილებები შენახულია!");
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
     };
-
     window.exportToExcel = function() {
       const data = window.members.map(m => ({
         "სახელი": m.firstName,
@@ -356,14 +330,12 @@
       XLSX.writeFile(wb, `FitHouse_წევრები_${new Date().toISOString().slice(0,10)}.xlsx`);
       showToast("Excel ფაილი ჩამოიტვირთა!");
     };
-
     function updateAll() {
       updateDashboard();
       updateExpiredList();
       updateFullMemberList();
       showExpiringSoon();
     }
-
     function updateDashboard() {
       const today = new Date().toDateString();
       const todayVisits = window.members.filter(m => m.lastVisit && new Date(m.lastVisit).toDateString() === today).length;
@@ -372,20 +344,18 @@
       const paused = window.members.filter(m => m.status === 'paused').length;
       const soon = new Date(); soon.setDate(soon.getDate() + 3);
       const expiring = window.members.filter(m => m.status === 'active' && new Date(m.subscriptionEndDate) <= soon && new Date(m.subscriptionEndDate) > new Date()).length;
-      
+     
       document.getElementById('todayVisits').textContent = todayVisits;
       document.getElementById('activeMembers').textContent = active;
       document.getElementById('expiredMembers').textContent = expired;
       document.getElementById('expiringMembers').textContent = expiring;
       document.getElementById('pausedMembers').textContent = paused;
-
       document.getElementById('expiringMembersCard').onclick = function() {
         document.getElementById('expiringSoonSection').style.display = 'block';
         document.getElementById('dashboard').scrollIntoView({ behavior: 'smooth' });
         showExpiringSoon();
       };
     }
-
     function updateExpiredList() {
       const list = window.members.filter(m => m.status === 'expired');
       document.getElementById('expiredList').innerHTML = list.length === 0 ? '<p class="text-gray-500 text-center py-10">ვადაგასული წევრები არ არის</p>' : list.map(m => {
@@ -406,7 +376,6 @@
         </div>`;
       }).join('');
     }
-
     function updateFullMemberList() {
       const container = document.getElementById('searchResults');
       const searchValue = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
@@ -438,11 +407,9 @@
         </div>`;
       }).join('');
     }
-
     function getSubscriptionName(t) { const map = {'12visits':'12 ვარჯიში','morning':'დილის','unlimited':'ულიმიტო','other':'სხვა'}; return map[t] || t; }
     function getStatusClass(s) { return {active:'status-active',expired:'status-expired',paused:'status-paused'}[s] || 'status-expired'; }
     function getStatusText(s) { return {active:'აქტიური',expired:'ვადაგასული',paused:'შეჩერებული'}[s] || s; }
-
     function showToast(msg, type='success') {
       const t = document.createElement('div');
       t.className = `toast ${type}`;
@@ -451,27 +418,23 @@
       setTimeout(() => t.classList.add('show'), 100);
       setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 300); }, 3500);
     }
-
     window.toggleTheme = function() {
       const isLight = document.body.classList.toggle('light-mode');
       localStorage.setItem('gym-theme', isLight ? 'light' : 'dark');
       document.querySelector('.theme-toggle i').className = isLight ? 'fas fa-moon' : 'fas fa-sun';
     };
-
     document.addEventListener('DOMContentLoaded', () => {
       checkAuth();
       if (localStorage.getItem('gym-theme') === 'light') {
         document.body.classList.add('light-mode');
         document.querySelector('.theme-toggle i').className = 'fas fa-moon';
       }
-
       document.querySelectorAll('.subscription-card').forEach(c => c.addEventListener('click', function() {
         document.querySelectorAll('.subscription-card').forEach(x => x.classList.remove('selected'));
         this.classList.add('selected');
         window.selectedSubscription = {type: this.dataset.type, price: +this.dataset.price};
         document.getElementById('customSubscriptionFields').style.display = this.dataset.type === 'other' ? 'block' : 'none';
       }));
-
       document.getElementById('registrationForm').addEventListener('submit', async e => {
         e.preventDefault();
         if (!window.selectedSubscription) { showToast("აირჩიეთ აბონემენტი", 'error'); return; }
@@ -517,7 +480,6 @@
           btn.innerHTML = 'რეგისტრაცია';
         }
       });
-
       document.getElementById('searchInput')?.addEventListener('input', updateFullMemberList);
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
@@ -525,7 +487,6 @@
         else document.getElementById('checkinResult').innerHTML = '';
       });
     });
-
     function searchAndCheckAccess(term) {
       if (!term) {
         document.getElementById('checkinResult').innerHTML = '';
@@ -635,7 +596,6 @@
   </style>
 </head>
 <body>
-
   <div id="loginScreen">
     <div class="login-box">
       <img src="fithause logo.png" alt="Fit House Gym" class="logo" onerror="this.style.display='none'">
@@ -644,7 +604,6 @@
       <button class="btn btn-success text-2xl px-12 py-5" onclick="login()">შესვლა</button>
     </div>
   </div>
-
   <div id="mainApp" style="display:none">
     <div class="theme-toggle" onclick="toggleTheme()">
       <i class="fas fa-sun"></i>
@@ -654,7 +613,6 @@
         <img src="fithause logo.png" alt="Fit House Gym" class="logo" onerror="this.style.display='none'">
         <h1 class="gym-title">Fit House Gym</h1>
       </div>
-
       <div class="nav-tabs">
         <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
         <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
@@ -663,7 +621,6 @@
         <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
         <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel ექსპორტი</button>
       </div>
-
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
@@ -681,7 +638,6 @@
           <div id="expiringSoonList" class="mt-8"></div>
         </div>
       </div>
-
       <div id="register" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ახალი წევრის რეგისტრაცია</h2>
         <form id="registrationForm" class="bg-slate-800 p-8 rounded-2xl">
@@ -693,7 +649,6 @@
             <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
             <input type="text" id="note" placeholder="შენიშვნა (არასავალდებულო)" class="form-input">
           </div>
-
           <h3 class="text-2xl font-bold mt-10 mb-6 text-center">აირჩიეთ აბონემენტი</h3>
           <div class="subscription-cards">
             <div class="subscription-card" data-type="12visits" data-price="70">12 ვარჯიში<br><span class="text-3xl font-bold">70₾</span></div>
@@ -701,30 +656,25 @@
             <div class="subscription-card" data-type="unlimited" data-price="110">ულიმიტო<br><span class="text-3xl font-bold">110₾</span></div>
             <div class="subscription-card" data-type="other">სხვა</div>
           </div>
-
           <div id="customSubscriptionFields" style="display:none" class="form-grid mt-6">
             <input type="text" id="customDescription" placeholder="აბონემენტის სახელი" class="form-input">
             <input type="number" id="customPrice" placeholder="ფასი ₾" class="form-input">
             <input type="number" id="customDuration" placeholder="ვადა (დღეებში)" class="form-input">
             <input type="number" id="customVisits" placeholder="ვიზიტები (ცარიელი = ულიმიტო)" class="form-input">
           </div>
-
           <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-5 mt-8 w-full">რეგისტრაცია</button>
         </form>
       </div>
-
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">წევრების ძიება</h2>
         <input type="text" id="searchInput" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="searchResults" class="mt-8"></div>
       </div>
-
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">შესვლა</h2>
         <input type="text" id="checkinSearch" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="checkinResult" class="mt-8"></div>
       </div>
-
       <div id="expired" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული წევრები</h2>
         <div id="expiredList"></div>
