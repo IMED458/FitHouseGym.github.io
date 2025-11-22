@@ -260,7 +260,7 @@
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">პირადი ნომერი</label><input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input"></div>
           </div>
           <div class="mt-6">
-            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა (ჩანს წითლად)</label>
+            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
             <textarea id="e_note_${id}" class="form-input h-24 resize-none">${m.note || ''}</textarea>
           </div>
           <div class="form-grid mt-6">
@@ -692,6 +692,7 @@
             <input type="date" id="birthDate" class="form-input">
             <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
           </div>
+          
           <textarea id="note" placeholder="შენიშვნა (მაგ: არასრულწლოვანი)" class="form-input h-28 mt-6"></textarea>
 
           <h3 class="text-2xl font-bold mt-10 mb-6">აირჩიეთ აბონემენტი</h3>
