@@ -260,8 +260,8 @@
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">პირადი ნომერი</label><input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input"></div>
           </div>
           <div class="mt-6">
-            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
-            <textarea id="e_note_${id}" class="form-input h-20 resize-none">${m.note || ''}</textarea>
+            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა (ჩანს წითლად)</label>
+            <textarea id="e_note_${id}" class="form-input h-24 resize-none">${m.note || ''}</textarea>
           </div>
           <div class="form-grid mt-6">
             <div>
@@ -593,32 +593,43 @@
     .toast.warning { background:#f59e0b; color:#000; }
     .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:28px; height:28px; animation:spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
+
+    /* განახლებული შენიშვნის ბანერი — ოდნავ დაშორებული */
     .note-banner {
       background: linear-gradient(135deg, #7f1d1d, #991b1b);
       color: #ff6b6b;
-      padding: 16px 20px;
-      border-radius: 16px;
+      padding: 18px 22px;
+      border-radius: 18px;
       font-weight: bold;
-      font-size: 1.15rem;
+      font-size: 1.2rem;
       text-align: center;
-      margin-bottom: 24px;
+      margin: 20px 0 28px 0;
       border: 3px solid #ef4444;
-      box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5);
-      animation: pulse 2.5s infinite;
+      box-shadow: 0 12px 35px rgba(239, 68, 68, 0.55);
+      animation: pulse 3s infinite;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 12px;
+      gap: 14px;
+      line-height: 1.5;
     }
     @keyframes pulse {
-      0%, 100% { box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5); }
-      50% { box-shadow: 0 10px 50px rgba(239, 68, 68, 0.8); }
+      0%, 100% { box-shadow: 0 12px 35px rgba(239, 68, 68, 0.55); }
+      50% { box-shadow: 0 12px 50px rgba(239, 68, 68, 0.8); }
     }
+    @media (max-width: 768px) {
+      .note-banner {
+        font-size: 1.05rem;
+        padding: 16px 18px;
+        margin: 18px 0 24px 0;
+      }
+    }
+
     #loginScreen { position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
     .login-box { background: rgba(30,41,59,0.95); padding: 60px 80px; border-radius: 32px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border: 1px solid #334155; max-width: 500px; }
     .login-box img { height: 120px; margin-bottom: 30px; }
     .login-box h1 { font-size: 4rem; background: linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 40px; }
-    #adminPassword { width: 100%; padding: 20px; font-size: 1.5rem; text-align: center; letter-spacing: 8px; background: #334155; border: 2px solid #475569; border-radius: 20px; color: white; margin-bottom: 30px; }
+    #adminPassword { width: 100%; padding: 20px; font-size: 1.5rem; text-align: center; letter-spacing: 8px; background: #3341; border: 2px solid #475569; border-radius: 20px; color: white; margin-bottom: 30px; }
     #adminPassword:focus { border-color: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.3); }
     #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:24px; padding:30px; margin-top:40px; display:none; }
     #expiringSoonSection h2 { color:#f59e0b; text-align:center; margin-bottom:20px; font-size:2.2rem; }
@@ -627,7 +638,6 @@
       .header {flex-direction:column}
       .login-box { padding: 40px; width: 90%; }
       .login-box h1 { font-size: 3rem; }
-      .note-banner { font-size: 1rem; padding: 14px; }
     }
   </style>
 </head>
@@ -661,7 +671,6 @@
         <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel ექსპორტი</button>
       </div>
 
-      <!-- დეშბორდი -->
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8">დეშბორდი</h2>
         <div class="dashboard-stats">
@@ -681,7 +690,6 @@
         </div>
       </div>
 
-      <!-- რეგისტრაცია -->
       <div id="register" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">ახალი წევრის რეგისტრაცია</h2>
         <form id="registrationForm" class="bg-slate-800 p-8 rounded-2xl">
@@ -692,8 +700,7 @@
             <input type="date" id="birthDate" class="form-input">
             <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
           </div>
-          
-          <textarea id="note" placeholder="შენიშვნა (მაგ: არასრულწლოვანი)" class="form-input h-28 mt-6"></textarea>
+          <textarea id="note" placeholder="შენიშვნა (არასავალდებულო)" class="form-input h-28 mt-6"></textarea>
 
           <h3 class="text-2xl font-bold mt-10 mb-6">აირჩიეთ აბონემენტი</h3>
           <div class="subscription-cards">
@@ -714,21 +721,18 @@
         </form>
       </div>
 
-      <!-- ძიება -->
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">წევრების ძიება</h2>
         <input type="text" id="searchInput" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="searchResults" class="mt-8"></div>
       </div>
 
-      <!-- შესვლა -->
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">შესვლა</h2>
         <input type="text" id="checkinSearch" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="checkinResult" class="mt-8"></div>
       </div>
 
-      <!-- ვადაგასული -->
       <div id="expired" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">ვადაგასული წევრები</h2>
         <div id="expiredList"></div>
