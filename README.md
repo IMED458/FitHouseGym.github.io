@@ -3,7 +3,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Fit House Gym - მენეჯმენტი</title>
-  <meta name="description" content="Fit House Gym - წევრთა მართვის სისტემა">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
@@ -22,11 +21,21 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
-    const ADMIN_PASSWORD = "1234"; // ← შეცვალეთ თქვენთვის სასურველი პაროლით
+    const ADMIN_PASSWORD = "1234"; // შეცვალეთ თქვენთვის
 
     let isAuthenticated = false;
     window.members = [];
     window.selectedSubscription = null;
+
+    // თარიღის ფორმატი: დდ/თთ წელი
+    function formatDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}/${month} ${year}`;
+    }
 
     function checkAuth() {
       if (!isAuthenticated) {
@@ -106,9 +115,9 @@
       document.getElementById(tab).classList.add('active');
       document.querySelector(`[onclick="showTab('${tab}')"]`).classList.add('active');
       if (tab === 'search') updateFullMemberList();
+      if (tab === 'dashboard') document.getElementById('expiringSoonSection').style.display = 'none';
     };
 
-    // 3 დღეში ვადაგასული წევრების სია
     window.showExpiringSoon = function() {
       const soon = new Date();
       soon.setDate(soon.getDate() + 3);
@@ -228,7 +237,7 @@
       if (m.subscriptionType === '12visits') { end.setDate(start.getDate() + 30); visits = 12; }
       else if (m.subscriptionType === 'morning') end.setDate(start.getDate() + 30);
       else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 30);
-      await updateMember({ ...m, subscriptionEndDate: end.toISOString(), remainingVisits: visits, status: 'active' });
+      await updateMember({ ...m, subscriptionEndDate: end.toISOString(), remainingVisits: visits, status: 'active', notified3DaysEmail: false });
       showToast("აბონემენტი განახლდა!");
     };
 
@@ -247,11 +256,11 @@
           <div class="form-grid">
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">სახელი</label><input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input"></div>
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">გვარი</label><input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input"></div>
-            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ტელეფონი</label><input type="tel" value="${m.phone}" id="e_ph_${id}" class="form-input"></div>
+            <div><label class="block text-sm font-semibold mb-1 text-gray-300">ტელეფონი</label><input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input"></div>
             <div><label class="block text-sm font-semibold mb-1 text-gray-300">პირადი ნომერი</label><input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input"></div>
           </div>
           <div class="mt-6">
-            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა </label>
+            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა (ჩანს წითლად)</label>
             <textarea id="e_note_${id}" class="form-input h-24 resize-none">${m.note || ''}</textarea>
           </div>
           <div class="form-grid mt-6">
@@ -283,6 +292,7 @@
         </div>`;
       const card = e ? e.target.closest('.member-card') : document.querySelector(`[data-id="${id}"]`)?.closest('.member-card');
       if (card) card.appendChild(div);
+      else document.getElementById('dashboard').appendChild(div);
       autoFillSubscription(id);
     };
 
@@ -334,7 +344,7 @@
         "სახელი": m.firstName,
         "გვარი": m.lastName,
         "პირადი": m.personalId,
-        "ტელეფონი": m.phone,
+        "ტელეფონი": m.phone || '',
         "აბონემენტი": getSubscriptionName(m.subscriptionType),
         "ფასი": m.subscriptionPrice + "₾",
         "დასრულება": formatDate(m.subscriptionEndDate),
@@ -391,7 +401,7 @@
             <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
-            <div><strong>მიზეზი:</strong> <span class="text-red-400 font-bold">${reason}</span></div>
+            <div><strong>ვადა გავიდა:</strong> <span class="text-red-400 font-bold">${formatDate(m.subscriptionEndDate)}</span></div>
           </div>
           <div class="mt-4 flex flex-wrap gap-3">
             <button class="btn btn-warning" onclick="renewMembership('${m.id}')">განახლება</button>
@@ -421,7 +431,7 @@
             <div><strong>${m.firstName} ${m.lastName}</strong></div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
-            <div><strong>დარჩენილი დღეები:</strong> ${Math.max(0, Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000))}</div>
+            <div><strong>ვადა:</strong> ${formatDate(m.subscriptionEndDate)}</div>
             <div><strong>სტატუსი:</strong> <span class="status-badge status-small ${getStatusClass(m.status)}">${getStatusText(m.status)}</span></div>
             ${m.remainingVisits != null ? `<div><strong>დარჩენილი ვიზიტები:</strong> ${m.remainingVisits}</div>` : ''}
           </div>
@@ -434,25 +444,9 @@
       }).join('');
     }
 
-    function searchAndCheckAccess(term) {
-      if (!term || term.trim() === '') {
-        document.getElementById('checkinResult').innerHTML = '';
-        return;
-      }
-      const matches = window.members.filter(m =>
-        m.personalId.includes(term) ||
-        (m.firstName + ' ' + m.lastName).toLowerCase().includes(term.toLowerCase())
-      );
-      const el = document.getElementById('checkinResult');
-      if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 font-bold text-center py-10">ვერ მოიძებნა</div>';
-      else if (matches.length === 1) checkMemberAccess(matches[0]);
-      else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-4">აირჩიეთ წევრი:</h3>${matches.map(m=>`<div class="p-4 border border-gray-600 rounded-lg mb-3 cursor-pointer hover:bg-gray-700" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
-    }
-
     function getSubscriptionName(t) { const map = {'12visits':'12 ვარჯიში','morning':'დილის','unlimited':'ულიმიტო','other':'სხვა'}; return map[t] || t; }
     function getStatusClass(s) { return {active:'status-active',expired:'status-expired',paused:'status-paused'}[s] || 'status-expired'; }
     function getStatusText(s) { return {active:'აქტიური',expired:'ვადაგასული',paused:'შეჩერებული'}[s] || s; }
-    function formatDate(d) { if (!d) return '—'; return new Date(d).toLocaleDateString('ka-GE'); }
 
     function showToast(msg, type='success') {
       const t = document.createElement('div');
@@ -536,6 +530,21 @@
         else document.getElementById('checkinResult').innerHTML = '';
       });
     });
+
+    function searchAndCheckAccess(term) {
+      if (!term || term.trim() === '') {
+        document.getElementById('checkinResult').innerHTML = '';
+        return;
+      }
+      const matches = window.members.filter(m =>
+        m.personalId.includes(term) ||
+        (m.firstName + ' ' + m.lastName).toLowerCase().includes(term.toLowerCase())
+      );
+      const el = document.getElementById('checkinResult');
+      if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 font-bold text-center py-10">ვერ მოიძებნა</div>';
+      else if (matches.length === 1) checkMemberAccess(matches[0]);
+      else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-4">აირჩიეთ წევრი:</h3>${matches.map(m=>`<div class="p-4 border border-gray-600 rounded-lg mb-3 cursor-pointer hover:bg-gray-700" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
+    }
   </script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
@@ -584,8 +593,6 @@
     .toast.warning { background:#f59e0b; color:#000; }
     .spinner { border:4px solid #f3f3f3; border-top:4px solid white; border-radius:50%; width:28px; height:28px; animation:spin 1s linear infinite; margin:0 auto; }
     @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }
-
-    /* წითელი შენიშვნის ბანერი */
     .note-banner {
       background: linear-gradient(135deg, #7f1d1d, #991b1b);
       color: #ff6b6b;
@@ -607,17 +614,14 @@
       0%, 100% { box-shadow: 0 10px 30px rgba(239, 68, 68, 0.5); }
       50% { box-shadow: 0 10px 50px rgba(239, 68, 68, 0.8); }
     }
-
     #loginScreen { position: fixed; inset: 0; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); display: flex; align-items: center; justify-content: center; z-index: 9999; flex-direction: column; }
     .login-box { background: rgba(30,41,59,0.95); padding: 60px 80px; border-radius: 32px; text-align: center; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border: 1px solid #334155; max-width: 500px; }
     .login-box img { height: 120px; margin-bottom: 30px; }
     .login-box h1 { font-size: 4rem; background: linear-gradient(to right,#60a5fa,#c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 40px; }
     #adminPassword { width: 100%; padding: 20px; font-size: 1.5rem; text-align: center; letter-spacing: 8px; background: #334155; border: 2px solid #475569; border-radius: 20px; color: white; margin-bottom: 30px; }
     #adminPassword:focus { border-color: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.3); }
-
     #expiringSoonSection { background:var(--card-bg); border:2px solid #f59e0b; border-radius:24px; padding:30px; margin-top:40px; display:none; }
     #expiringSoonSection h2 { color:#f59e0b; text-align:center; margin-bottom:20px; font-size:2.2rem; }
-
     @media (max-width:768px) {
       .gym-title {font-size:2.5rem}
       .header {flex-direction:column}
@@ -647,6 +651,7 @@
         <img src="fithause logo.png" alt="Fit House Gym" class="logo" onerror="this.style.display='none'">
         <h1 class="gym-title">Fit House Gym</h1>
       </div>
+
       <div class="nav-tabs">
         <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
         <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
@@ -656,6 +661,7 @@
         <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel ექსპორტი</button>
       </div>
 
+      <!-- დეშბორდი -->
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8">დეშბორდი</h2>
         <div class="dashboard-stats">
@@ -670,75 +676,61 @@
         </div>
 
         <div id="expiringSoonSection">
-          <h2 class="text-3xl font-bold">3 დღეში ან ნაკლებში ვადაგასული წევრები</h2>
+          <h2 class="text-3xl font-bold">3 დღეში ვადაგასული წევრები</h2>
           <div id="expiringSoonList" class="mt-8"></div>
         </div>
       </div>
 
-      <!-- დანარჩენი ტაბები უცვლელი -->
+      <!-- რეგისტრაცია -->
       <div id="register" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">ახალი წევრის რეგისტრაცია</h2>
-        <form id="registrationForm">
+        <form id="registrationForm" class="bg-slate-800 p-8 rounded-2xl">
           <div class="form-grid">
-            <input type="text" id="firstName" class="form-input" placeholder="სახელი *" required>
-            <input type="text" id="lastName" class="form-input" placeholder="გვარი *" required>
-            <input type="tel" id="phone" class="form-input" placeholder="ტელეფონი *" required>
-            <input type="date" id="birthDate" class="form-input" required>
-            <input type="text" id="personalId" class="form-input" placeholder="პირადი ნომერი *" required>
+            <input type="text" id="firstName" placeholder="სახელი" class="form-input" required>
+            <input type="text" id="lastName" placeholder="გვარი" class="form-input" required>
+            <input type="tel" id="phone" placeholder="ტელეფონი" class="form-input">
+            <input type="date" id="birthDate" class="form-input">
+            <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
           </div>
-          <div class="mt-6">
-            <label class="block text-sm font-semibold mb-1 text-red-400">შენიშვნა</label>
-            <textarea id="note" class="form-input h-32 resize-none" placeholder="მაგ: არასრულწლოვანი, სიფრთხილე..."></textarea>
-          </div>
-          <h3 class="text-2xl font-bold my-8">აირჩიეთ აბონემენტი</h3>
+          <textarea id="note" placeholder="შენიშვნა (მაგ: არასრულწლოვანი)" class="form-input h-28 mt-6"></textarea>
+
+          <h3 class="text-2xl font-bold mt-10 mb-6">აირჩიეთ აბონემენტი</h3>
           <div class="subscription-cards">
-            <div class="subscription-card" data-type="12visits" data-price="70">
-              <div class="text-2xl font-bold">12 ვარჯიში</div>
-              <div class="text-5xl font-bold my-4">70₾</div>
-              <div class="text-lg">30 დღე</div>
-            </div>
-            <div class="subscription-card" data-type="morning" data-price="90">
-              <div class="text-2xl font-bold">დილის</div>
-              <div class="text-5xl font-bold my-4">90₾</div>
-              <div class="text-lg">09:00–16:00</div>
-            </div>
-            <div class="subscription-card" data-type="unlimited" data-price="110">
-              <div class="text-2xl font-bold">ულიმიტო</div>
-              <div class="text-5xl font-bold my-4">110₾</div>
-              <div class="text-lg">30 დღე</div>
-            </div>
-            <div class="subscription-card" data-type="other" data-price="0">
-              <div class="text-2xl font-bold">სხვა</div>
-              <div class="text-5xl font-bold my-4">თავისუფალი</div>
-            </div>
+            <div class="subscription-card" data-type="12visits" data-price="70">12 ვარჯიში<br><span class="text-3xl font-bold">70₾</span></div>
+            <div class="subscription-card" data-type="morning" data-price="90">დილის<br><span class="text-3xl font-bold">90₾</span></div>
+            <div class="subscription-card" data-type="unlimited" data-price="110">ულიმიტო<br><span class="text-3xl font-bold">110₾</span></div>
+            <div class="subscription-card" data-type="other">სხვა</div>
           </div>
-          <div id="customSubscriptionFields" class="bg-slate-800 p-6 rounded-2xl" style="display:none">
-            <div class="form-grid">
-              <input type="number" id="customPrice" class="form-input" placeholder="ფასი ₾ *">
-              <input type="number" id="customDuration" class="form-input" placeholder="ვადა (დღე) *">
-              <input type="number" id="customVisits" class="form-input" placeholder="ვიზიტები (ცარიელი = ულიმიტო)">
-              <input type="text" id="customDescription" class="form-input" placeholder="აღწერა">
-            </div>
+
+          <div id="customSubscriptionFields" style="display:none" class="form-grid mt-6">
+            <input type="text" id="customDescription" placeholder="აბონემენტის სახელი" class="form-input">
+            <input type="number" id="customPrice" placeholder="ფასი ₾" class="form-input">
+            <input type="number" id="customDuration" placeholder="ვადა (დღეებში)" class="form-input">
+            <input type="number" id="customVisits" placeholder="ვიზიტები (ცარიელი = ულიმიტო)" class="form-input">
           </div>
-          <button type="submit" id="registerBtn" class="btn btn-success text-2xl px-12 py-5 mt-8">რეგისტრაცია</button>
+
+          <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-5 mt-8 w-full">რეგისტრაცია</button>
         </form>
       </div>
 
+      <!-- ძიება -->
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">წევრების ძიება</h2>
-        <input type="text" id="searchInput" class="search-input text-xl" placeholder="ძიება პირადით ან სახელ-გვარით...">
+        <input type="text" id="searchInput" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="searchResults" class="mt-8"></div>
       </div>
 
+      <!-- შესვლა -->
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">შესვლა</h2>
-        <input type="text" id="checkinSearch" class="search-input text-xl" placeholder="ძიება პირადით ან სახელ-გვარით...">
+        <input type="text" id="checkinSearch" placeholder="პირადი ნომერი ან სახელი გვარი..." class="search-input w-full text-2xl py-5">
         <div id="checkinResult" class="mt-8"></div>
       </div>
 
+      <!-- ვადაგასული -->
       <div id="expired" class="tab-content">
         <h2 class="text-3xl font-bold mb-8">ვადაგასული წევრები</h2>
-        <div id="expiredList" class="mt-8"></div>
+        <div id="expiredList"></div>
       </div>
     </div>
   </div>
