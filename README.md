@@ -578,11 +578,11 @@
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
-          <div class="stat-card"><div class="text-4xl font-bold" id="todayVisits">0</div><div class="text-lg mt-2">დღეს</div></div>
-          <div class="stat-card"><div class="text-4xl font-bold" id="activeMembers">0</div><div class="text-lg mt-2">აქტიური</div></div>
+          <div class="stat-card"><div class="text-4xl font-bold" id="todayVisits">0</div><div class="text-lg mt-2">დღევანდელი ვიზიტები</div></div>
+          <div class="stat-card"><div class="text-4xl font-bold" id="activeMembers">0</div><div class="text-lg mt-2">აქტიური წევრები</div></div>
           <div class="stat-card"><div class="text-4xl font-bold" id="expiredMembers">0</div><div class="text-lg mt-2">ვადაგასული</div></div>
           <div class="stat-card" id="expiringMembersCard" onclick="toggleExpiringSoon()">
-            <div class="text-4xl font-bold" id="expiringMembers">0</div><div class="text-lg mt-2">3 დღეში</div>
+            <div class="text-4xl font-bold" id="expiringMembers">0</div><div class="text-lg mt-2">3 დღეში ვადაგასული</div>
           </div>
           <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)"><div class="text-4xl font-bold" id="pausedMembers">0</div><div class="text-lg mt-2">შეჩერებული</div></div>
         </div>
