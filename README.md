@@ -4,6 +4,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Fit House Gym - მენეჯმენტი</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
+   <link rel="icon" type="image/png" href="fithause logo.png">
+  <link rel="shortcut icon" type="image/png" href="fithause logo.png">
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
