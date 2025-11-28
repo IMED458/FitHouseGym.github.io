@@ -238,7 +238,7 @@
             <textarea id="e_note_${id}" class="form-input" style="height:90px;">${m.note || ''}</textarea>
             <select id="e_subtype_${id}" class="form-input" onchange="autoFillSubscription('${id}')">
               <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
-              <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის (90₾)</option>
+              <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
               <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
               <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
             </select>
@@ -397,7 +397,7 @@
       }).join('');
     }
 
-    function getSubscriptionName(t) { const map = {'12visits':'12 ვარჯიში','morning':'დილის','unlimited':'ულიმიტო','other':'სხვა'}; return map[t] || t; }
+    function getSubscriptionName(t) { const map = {'12visits':'12 ვარჯიში','morning':'დილის ულიმიტო','unlimited':'ულიმიტო','other':'სხვა'}; return map[t] || t; }
     function getStatusClass(s) { return {active:'status-active',expired:'status-expired',paused:'status-paused'}[s] || 'status-expired'; }
     function getStatusText(s) { return {active:'აქტიური',expired:'ვადაგასული',paused:'შეჩერებული'}[s] || s; }
 
@@ -607,7 +607,7 @@
           <h3 class="text-xl font-bold mt-10 mb-6 text-center">აბონემენტი</h3>
           <div class="subscription-cards">
             <div class="subscription-card" data-type="12visits" data-price="70">12 ვარჯიში<br><span class="text-2xl font-bold">70₾</span></div>
-            <div class="subscription-card" data-type="morning" data-price="90">დილის<br><span class=" Carlos text-2xl font-bold">90₾</span></div>
+            <div class="subscription-card" data-type="morning" data-price="90">დილის ულიმიტო<br><span class=" Carlos text-2xl font-bold">90₾</span></div>
             <div class="subscription-card" data-type="unlimited" data-price="110">ულიმიტო<br><span class="text-2xl font-bold">110₾</span></div>
             <div class="subscription-card" data-type="other">სხვა</div>
           </div>
