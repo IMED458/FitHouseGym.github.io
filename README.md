@@ -124,14 +124,16 @@
       const selectedStatuses = Array.from(document.querySelectorAll('input[name="recipientStatus"]:checked'))
         .map(cb => cb.value);
       
-      if (selectedStatuses.length === 0) {
-        showToast('აირჩიეთ მინიმუმ ერთი სტატუსი!', 'error');
-        return;
-      }
+      let recipients = [];
       
-      let recipients = window.members.filter(m => 
-        m.email && selectedStatuses.includes(m.status)
-      );
+      // თუ არცერთი სტატუსი არ არის მონიშნული, ავტომატურად ავიღოთ ყველა
+      if (selectedStatuses.length === 0) {
+        recipients = window.members.filter(m => m.email);
+      } else {
+        recipients = window.members.filter(m => 
+          m.email && selectedStatuses.includes(m.status)
+        );
+      }
       
       // თუ მონიშნულია "მხოლოდ 3 დღეში ვადაგასული"
       if (document.getElementById('expiringOnly').checked) {
