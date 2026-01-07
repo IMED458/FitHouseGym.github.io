@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="ka">
 <head>
   <meta charset="UTF-8" />
@@ -75,6 +76,69 @@
       document.querySelectorAll('input[name="recipientStatus"]').forEach(cb => cb.checked = false);
       document.getElementById('expiringOnly').checked = false;
       document.getElementById('gymClosedTemplate').checked = false;
+    };
+
+    // ინდივიდუალური შეტყობინების ფანჯრის გახსნა
+    window.openIndividualMessageModal = function(memberId) {
+      const member = window.members.find(m => m.id === memberId);
+      if (!member) return;
+      
+      if (!member.email) {
+        showToast('ამ წევრს არ აქვს ემეილი!', 'error');
+        return;
+      }
+      
+      // შევინახოთ წევრის ID
+      document.getElementById('individualMemberId').value = memberId;
+      document.getElementById('individualMemberName').textContent = `${member.firstName} ${member.lastName}`;
+      document.getElementById('individualMemberEmail').textContent = member.email;
+      
+      document.getElementById('individualSubject').value = '';
+      document.getElementById('individualMessage').value = '';
+      
+      document.getElementById('individualMessageModal').style.display = 'flex';
+    };
+
+    window.closeIndividualMessageModal = function() {
+      document.getElementById('individualMessageModal').style.display = 'none';
+      document.getElementById('individualSubject').value = '';
+      document.getElementById('individualMessage').value = '';
+    };
+
+    // ინდივიდუალური შეტყობინების გაგზავნა
+    window.sendIndividualMessage = async function() {
+      const memberId = document.getElementById('individualMemberId').value;
+      const member = window.members.find(m => m.id === memberId);
+      
+      if (!member) {
+        showToast('წევრი ვერ მოიძებნა!', 'error');
+        return;
+      }
+      
+      const subject = document.getElementById('individualSubject').value.trim();
+      const message = document.getElementById('individualMessage').value.trim();
+      
+      if (!subject || !message) {
+        showToast('სათაური და შეტყობინება სავალდებულოა!', 'error');
+        return;
+      }
+      
+      const btn = document.getElementById('sendIndividualBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> გაგზავნა...';
+      
+      const personalizedMessage = message.replace(/{name}/g, member.firstName);
+      const sent = await sendEmail(member.email, member.firstName, subject, personalizedMessage);
+      
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> გაგზავნა';
+      
+      if (sent) {
+        closeIndividualMessageModal();
+        showToast(`✅ შეტყობინება გაიგზავნა: ${member.firstName} ${member.lastName}`);
+      } else {
+        showToast('შეტყობინება ვერ გაიგზავნა!', 'error');
+      }
     };
 
     // ტემპლეიტების ჩატვირთვა
@@ -323,6 +387,7 @@
           <div class="flex flex-wrap gap-3 justify-center">
             <button class="btn btn-warning text-sm px-6 py-2" onclick="renewMembership('${member.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
+            ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="deleteMember('${member.id}')">წაშლა</button>
           </div>
         </div>
@@ -1482,5 +1547,50 @@
       </div>
     </div>
   </div>
+
+  <!-- Individual Message Modal -->
+  <div id="individualMessageModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📧 ინდივიდუალური შეტყობინება</h3>
+        <button class="modal-close" onclick="closeIndividualMessageModal()">×</button>
+      </div>
+      
+      <div>
+        <input type="hidden" id="individualMemberId">
+        
+        <!-- წევრის ინფორმაცია -->
+        <div style="background: var(--surface); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <i class="fas fa-user" style="color: var(--accent);"></i>
+            <strong id="individualMemberName" style="font-size: 1.1rem;"></strong>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; color: var(--text-light);">
+            <i class="fas fa-envelope"></i>
+            <span id="individualMemberEmail"></span>
+          </div>
+        </div>
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">სათაური:</label>
+        <input type="text" id="individualSubject" placeholder="მაგ. 💪 გილოცავ პროგრესს!" class="form-input">
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">შეტყობინება:</label>
+        <textarea id="individualMessage" placeholder="გამოიყენეთ {name} პერსონალიზაციისთვის
+
+მაგ. გამარჯობა {name}, გილოცავ მიღწევებს!" class="form-input"></textarea>
+        
+        <div class="email-actions">
+          <button class="btn btn-success" id="sendIndividualBtn" onclick="sendIndividualMessage()">
+            <i class="fas fa-paper-plane"></i> გაგზავნა
+          </button>
+          <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeIndividualMessageModal()">
+            გაუქმება
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
 </body>
 </html>
