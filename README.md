@@ -60,6 +60,234 @@
       }
     };
 
+    // ავტომატური შეტყობინება ახალი რეგისტრაციისთვის
+    async function sendWelcomeEmail(member) {
+      if (!member.email) return;
+      
+      const subject = '🎉 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ში!';
+      const startDate = formatDate(member.subscriptionStartDate);
+      const endDate = formatDate(member.subscriptionEndDate);
+      const subType = getSubscriptionName(member.subscriptionType);
+      
+      const message = `გილოცავთ და კეთილი იყოს თქვენი მობრძანება Fit House Gym-ის ოჯახში! 🎉
+
+თქვენი აბონემენტი წარმატებით გააქტიურდა და მზად ვართ დაგეხმაროთ თქვენი მიზნების მიღწევაში.
+
+📋 **აბონემენტის დეტალები:**
+
+🎫 **ტიპი:** ${subType}
+💰 **ფასი:** ${member.subscriptionPrice}₾
+📅 **გააქტიურების თარიღი:** ${startDate}
+⏰ **ვადის გასვლის თარიღი:** ${endDate}
+${member.remainingVisits != null ? `🔢 **ვიზიტების რაოდენობა:** ${member.remainingVisits}` : '♾️ **ვიზიტები:** ულიმიტო'}
+
+📍 **მისამართი:** თელავი, საქართველო
+📞 **ტელეფონი:** +995 511 77 63 37
+
+გელოდებით სპორტდარბაზში და გისურვებთ წარმატებებს! 🔥`;
+
+      await sendEmail(member.email, member.firstName, subject, message);
+    }
+
+    // ავტომატური შეტყობინება განახლებისთვის
+    async function sendRenewalEmail(member) {
+      if (!member.email) return;
+      
+      const subject = '✅ აბონემენტი წარმატებით განახლდა!';
+      const renewDate = formatDate(member.subscriptionStartDate || new Date().toISOString());
+      const endDate = formatDate(member.subscriptionEndDate);
+      const subType = getSubscriptionName(member.subscriptionType);
+      
+      const message = `თქვენი აბონემენტი წარმატებით განახლდა! ✅
+
+მადლობა რომ აგრძელებთ ვარჯიშს Fit House Gym-ში. ჩვენ აფასებთ თქვენს ერთგულებას და მზად ვართ კვლავ დაგეხმაროთ თქვენი მიზნების მიღწევაში!
+
+📋 **განახლებული აბონემენტის დეტალები:**
+
+🎫 **ტიპი:** ${subType}
+💰 **ფასი:** ${member.subscriptionPrice}₾
+📅 **განახლების თარიღი:** ${renewDate}
+⏰ **ვადის გასვლის თარიღი:** ${endDate}
+${member.remainingVisits != null ? `🔢 **ვიზიტების რაოდენობა:** ${member.remainingVisits}` : '♾️ **ვიზიტები:** ულიმიტო'}
+
+💪 **გააგრძელე შენი პროგრესი!**
+
+ჩვენ ყოველთვის აქ ვართ რომ დაგეხმაროთ და მხარი დაგიჭიროთ თქვენს ფიტნეს მოგზაურობაში.
+
+გელოდებით ჯიმში! 🔥`;
+
+      await sendEmail(member.email, member.firstName, subject, message);
+    }
+
+    // ავტომატური შეტყობინება 3 დღეში ვადაგასულებისთვის
+    async function checkAndSendExpiringNotifications() {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      const threeDaysLater = new Date();
+      threeDaysLater.setDate(now.getDate() + 3);
+      threeDaysLater.setHours(23, 59, 59, 999);
+      
+      for (const member of window.members) {
+        if (member.status !== 'active' || !member.email) continue;
+        
+        // შევამოწმოთ არის თუ არა უკვე გაგზავნილი შეტყობინება
+        if (member.expiringEmailSent) continue;
+        
+        const endDate = new Date(member.subscriptionEndDate);
+        endDate.setHours(0, 0, 0, 0);
+        
+        // თუ 3 დღეში ვადა გასდის
+        if (endDate >= now && endDate <= threeDaysLater) {
+          const daysLeft = Math.ceil((endDate - now) / 86400000);
+          const subject = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
+          
+          const message = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳
+
+📅 **ვადის გასვლის თარიღი:** ${formatDate(member.subscriptionEndDate)}
+
+არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
+
+აბონემენტის განახლება შეგიძლია:
+📍 პირდაპირ ჯიმში
+📞 ტელეფონით: +995 511 77 63 37
+📧 Email: gymfithouse1@gmail.com
+
+ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
+
+გელოდებით Fit House Gym-ში!`;
+
+          const sent = await sendEmail(member.email, member.firstName, subject, message);
+          
+          if (sent) {
+            // მონიშვნა რომ შეტყობინება გაიგზავნა
+            await updateMember({...member, expiringEmailSent: true});
+            console.log('Expiring notification sent to:', member.firstName, member.lastName);
+          }
+        }
+      }
+    }
+
+    // ავტომატური შემოწმება ყოველ 1 საათში
+    setInterval(() => {
+      checkAndSendExpiringNotifications();
+    }, 3600000); // 1 საათი
+
+    // პირველი შემოწმება როცა საიტი იტვირთება
+    setTimeout(() => {
+      checkAndSendExpiringNotifications();
+    }, 5000); // 5 წამის შემდეგ
+
+    // ავტომატური შეტყობინება რეგისტრაციისას
+    window.sendRegistrationEmail = async function(member) {
+      if (!member.email) return;
+      
+      const subject = '🎉 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ში!';
+      const startDate = formatDate(member.subscriptionStartDate);
+      const endDate = formatDate(member.subscriptionEndDate);
+      const subName = getSubscriptionName(member.subscriptionType);
+      
+      const message = `გილოცავთ წარმატებით რეგისტრაციას Fit House Gym-ში! 🎉
+
+თქვენი აბონემენტის დეტალები:
+
+📋 აბონემენტის ტიპი: ${subName}
+💰 ფასი: ${member.subscriptionPrice}₾
+📅 გააქტიურების თარიღი: ${startDate}
+⏰ ვადის გასვლის თარიღი: ${endDate}
+${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : ''}
+
+ჩვენ აქ ვართ რათა დაგეხმაროთ თქვენი ფიტნეს მიზნების მიღწევაში! 💪
+
+გელოდებით ჯიმში!
+
+📍 თელავი, საქართველო
+📞 +995 511 77 63 37`;
+
+      await sendEmail(member.email, member.firstName, subject, message);
+    };
+
+    // ავტომატური შეტყობინება აბონემენტის განახლებისას
+    window.sendRenewalEmail = async function(member) {
+      if (!member.email) return;
+      
+      const subject = '✅ თქვენი აბონემენტი წარმატებით განახლდა!';
+      const renewalDate = formatDate(new Date().toISOString());
+      const endDate = formatDate(member.subscriptionEndDate);
+      const subName = getSubscriptionName(member.subscriptionType);
+      
+      const message = `თქვენი აბონემენტი წარმატებით განახლდა! ✅
+
+აბონემენტის დეტალები:
+
+📋 აბონემენტის ტიპი: ${subName}
+💰 ფასი: ${member.subscriptionPrice}₾
+📅 განახლების თარიღი: ${renewalDate}
+⏰ ახალი ვადის გასვლის თარიღი: ${endDate}
+${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : ''}
+
+მადლობა რომ აგრძელებთ ვარჯიშს Fit House Gym-ში! 💪
+
+გელოდებით!
+
+📍 თელავი, საქართველო
+📞 +995 511 77 63 37`;
+
+      await sendEmail(member.email, member.firstName, subject, message);
+    };
+
+    // შევამოწმოთ და გავაგზავნოთ შეტყობინება 3 დღეში ვადაგასულებისთვის
+    window.checkAndSendExpiringNotifications = async function() {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      
+      const threeDaysLater = new Date();
+      threeDaysLater.setDate(now.getDate() + 3);
+      threeDaysLater.setHours(23, 59, 59, 999);
+      
+      for (const member of window.members) {
+        if (member.status !== 'active' || !member.email) continue;
+        
+        const endDate = new Date(member.subscriptionEndDate);
+        endDate.setHours(0, 0, 0, 0);
+        
+        // შევამოწმოთ არის თუ არა 3 დღეში ვადაგასული
+        const isExpiring = endDate >= now && endDate <= threeDaysLater;
+        
+        if (isExpiring) {
+          // შევამოწმოთ გაგზავნილია თუ არა უკვე შეტყობინება
+          const notificationKey = `expiring_notification_${member.id}_${endDate.getTime()}`;
+          const alreadySent = localStorage.getItem(notificationKey);
+          
+          if (!alreadySent) {
+            const daysLeft = Math.ceil((endDate - now) / 86400000);
+            const subject = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
+            const message = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳
+
+აბონემენტის დეტალები:
+📋 ტიპი: ${getSubscriptionName(member.subscriptionType)}
+⏰ ვადის გასვლა: ${formatDate(member.subscriptionEndDate)}
+
+არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
+
+ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
+
+გელოდებით Fit House Gym-ში!
+
+📍 თელავი, საქართველო
+📞 +995 511 77 63 37`;
+            
+            const sent = await sendEmail(member.email, member.firstName, subject, message);
+            if (sent) {
+              // მონიშნე რომ გაიგზავნა
+              localStorage.setItem(notificationKey, 'sent');
+              console.log('Expiring notification sent to:', member.firstName, member.lastName);
+            }
+          }
+        }
+      }
+    };
+
     // მასობრივი შეტყობინების ფანჯრის გახსნა
     window.openBulkMessageModal = function() {
       document.getElementById('bulkMessageModal').style.display = 'flex';
@@ -144,11 +372,11 @@
     window.loadExpiringTemplate = function() {
       if (document.getElementById('expiringTemplate').checked) {
         document.getElementById('bulkSubject').value = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
-        document.getElementById('bulkMessage').value = `შეგახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა მალე იწურება ⏳
+        document.getElementById('bulkMessage').value = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა მალე იწურება ⏳
 
-არ შეაჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
+არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
 
-ჩვენ ყოველთვის მზად ვართ შენი მიზნების მხარდასაჭერად 💥
+ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
 
 გელოდებით Fit House Gym-ში!`;
         document.getElementById('expiringOnly').checked = true;
@@ -313,13 +541,22 @@
       onSnapshot(q, (snapshot) => {
         window.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateAll();
+        // ავტომატურად შევამოწმოთ 3 დღეში ვადაგასულები
+        checkAndSendExpiringNotifications();
       });
     }
 
     async function createMember(m) {
       try { 
-        await addDoc(collection(db, "members"), m); 
-        showToast("დარეგისტრირდა!"); 
+        await addDoc(collection(db, "members"), m);
+        showToast("დარეგისტრირდა!");
+        
+        // ავტომატური welcome email
+        if (m.email) {
+          setTimeout(() => {
+            sendWelcomeEmail(m);
+          }, 1000);
+        }
       }
       catch (e) { 
         showToast("შეცდომა", 'error'); 
@@ -472,13 +709,30 @@
       }
       else if (m.subscriptionType === 'morning') end.setDate(start.getDate() + 30);
       else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 30);
-      await updateMember({ 
+      
+      const updated = { 
         ...m, 
         subscriptionEndDate: end.toISOString(), 
         remainingVisits: visits, 
         status: 'active' 
-      });
+      const updated = { 
+        ...m, 
+        subscriptionStartDate: start.toISOString(),
+        subscriptionEndDate: end.toISOString(), 
+        remainingVisits: visits, 
+        status: 'active',
+        expiringEmailSent: false  // რესეტი რომ ახალი აბონემენტისთვის კვლავ გაიგზავნოს
+      };
+      
+      await updateMember(updated);
       showToast("განახლდა!");
+      
+      // ავტომატური შეტყობინება განახლებისას
+      if (updated.email) {
+        setTimeout(() => {
+          sendRenewalEmail(updated);
+        }, 1000);
+      }
     };
 
     window.showEditForm = function(e, id) {
