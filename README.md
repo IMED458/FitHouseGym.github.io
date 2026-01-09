@@ -41,6 +41,37 @@
       emailjs.init(EMAILJS_PUBLIC_KEY);
     })();
 
+    function formatDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}.${month}.${year}`;
+    }
+
+    function checkAuth() {
+      if (!isAuthenticated) {
+        document.getElementById('loginScreen').style.display = 'flex';
+        document.getElementById('mainApp').style.display = 'none';
+      } else {
+        document.getElementById('loginScreen').style.display = 'none';
+        document.getElementById('mainApp').style.display = 'block';
+      }
+    }
+
+    window.login = function() {
+      const input = document.getElementById('adminPassword').value;
+      if (input === ADMIN_PASSWORD) {
+        isAuthenticated = true;
+        checkAuth();
+        loadMembers();
+        showToast("ავტორიზაცია წარმატებით განხორციელდა!", "success");
+      } else {
+        showToast("პაროლი არასწორია!", "error");
+      }
+    };
+
     // ფუნქცია ემეილის გასაგზავნად
     window.sendEmail = async function(toEmail, toName, subject, message) {
       try {
@@ -84,7 +115,9 @@ ${member.remainingVisits != null ? `🔢 **ვიზიტების რაო
 📍 **მისამართი:** თელავი, საქართველო
 📞 **ტელეფონი:** +995 511 77 63 37
 
-გელოდებით სპორტდარბაზში და გისურვებთ წარმატებებს! 🔥`;
+
+
+გელოდებით ჯიმში და გისურვებთ წარმატებებს! 🔥`;
 
       await sendEmail(member.email, member.firstName, subject, message);
     }
@@ -100,7 +133,7 @@ ${member.remainingVisits != null ? `🔢 **ვიზიტების რაო
       
       const message = `თქვენი აბონემენტი წარმატებით განახლდა! ✅
 
-მადლობა რომ აგრძელებთ ვარჯიშს Fit House Gym-ში. ჩვენ აფასებთ თქვენს ერთგულებას და მზად ვართ კვლავ დაგეხმაროთ თქვენი მიზნების მიღწევაში!
+მადლობა, რომ აგრძელებთ ვარჯიშს Fit House Gym-ში. ჩვენ ვაფასებთ თქვენ ერთგულებას და მზად ვართ კვლავ დაგეხმაროთ თქვენი მიზნების მიღწევაში!
 
 📋 **განახლებული აბონემენტის დეტალები:**
 
@@ -112,7 +145,7 @@ ${member.remainingVisits != null ? `🔢 **ვიზიტების რაო
 
 💪 **გააგრძელე შენი პროგრესი!**
 
-ჩვენ ყოველთვის აქ ვართ რომ დაგეხმაროთ და მხარი დაგიჭიროთ თქვენს ფიტნეს მოგზაურობაში.
+ჩვენ ყოველთვის მზად ვართ რომ დაგეხმაროთ და მხარი დაგიჭიროთ თქვენს ფიტნეს მოგზაურობაში.
 
 გელოდებით ჯიმში! 🔥`;
 
@@ -131,36 +164,32 @@ ${member.remainingVisits != null ? `🔢 **ვიზიტების რაო
       for (const member of window.members) {
         if (member.status !== 'active' || !member.email) continue;
         
-        // შევამოწმოთ არის თუ არა უკვე გაგზავნილი შეტყობინება
         if (member.expiringEmailSent) continue;
         
         const endDate = new Date(member.subscriptionEndDate);
         endDate.setHours(0, 0, 0, 0);
         
-        // თუ 3 დღეში ვადა გასდის
         if (endDate >= now && endDate <= threeDaysLater) {
           const daysLeft = Math.ceil((endDate - now) / 86400000);
           const subject = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
           
-          const message = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳
+          const message = `შეგახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳
 
 📅 **ვადის გასვლის თარიღი:** ${formatDate(member.subscriptionEndDate)}
 
 არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
 
 აბონემენტის განახლება შეგიძლია:
-📍 პირდაპირ ჯიმში
+📍 სპორტდარბაზში
 📞 ტელეფონით: +995 511 77 63 37
-📧 Email: gymfithouse1@gmail.com
 
-ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
+ჩვენ ყოველთვის მზად ვართ შენი მიზნების მხარდასაჭერად 💥
 
 გელოდებით Fit House Gym-ში!`;
 
           const sent = await sendEmail(member.email, member.firstName, subject, message);
           
           if (sent) {
-            // მონიშვნა რომ შეტყობინება გაიგზავნა
             await updateMember({...member, expiringEmailSent: true});
             console.log('Expiring notification sent to:', member.firstName, member.lastName);
           }
@@ -168,130 +197,16 @@ ${member.remainingVisits != null ? `🔢 **ვიზიტების რაო
       }
     }
 
-    // ავტომატური შემოწმება ყოველ 1 საათში
     setInterval(() => {
       checkAndSendExpiringNotifications();
-    }, 3600000); // 1 საათი
+    }, 3600000);
 
-    // პირველი შემოწმება როცა საიტი იტვირთება
     setTimeout(() => {
       checkAndSendExpiringNotifications();
-    }, 5000); // 5 წამის შემდეგ
+    }, 5000);
 
-    // ავტომატური შეტყობინება რეგისტრაციისას
-    window.sendRegistrationEmail = async function(member) {
-      if (!member.email) return;
-      
-      const subject = '🎉 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ში!';
-      const startDate = formatDate(member.subscriptionStartDate);
-      const endDate = formatDate(member.subscriptionEndDate);
-      const subName = getSubscriptionName(member.subscriptionType);
-      
-      const message = `გილოცავთ წარმატებით რეგისტრაციას Fit House Gym-ში! 🎉
-
-თქვენი აბონემენტის დეტალები:
-
-📋 აბონემენტის ტიპი: ${subName}
-💰 ფასი: ${member.subscriptionPrice}₾
-📅 გააქტიურების თარიღი: ${startDate}
-⏰ ვადის გასვლის თარიღი: ${endDate}
-${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : ''}
-
-ჩვენ აქ ვართ რათა დაგეხმაროთ თქვენი ფიტნეს მიზნების მიღწევაში! 💪
-
-გელოდებით ჯიმში!
-
-📍 თელავი, საქართველო
-📞 +995 511 77 63 37`;
-
-      await sendEmail(member.email, member.firstName, subject, message);
-    };
-
-    // ავტომატური შეტყობინება აბონემენტის განახლებისას
-    window.sendRenewalEmail = async function(member) {
-      if (!member.email) return;
-      
-      const subject = '✅ თქვენი აბონემენტი წარმატებით განახლდა!';
-      const renewalDate = formatDate(new Date().toISOString());
-      const endDate = formatDate(member.subscriptionEndDate);
-      const subName = getSubscriptionName(member.subscriptionType);
-      
-      const message = `თქვენი აბონემენტი წარმატებით განახლდა! ✅
-
-აბონემენტის დეტალები:
-
-📋 აბონემენტის ტიპი: ${subName}
-💰 ფასი: ${member.subscriptionPrice}₾
-📅 განახლების თარიღი: ${renewalDate}
-⏰ ახალი ვადის გასვლის თარიღი: ${endDate}
-${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : ''}
-
-მადლობა რომ აგრძელებთ ვარჯიშს Fit House Gym-ში! 💪
-
-გელოდებით!
-
-📍 თელავი, საქართველო
-📞 +995 511 77 63 37`;
-
-      await sendEmail(member.email, member.firstName, subject, message);
-    };
-
-    // შევამოწმოთ და გავაგზავნოთ შეტყობინება 3 დღეში ვადაგასულებისთვის
-    window.checkAndSendExpiringNotifications = async function() {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      
-      const threeDaysLater = new Date();
-      threeDaysLater.setDate(now.getDate() + 3);
-      threeDaysLater.setHours(23, 59, 59, 999);
-      
-      for (const member of window.members) {
-        if (member.status !== 'active' || !member.email) continue;
-        
-        const endDate = new Date(member.subscriptionEndDate);
-        endDate.setHours(0, 0, 0, 0);
-        
-        // შევამოწმოთ არის თუ არა 3 დღეში ვადაგასული
-        const isExpiring = endDate >= now && endDate <= threeDaysLater;
-        
-        if (isExpiring) {
-          // შევამოწმოთ გაგზავნილია თუ არა უკვე შეტყობინება
-          const notificationKey = `expiring_notification_${member.id}_${endDate.getTime()}`;
-          const alreadySent = localStorage.getItem(notificationKey);
-          
-          if (!alreadySent) {
-            const daysLeft = Math.ceil((endDate - now) / 86400000);
-            const subject = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
-            const message = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳
-
-აბონემენტის დეტალები:
-📋 ტიპი: ${getSubscriptionName(member.subscriptionType)}
-⏰ ვადის გასვლა: ${formatDate(member.subscriptionEndDate)}
-
-არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
-
-ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
-
-გელოდებით Fit House Gym-ში!
-
-📍 თელავი, საქართველო
-📞 +995 511 77 63 37`;
-            
-            const sent = await sendEmail(member.email, member.firstName, subject, message);
-            if (sent) {
-              // მონიშნე რომ გაიგზავნა
-              localStorage.setItem(notificationKey, 'sent');
-              console.log('Expiring notification sent to:', member.firstName, member.lastName);
-            }
-          }
-        }
-      }
-    };
-
-    // მასობრივი შეტყობინების ფანჯრის გახსნა
     window.openBulkMessageModal = function() {
       document.getElementById('bulkMessageModal').style.display = 'flex';
-      // დავაყენოთ default მნიშვნელობები 3 დღეში ვადაგასულებისთვის
       document.getElementById('bulkSubject').value = '';
       document.getElementById('bulkMessage').value = '';
     };
@@ -305,70 +220,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('gymClosedTemplate').checked = false;
     };
 
-    // ინდივიდუალური შეტყობინების ფანჯრის გახსნა
-    window.openIndividualMessageModal = function(memberId) {
-      const member = window.members.find(m => m.id === memberId);
-      if (!member) return;
-      
-      if (!member.email) {
-        showToast('ამ წევრს არ აქვს ემეილი!', 'error');
-        return;
-      }
-      
-      // შევინახოთ წევრის ID
-      document.getElementById('individualMemberId').value = memberId;
-      document.getElementById('individualMemberName').textContent = `${member.firstName} ${member.lastName}`;
-      document.getElementById('individualMemberEmail').textContent = member.email;
-      
-      document.getElementById('individualSubject').value = '';
-      document.getElementById('individualMessage').value = '';
-      
-      document.getElementById('individualMessageModal').style.display = 'flex';
-    };
-
-    window.closeIndividualMessageModal = function() {
-      document.getElementById('individualMessageModal').style.display = 'none';
-      document.getElementById('individualSubject').value = '';
-      document.getElementById('individualMessage').value = '';
-    };
-
-    // ინდივიდუალური შეტყობინების გაგზავნა
-    window.sendIndividualMessage = async function() {
-      const memberId = document.getElementById('individualMemberId').value;
-      const member = window.members.find(m => m.id === memberId);
-      
-      if (!member) {
-        showToast('წევრი ვერ მოიძებნა!', 'error');
-        return;
-      }
-      
-      const subject = document.getElementById('individualSubject').value.trim();
-      const message = document.getElementById('individualMessage').value.trim();
-      
-      if (!subject || !message) {
-        showToast('სათაური და შეტყობინება სავალდებულოა!', 'error');
-        return;
-      }
-      
-      const btn = document.getElementById('sendIndividualBtn');
-      btn.disabled = true;
-      btn.innerHTML = '<div class="spinner"></div> გაგზავნა...';
-      
-      const personalizedMessage = message.replace(/{name}/g, member.firstName);
-      const sent = await sendEmail(member.email, member.firstName, subject, personalizedMessage);
-      
-      btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-paper-plane"></i> გაგზავნა';
-      
-      if (sent) {
-        closeIndividualMessageModal();
-        showToast(`✅ შეტყობინება გაიგზავნა: ${member.firstName} ${member.lastName}`);
-      } else {
-        showToast('შეტყობინება ვერ გაიგზავნა!', 'error');
-      }
-    };
-
-    // ტემპლეიტების ჩატვირთვა
     window.loadExpiringTemplate = function() {
       if (document.getElementById('expiringTemplate').checked) {
         document.getElementById('bulkSubject').value = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
@@ -376,7 +227,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
 არ გააჩერო პროგრესი — განაახლე აბონემენტი და გააგრძელე ვარჯიში ჩვენთან!
 
-ჩვენ ყოველთვის აქ ვართ შენი მიზნების მხარდასაჭერად 💥
+ჩვენ ყოველთვის მზად ვართ შენი მიზნების მხარდასაჭერად 💥
 
 გელოდებით Fit House Gym-ში!`;
         document.getElementById('expiringOnly').checked = true;
@@ -397,12 +248,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 მადლობა ერთგულებისთვის 💪`;
         document.getElementById('expiringOnly').checked = false;
         document.getElementById('expiringTemplate').checked = false;
-        // მონიშნე ყველა სტატუსი
         document.querySelectorAll('input[name="recipientStatus"]').forEach(cb => cb.checked = true);
       }
     };
 
-    // მასობრივი შეტყობინების გაგზავნა
     window.sendBulkMessage = async function() {
       const subject = document.getElementById('bulkSubject').value.trim();
       const message = document.getElementById('bulkMessage').value.trim();
@@ -412,21 +261,16 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
       
-      const selectedStatuses = Array.from(document.querySelectorAll('input[name="recipientStatus"]:checked'))
-        .map(cb => cb.value);
+      const selectedStatuses = Array.from(document.querySelectorAll('input[name="recipientStatus"]:checked')).map(cb => cb.value);
       
       let recipients = [];
       
-      // თუ არცერთი სტატუსი არ არის მონიშნული, ავტომატურად ავიღოთ ყველა
       if (selectedStatuses.length === 0) {
         recipients = window.members.filter(m => m.email);
       } else {
-        recipients = window.members.filter(m => 
-          m.email && selectedStatuses.includes(m.status)
-        );
+        recipients = window.members.filter(m => m.email && selectedStatuses.includes(m.status));
       }
       
-      // თუ მონიშნულია "მხოლოდ 3 დღეში ვადაგასული"
       if (document.getElementById('expiringOnly').checked) {
         const now = new Date();
         now.setHours(0, 0, 0, 0);
@@ -460,8 +304,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         const personalizedMessage = message.replace(/{name}/g, member.firstName);
         const sent = await sendEmail(member.email, member.firstName, subject, personalizedMessage);
         if (sent) successCount++;
-        
-        // პატარა დაყოვნება rate limiting-ისთვის
         await new Promise(resolve => setTimeout(resolve, 500));
       }
       
@@ -471,34 +313,63 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       showToast(`✅ გაიგზავნა ${successCount}/${recipients.length} შეტყობინება`);
     };
 
-    function formatDate(iso) {
-      if (!iso) return '—';
-      const d = new Date(iso);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}.${month}.${year}`;
-    }
-
-    function checkAuth() {
-      if (!isAuthenticated) {
-        document.getElementById('loginScreen').style.display = 'flex';
-        document.getElementById('mainApp').style.display = 'none';
-      } else {
-        document.getElementById('loginScreen').style.display = 'none';
-        document.getElementById('mainApp').style.display = 'block';
+    window.openIndividualMessageModal = function(memberId) {
+      const member = window.members.find(m => m.id === memberId);
+      if (!member) return;
+      
+      if (!member.email) {
+        showToast('ამ წევრს არ აქვს ემეილი!', 'error');
+        return;
       }
-    }
+      
+      document.getElementById('individualMemberId').value = memberId;
+      document.getElementById('individualMemberName').textContent = `${member.firstName} ${member.lastName}`;
+      document.getElementById('individualMemberEmail').textContent = member.email;
+      
+      document.getElementById('individualSubject').value = '';
+      document.getElementById('individualMessage').value = '';
+      
+      document.getElementById('individualMessageModal').style.display = 'flex';
+    };
 
-    window.login = function() {
-      const input = document.getElementById('adminPassword').value;
-      if (input === ADMIN_PASSWORD) {
-        isAuthenticated = true;
-        checkAuth();
-        loadMembers();
-        showToast("ავტორიზაცია წარმატებით განხორციელდა!", "success");
+    window.closeIndividualMessageModal = function() {
+      document.getElementById('individualMessageModal').style.display = 'none';
+      document.getElementById('individualSubject').value = '';
+      document.getElementById('individualMessage').value = '';
+    };
+
+    window.sendIndividualMessage = async function() {
+      const memberId = document.getElementById('individualMemberId').value;
+      const member = window.members.find(m => m.id === memberId);
+      
+      if (!member) {
+        showToast('წევრი ვერ მოიძებნა!', 'error');
+        return;
+      }
+      
+      const subject = document.getElementById('individualSubject').value.trim();
+      const message = document.getElementById('individualMessage').value.trim();
+      
+      if (!subject || !message) {
+        showToast('სათაური და შეტყობინება სავალდებულოა!', 'error');
+        return;
+      }
+      
+      const btn = document.getElementById('sendIndividualBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> გაგზავნა...';
+      
+      const personalizedMessage = message.replace(/{name}/g, member.firstName);
+      const sent = await sendEmail(member.email, member.firstName, subject, personalizedMessage);
+      
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> გაგზავნა';
+      
+      if (sent) {
+        closeIndividualMessageModal();
+        showToast(`✅ შეტყობინება გაიგზავნა: ${member.firstName} ${member.lastName}`);
       } else {
-        showToast("პაროლი არასწორია!", "error");
+        showToast('შეტყობინება ვერ გაიგზავნა!', 'error');
       }
     };
 
@@ -541,8 +412,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       onSnapshot(q, (snapshot) => {
         window.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateAll();
-        // ავტომატურად შევამოწმოთ 3 დღეში ვადაგასულები
-        checkAndSendExpiringNotifications();
       });
     }
 
@@ -551,7 +420,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         await addDoc(collection(db, "members"), m);
         showToast("დარეგისტრირდა!");
         
-        // ავტომატური welcome email
         if (m.email) {
           setTimeout(() => {
             sendWelcomeEmail(m);
@@ -612,7 +480,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>ტელეფონი:</strong> ${member.phone || '—'}</div>
-            <div><strong>ემეილი:</strong> ${member.email || '—'}</div>
+            <div><strong>Email:</strong> ${member.email || '—'}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
             <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
@@ -712,22 +580,16 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       
       const updated = { 
         ...m, 
-        subscriptionEndDate: end.toISOString(), 
-        remainingVisits: visits, 
-        status: 'active' 
-      const updated = { 
-        ...m, 
         subscriptionStartDate: start.toISOString(),
         subscriptionEndDate: end.toISOString(), 
         remainingVisits: visits, 
         status: 'active',
-        expiringEmailSent: false  // რესეტი რომ ახალი აბონემენტისთვის კვლავ გაიგზავნოს
+        expiringEmailSent: false
       };
       
       await updateMember(updated);
       showToast("განახლდა!");
       
-      // ავტომატური შეტყობინება განახლებისას
       if (updated.email) {
         setTimeout(() => {
           sendRenewalEmail(updated);
@@ -749,7 +611,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="form-grid gap-4 text-sm">
             <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
             <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
-            <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="ემეილი">
+            <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="Email">
             <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
             <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
             <textarea id="e_note_${id}" class="form-input" style="height:90px;" placeholder="შენიშვნა">${m.note || ''}</textarea>
@@ -832,7 +694,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const data = window.members.map(m => ({
         "სახელი": m.firstName, 
         "გვარი": m.lastName, 
-        "ემეილი": m.email || '',
+        "Email": m.email || '',
         "პირადი": m.personalId,
         "ტელეფონი": m.phone || '', 
         "აბონემენტი": getSubscriptionName(m.subscriptionType),
@@ -881,7 +743,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="info-grid text-sm">
             <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
-            <div><strong>ემეილი:</strong> ${m.email || '—'}</div>
+            <div><strong>Email:</strong> ${m.email || '—'}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>ვადა გავიდა:</strong> <span class="text-red-400 font-bold">${formatDate(m.subscriptionEndDate)}</span></div>
           </div>
@@ -889,8 +751,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <button class="btn btn-warning px-5 py-2" onclick="renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="deleteMember('${m.id}')">წაშლა</button>
-          </div>
-        </div>`;
+          </div></div>`;
       }).join('');
     }
 
@@ -913,7 +774,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div class="search-card-info">
               <div class="search-name">${m.firstName} ${m.lastName}</div>
               <div class="search-id">პირადი: ${m.personalId}</div>
-              <div class="search-id">ემეილი: ${m.email || '—'}</div>
+              <div class="search-id">Email: ${m.email || '—'}</div>
               <div class="search-sub">${getSubscriptionName(m.subscriptionType)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
             </div>
@@ -940,15 +801,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="grid grid-cols-2 gap-3">
             <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
-            <div><strong>ემეილი:</strong> ${m.email || '—'}</div>
+            <div><strong>Email:</strong> ${m.email || '—'}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>ვადა:</strong> <span class="text-orange-400 font-bold">${formatDate(m.subscriptionEndDate)} (${days} დღე)</span></div>
           </div>
           <div class="mt-4 flex gap-3 justify-center">
             <button class="btn btn-warning text-sm px-5 py-2" onclick="renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="showEditForm(event, '${m.id}')">რედაქტირება</button>
-          </div>
-        </div>`;
+          </div></div>`;
       }).join('');
     }
 
@@ -1067,7 +927,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             totalVisits: 0,
             status: 'active',
             lastVisit: null,
-            createdAt: new Date().toISOString()
+            createdAt: new Date().toISOString(),
+            expiringEmailSent: false
           });
           
           e.target.reset();
@@ -1496,7 +1357,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       display:none; 
     }
     
-    /* Modal Styles */
     .modal {
       display: none;
       position: fixed;
@@ -1642,7 +1502,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel</button>
       </div>
       
-      <!-- Dashboard Tab -->
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
@@ -1674,7 +1533,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </div>
       </div>
 
-      <!-- Register Tab -->
       <div id="register" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ახალი წევრი</h2>
         <form id="registrationForm" class="bg-slate-800 p-8 rounded-2xl">
@@ -1715,21 +1573,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </form>
       </div>
       
-      <!-- Search Tab -->
       <div id="search" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ძიება</h2>
-        <input type="text" id="searchInput" placeholder="სახელი, ემეილი ან პირადი ნომერი..." class="search-input w-full text-xl py-4 mb-6">
+        <input type="text" id="searchInput" placeholder="სახელი, Email ან პირადი ნომერი..." class="search-input w-full text-xl py-4 mb-6">
         <div id="searchResults"></div>
       </div>
       
-      <!-- Check-in Tab -->
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">შესვლა</h2>
         <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-xl py-4">
         <div id="checkinResult" class="mt-8"></div>
       </div>
       
-      <!-- Expired Tab -->
       <div id="expired" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული წევრები</h2>
         <div id="expiredList"></div>
@@ -1737,7 +1592,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     </div>
   </div>
 
-  <!-- Bulk Message Modal -->
   <div id="bulkMessageModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -1746,7 +1600,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       </div>
       
       <div>
-        <!-- ტემპლეიტები -->
         <div style="margin-bottom: 20px; padding: 16px; background: var(--surface); border-radius: 12px;">
           <label style="display: block; margin-bottom: 12px; font-weight: 700; font-size: 1rem;">📋 შაბლონები:</label>
           <div class="checkbox-group" style="background: transparent; padding: 0;">
@@ -1801,7 +1654,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     </div>
   </div>
 
-  <!-- Individual Message Modal -->
   <div id="individualMessageModal" class="modal">
     <div class="modal-content">
       <div class="modal-header">
@@ -1812,8 +1664,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       <div>
         <input type="hidden" id="individualMemberId">
         
-        <!-- წევრის ინფორმაცია -->
-        <div style="background: var(--surface); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+        <div style="background: var(--border); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
           <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
             <i class="fas fa-user" style="color: var(--accent);"></i>
             <strong id="individualMemberName" style="font-size: 1.1rem;"></strong>
@@ -1843,7 +1694,5 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       </div>
     </div>
   </div>
-
-  <div id="toast" class="toast"></div>
 </body>
 </html>
