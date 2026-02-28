@@ -50,6 +50,47 @@
       return `${day}/${month}/${year}`;
     }
 
+    function startOfDay(date) {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    }
+
+    function addMonthsPreserveDay(date, months = 1) {
+      const source = new Date(date);
+      const day = source.getDate();
+      const target = new Date(source);
+      target.setDate(1);
+      target.setMonth(target.getMonth() + months);
+      const lastDay = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
+      target.setDate(Math.min(day, lastDay));
+      return target;
+    }
+
+    function toDateInputValue(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function dateInputToISOEndOfDay(dateStr) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString();
+    }
+
+    function setToEndOfDay(date) {
+      const d = new Date(date);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    }
+
+    function isExpired(endDateIso) {
+      return new Date() > new Date(endDateIso);
+    }
+
     function checkAuth() {
       if (!isAuthenticated) {
         document.getElementById('loginScreen').style.display = 'flex';
@@ -506,8 +547,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         showToast("არააქტიურია", 'error'); 
         return; 
       }
-      const now = new Date(), end = new Date(m.subscriptionEndDate), hour = now.getHours();
-      if (now > end) { 
+      const now = new Date(), hour = now.getHours();
+      if (isExpired(m.subscriptionEndDate)) { 
         await updateMember({...m, status: 'expired'}); 
         showToast("ვადა გასულია!", 'error'); 
         return; 
@@ -530,13 +571,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     window.checkMemberAccess = async function(member) {
-      const now = new Date(), end = new Date(member.subscriptionEndDate), hour = now.getHours();
+      const now = new Date(), hour = now.getHours();
       let allowed = true, msg = 'ნებადართული';
       if (member.status !== 'active') { 
         allowed = false; 
         msg = 'შეჩერებულია'; 
       }
-      else if (now > end) { 
+      else if (isExpired(member.subscriptionEndDate)) { 
         allowed = false; 
         msg = 'ვადა გასულია'; 
         await updateMember({...member, status:'expired'}); 
@@ -569,14 +610,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.renewMembership = async function(id) {
       const m = window.members.find(x => x.id === id);
       if (!m) return;
-      const start = new Date(), end = new Date();
+      const start = new Date();
+      const end = setToEndOfDay(addMonthsPreserveDay(start, 1));
       let visits = null;
       if (m.subscriptionType === '12visits') { 
-        end.setDate(start.getDate() + 30); 
         visits = 12; 
       }
-      else if (m.subscriptionType === 'morning') end.setDate(start.getDate() + 30);
-      else if (m.subscriptionType === 'unlimited') end.setDate(start.getDate() + 30);
       
       const updated = { 
         ...m, 
@@ -604,7 +643,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (!m) return;
       const div = document.createElement('div');
       div.className = 'edit-form';
-      const endDate = m.subscriptionEndDate ? new Date(m.subscriptionEndDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+      const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
       div.innerHTML = `
         <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
           <h4 class="text-2xl font-bold mb-6 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
@@ -675,14 +714,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         note: document.getElementById(`e_note_${id}`).value.trim() || null,
         subscriptionType: document.getElementById(`e_subtype_${id}`).value,
         subscriptionPrice: parseFloat(document.getElementById(`e_price_${id}`).value) || 0,
-        subscriptionEndDate: new Date(endDate + 'T00:00:00').toISOString(),
+        subscriptionEndDate: dateInputToISOEndOfDay(endDate),
         remainingVisits: document.getElementById(`e_visits_${id}`).value === '' ? null : parseInt(document.getElementById(`e_visits_${id}`).value),
         status: document.getElementById(`e_status_${id}`).value
       };
       await updateMember(updated);
       showToast("შენახულია!");
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
-      updateSearchMemberList();
+      updateAll();
     };
 
     window.exportToExcel = function() {
@@ -715,14 +754,20 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     }
 
     function updateDashboard() {
-      const today = new Date().toDateString();
-      const todayVisits = window.members.filter(m => m.lastVisit && new Date(m.lastVisit).toDateString() === today).length;
+      const todayKey = new Date().toDateString();
+      const todayVisits = window.members.filter(m => m.lastVisit && new Date(m.lastVisit).toDateString() === todayKey).length;
       const active = window.members.filter(m => m.status === 'active').length;
       const expired = window.members.filter(m => m.status === 'expired').length;
       const paused = window.members.filter(m => m.status === 'paused').length;
       const soon = new Date(); 
       soon.setDate(soon.getDate() + 3);
-      const expiring = window.members.filter(m => m.status === 'active' && new Date(m.subscriptionEndDate) <= soon && new Date(m.subscriptionEndDate) > new Date()).length;
+      const today = startOfDay(new Date());
+      const soonDate = startOfDay(soon);
+      const expiring = window.members.filter(m => {
+        if (m.status !== 'active') return false;
+        const end = startOfDay(m.subscriptionEndDate);
+        return end >= today && end <= soonDate;
+      }).length;
       document.getElementById('todayVisits').textContent = todayVisits;
       document.getElementById('activeMembers').textContent = active;
       document.getElementById('expiredMembers').textContent = expired;
@@ -783,15 +828,20 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     function showExpiringSoon() {
       const soon = new Date(); 
       soon.setDate(soon.getDate() + 3);
-      const list = window.members.filter(m => m.status === 'active' && new Date(m.subscriptionEndDate) <= soon && new Date(m.subscriptionEndDate) >= new Date())
-        .sort((a,b) => new Date(a.subscriptionEndDate) - new Date(b.subscriptionEndDate));
+      const today = startOfDay(new Date());
+      const soonDate = startOfDay(soon);
+      const list = window.members.filter(m => {
+        if (m.status !== 'active') return false;
+        const end = startOfDay(m.subscriptionEndDate);
+        return end >= today && end <= soonDate;
+      }).sort((a,b) => new Date(a.subscriptionEndDate) - new Date(b.subscriptionEndDate));
       const container = document.getElementById('expiringSoonList');
       if (list.length === 0) { 
         container.innerHTML = '<p class="text-center py-10 text-gray-500">3 დღეში ვადაგასული წევრი ვერ მოიძებნა</p>'; 
         return; 
       }
       container.innerHTML = list.map(m => {
-        const days = Math.ceil((new Date(m.subscriptionEndDate) - new Date()) / 86400000);
+        const days = Math.ceil((startOfDay(m.subscriptionEndDate) - startOfDay(new Date())) / 86400000);
         const note = m.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
         return `<div class="member-card text-sm">${note}
           <div class="grid grid-cols-2 gap-3">
@@ -880,17 +930,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         btn.innerHTML = '<div class="spinner"></div>';
         try {
           const start = new Date(); 
-          let end = new Date(); 
+          let end = setToEndOfDay(addMonthsPreserveDay(start, 1)); 
           let visits = null; 
           let price = window.selectedSubscription.price; 
           let type = window.selectedSubscription.type;
           
           if (type === '12visits') { 
-            end.setDate(start.getDate() + 30); 
             visits = 12; 
           }
-          else if (type === 'morning') end.setDate(start.getDate() + 30);
-          else if (type === 'unlimited') end.setDate(start.getDate() + 30);
           else if (type === 'other') {
             const cp = +document.getElementById('customPrice').value;
             const cd = +document.getElementById('customDuration').value;
@@ -903,7 +950,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               return; 
             }
             price = cp; 
-            end.setDate(start.getDate() + cd); 
+            end.setDate(start.getDate() + cd);
+            end = setToEndOfDay(end);
             visits = cv; 
             type = desc;
           }
