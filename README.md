@@ -91,6 +91,15 @@
       return new Date() > new Date(endDateIso);
     }
 
+    function getEffectiveStatus(member) {
+      if (!member) return 'expired';
+      if (member.status === 'active') {
+        const visitsExhausted = member.remainingVisits !== null && member.remainingVisits <= 0;
+        if (isExpired(member.subscriptionEndDate) || visitsExhausted) return 'expired';
+      }
+      return member.status;
+    }
+
     function checkAuth() {
       if (!isAuthenticated) {
         document.getElementById('loginScreen').style.display = 'flex';
@@ -508,6 +517,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.toggleMemberDetails = function(id) {
       const member = window.members.find(m => m.id === id);
       if (!member) return;
+      const effectiveStatus = getEffectiveStatus(member);
       const detailsDiv = document.getElementById(`details-${id}`);
       if (detailsDiv) {
         detailsDiv.remove();
@@ -526,7 +536,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
             <div><strong>გააქტიურდა:</strong> ${formatDate(member.subscriptionStartDate)}</div>
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
-            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(member.status)}">${getStatusText(member.status)}</span></div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
             <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
           </div>
@@ -810,7 +820,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         container.innerHTML = `<p class="text-center py-16 text-gray-500 text-xl">${val ? 'ვერ მოიძებნა' : 'ჯერ არ არის წევრები'}</p>`;
         return;
       }
-      container.innerHTML = filtered.map(m => `
+      container.innerHTML = filtered.map(m => {
+        const effectiveStatus = getEffectiveStatus(m);
+        return `
         <div class="search-member-card" data-member-id="${m.id}" onclick="toggleMemberDetails('${m.id}')">
           <div class="search-card-content">
             <div class="search-card-info">
@@ -818,13 +830,15 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <div class="search-id">პირადი: ${m.personalId}</div>
               <div class="search-id">Email: ${m.email || '—'}</div>
               <div class="search-sub">${getSubscriptionName(m.subscriptionType)}</div>
+              <div class="search-id">სტატუსი: <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
               <div class="search-id">გააქტიურდა: ${formatDate(m.subscriptionStartDate)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
             </div>
             <div class="search-arrow">${document.getElementById(`details-${m.id}`) ? '−' : '+'}</div>
           </div>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
     function showExpiringSoon() {
