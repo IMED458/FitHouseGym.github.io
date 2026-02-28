@@ -715,7 +715,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </div>`;
       const container = document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
       container.after(div);
-      autoFillSubscription(id);
     };
 
     window.autoFillSubscription = function(id) {
