@@ -21,6 +21,7 @@
     const ADMIN_PASSWORD = "1234";
     let isAuthenticated = false;
     let hasRunEndDateNormalization = false;
+    let expandedSearchMemberId = null;
     window.members = [];
     window.selectedSubscription = null;
 
@@ -86,6 +87,35 @@
         if (isExpired(member.subscriptionEndDate) || visitsExhausted) return 'expired';
       }
       return member.status;
+    }
+
+    function buildMemberDetailsHTML(member) {
+      const effectiveStatus = getEffectiveStatus(member);
+      const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
+      return `
+        <div id="details-${member.id}" class="member-details-card animate-fadeIn">
+          ${noteBanner}
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
+            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+            <div><strong>პირადი:</strong> ${member.personalId}</div>
+            <div><strong>ტელეფონი:</strong> ${member.phone || '—'}</div>
+            <div><strong>Email:</strong> ${member.email || '—'}</div>
+            <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
+            <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
+            <div><strong>გააქტიურდა:</strong> ${formatDate(member.subscriptionStartDate)}</div>
+            <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
+            <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
+            <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
+          </div>
+          <div class="flex flex-wrap gap-3 justify-center">
+            <button class="btn btn-warning text-sm px-6 py-2" onclick="renewMembership('${member.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
+            ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
+            <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="deleteMember('${member.id}')">წაშლა</button>
+          </div>
+        </div>
+      `;
     }
 
     async function normalizeExistingMembershipEndDates(members) {
@@ -538,39 +568,16 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.toggleMemberDetails = function(id) {
       const member = window.members.find(m => m.id === id);
       if (!member) return;
-      const effectiveStatus = getEffectiveStatus(member);
       const detailsDiv = document.getElementById(`details-${id}`);
       if (detailsDiv) {
+        expandedSearchMemberId = null;
         detailsDiv.remove();
         return;
       }
-      const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
-      const detailsHTML = `
-        <div id="details-${id}" class="member-details-card animate-fadeIn">
-          ${noteBanner}
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
-            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
-            <div><strong>პირადი:</strong> ${member.personalId}</div>
-            <div><strong>ტელეფონი:</strong> ${member.phone || '—'}</div>
-            <div><strong>Email:</strong> ${member.email || '—'}</div>
-            <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
-            <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
-            <div><strong>გააქტიურდა:</strong> ${formatDate(member.subscriptionStartDate)}</div>
-            <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
-            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
-            <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
-            <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
-          </div>
-          <div class="flex flex-wrap gap-3 justify-center">
-            <button class="btn btn-warning text-sm px-6 py-2" onclick="renewMembership('${member.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
-            ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
-            <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="deleteMember('${member.id}')">წაშლა</button>
-          </div>
-        </div>
-      `;
+      expandedSearchMemberId = id;
+      const detailsHTML = buildMemberDetailsHTML(member);
       const card = document.querySelector(`[data-member-id="${id}"]`);
-      card.insertAdjacentHTML('afterend', detailsHTML);
+      if (card) card.insertAdjacentHTML('afterend', detailsHTML);
     };
 
     window.processCheckIn = async function(id) {
@@ -860,6 +867,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </div>
       `;
       }).join('');
+
+      if (expandedSearchMemberId) {
+        const expandedMember = filtered.find(m => m.id === expandedSearchMemberId);
+        const card = document.querySelector(`[data-member-id="${expandedSearchMemberId}"]`);
+        if (expandedMember && card && !document.getElementById(`details-${expandedSearchMemberId}`)) {
+          card.insertAdjacentHTML('afterend', buildMemberDetailsHTML(expandedMember));
+        }
+      }
     }
 
     function showExpiringSoon() {
