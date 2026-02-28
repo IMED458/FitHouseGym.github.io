@@ -1050,7 +1050,25 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           const el = document.getElementById('checkinResult');
           if (matches.length === 0) el.innerHTML = '<div class="member-card text-red-500 text-center py-10">ვერ მოიძებნა</div>';
           else if (matches.length === 1) checkMemberAccess(matches[0]);
-          else el.innerHTML = `<div class="member-card"><h3 class="font-bold mb-6 text-center">აირჩიეთ:</h3>${matches.map(m=>`<div class="p-5 border border-gray-600 rounded-xl mb-3 cursor-pointer hover:bg-gray-700 text-center" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))"><strong>${m.firstName} ${m.lastName}</strong> — ${m.personalId}</div>`).join('')}</div>`;
+          else el.innerHTML = `
+            <div class="member-card">
+              <h3 class="font-bold mb-6 text-center">აირჩიეთ წევრი</h3>
+              <div class="checkin-pick-list">
+                ${matches.map(m => {
+                  const effectiveStatus = getEffectiveStatus(m);
+                  return `
+                    <button type="button" class="checkin-pick-card" onclick="checkMemberAccess(window.members.find(x=>x.id==='${m.id}'))">
+                      <div class="checkin-pick-name">${m.firstName} ${m.lastName}</div>
+                      <div class="checkin-pick-meta">პირადი: ${m.personalId}</div>
+                      <div class="checkin-pick-meta">აბონემენტი: ${getSubscriptionName(m.subscriptionType)}</div>
+                      <div class="checkin-pick-meta">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
+                      <div class="checkin-pick-meta">სტატუსი: <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
         } else document.getElementById('checkinResult').innerHTML = '';
       });
     });
