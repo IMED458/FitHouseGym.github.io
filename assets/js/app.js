@@ -680,6 +680,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
       const m = window.members.find(x => x.id === id);
       if (!m) return;
+      const effectiveStatus = getEffectiveStatus(m);
       const div = document.createElement('div');
       div.className = 'edit-form';
       const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
@@ -703,9 +704,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
             <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
             <select id="e_status_${id}" class="form-input">
-              <option value="active" ${m.status==='active'?'selected':''}>აქტიური</option>
-              <option value="expired" ${m.status==='expired'?'selected':''}>ვადაგასული</option>
-              <option value="paused" ${m.status==='paused'?'selected':''}>შეჩერებული</option>
+              <option value="active" ${effectiveStatus==='active'?'selected':''}>აქტიური</option>
+              <option value="expired" ${effectiveStatus==='expired'?'selected':''}>ვადაგასული</option>
+              <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
             </select>
           </div>
           <div class="mt-6 flex gap-4 justify-center">
