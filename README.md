@@ -524,6 +524,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div><strong>Email:</strong> ${member.email || '—'}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
             <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
+            <div><strong>გააქტიურდა:</strong> ${formatDate(member.subscriptionStartDate)}</div>
             <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(member.status)}">${getStatusText(member.status)}</span></div>
             <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
@@ -817,6 +818,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <div class="search-id">პირადი: ${m.personalId}</div>
               <div class="search-id">Email: ${m.email || '—'}</div>
               <div class="search-sub">${getSubscriptionName(m.subscriptionType)}</div>
+              <div class="search-id">გააქტიურდა: ${formatDate(m.subscriptionStartDate)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
             </div>
             <div class="search-arrow">${document.getElementById(`details-${m.id}`) ? '−' : '+'}</div>
