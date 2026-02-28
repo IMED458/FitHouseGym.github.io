@@ -1,0 +1,243 @@
+<html lang="ka">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Fit House Gym - მენეჯმენტი</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
+  <link rel="icon" type="image/png" href="fithause logo.png">
+  <link rel="shortcut icon" type="image/png" href="fithause logo.png">
+  
+  <!-- EmailJS SDK -->
+  <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  
+  <script type="module" src="assets/js/app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <div id="loginScreen">
+    <div class="login-box">
+      <img src="fithause logo.png" alt="Fit House" class="logo" onerror="this.style.display='none'">
+      <h1>Fit House Gym</h1>
+      <input type="password" id="adminPassword" placeholder="••••">
+      <button class="btn btn-success text-2xl px-12 py-5" onclick="login()">შესვლა</button>
+    </div>
+  </div>
+  
+  <div id="mainApp" style="display:none">
+    <div class="theme-toggle" onclick="toggleTheme()">
+      <i class="fas fa-sun"></i>
+    </div>
+    
+    <div class="container">
+      <div class="header">
+        <img src="fithause logo.png" alt="Fit House" class="logo" onerror="this.style.display='none'">
+        <h1 class="gym-title">Fit House Gym</h1>
+      </div>
+      
+      <div class="nav-tabs">
+        <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
+        <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
+        <button class="nav-tab" onclick="showTab('search')">ძიება</button>
+        <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
+        <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
+        <button class="nav-tab bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
+          <i class="fas fa-envelope"></i> შეტყობინება
+        </button>
+        <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel</button>
+      </div>
+      
+      <div id="dashboard" class="tab-content active">
+        <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
+        <div class="dashboard-stats">
+          <div class="stat-card">
+            <div class="text-4xl font-bold" id="todayVisits">0</div>
+            <div class="text-lg mt-2">დღევანდელი ვიზიტები</div>
+          </div>
+          <div class="stat-card">
+            <div class="text-4xl font-bold" id="activeMembers">0</div>
+            <div class="text-lg mt-2">აქტიური წევრები</div>
+          </div>
+          <div class="stat-card">
+            <div class="text-4xl font-bold" id="expiredMembers">0</div>
+            <div class="text-lg mt-2">ვადაგასული</div>
+          </div>
+          <div class="stat-card" id="expiringMembersCard" onclick="toggleExpiringSoon()">
+            <div class="text-4xl font-bold" id="expiringMembers">0</div>
+            <div class="text-lg mt-2">3 დღეში ვადაგასული</div>
+          </div>
+          <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)">
+            <div class="text-4xl font-bold" id="pausedMembers">0</div>
+            <div class="text-lg mt-2">შეჩერებული</div>
+          </div>
+        </div>
+        
+        <div id="expiringSoonSection">
+          <h2 class="text-2xl font-bold text-center mb-6">3 დღეში ვადაგასული</h2>
+          <div id="expiringSoonList"></div>
+        </div>
+      </div>
+
+      <div id="register" class="tab-content">
+        <h2 class="text-3xl font-bold mb-8 text-center">ახალი წევრი</h2>
+        <form id="registrationForm" class="bg-slate-800 p-8 rounded-2xl">
+          <div class="form-grid">
+            <input type="text" id="firstName" placeholder="სახელი" class="form-input" required>
+            <input type="text" id="lastName" placeholder="გვარი" class="form-input" required>
+            <input type="email" id="email" placeholder="Email" class="form-input">
+            <input type="tel" id="phone" placeholder="ტელეფონი" class="form-input">
+            <input type="date" id="birthDate" class="form-input">
+            <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
+            <input type="text" id="note" placeholder="შენიშვნა" class="form-input">
+          </div>
+          
+          <h3 class="text-xl font-bold mt-10 mb-6 text-center">აბონემენტი</h3>
+          <div class="subscription-cards">
+            <div class="subscription-card" data-type="12visits" data-price="70">
+              12 ვარჯიში<br><span class="text-2xl font-bold">70₾</span>
+            </div>
+            <div class="subscription-card" data-type="morning" data-price="90">
+              დილის ულიმიტო<br><span class="text-2xl font-bold">90₾</span>
+            </div>
+            <div class="subscription-card" data-type="unlimited" data-price="110">
+              ულიმიტო<br><span class="text-2xl font-bold">110₾</span>
+            </div>
+            <div class="subscription-card" data-type="other">სხვა</div>
+          </div>
+          
+          <div id="customSubscriptionFields" style="display:none" class="form-grid mt-6">
+            <input type="text" id="customDescription" placeholder="აღწერა" class="form-input">
+            <input type="number" id="customPrice" placeholder="ფასი ₾" class="form-input">
+            <input type="number" id="customDuration" placeholder="ვადა (დღე)" class="form-input">
+            <input type="number" id="customVisits" placeholder="ვიზიტები (ცარიელი = ულიმიტო)" class="form-input">
+          </div>
+          
+          <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-4 mt-8 w-full">
+            რეგისტრაცია
+          </button>
+        </form>
+      </div>
+      
+      <div id="search" class="tab-content">
+        <h2 class="text-3xl font-bold mb-8 text-center">ძიება</h2>
+        <input type="text" id="searchInput" placeholder="სახელი, Email ან პირადი ნომერი..." class="search-input w-full text-xl py-4 mb-6">
+        <div id="searchResults"></div>
+      </div>
+      
+      <div id="checkin" class="tab-content">
+        <h2 class="text-3xl font-bold mb-8 text-center">შესვლა</h2>
+        <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-xl py-4">
+        <div id="checkinResult" class="mt-8"></div>
+      </div>
+      
+      <div id="expired" class="tab-content">
+        <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული წევრები</h2>
+        <div id="expiredList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="bulkMessageModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>შეტყობინება</h3>
+        <button class="modal-close" onclick="closeBulkMessageModal()">×</button>
+      </div>
+      
+      <div>
+        <div style="margin-bottom: 20px; padding: 16px; background: var(--surface); border-radius: 12px;">
+          <label style="display: block; margin-bottom: 12px; font-weight: 700; font-size: 1rem;">📋 შაბლონები:</label>
+          <div class="checkbox-group" style="background: transparent; padding: 0;">
+            <div class="checkbox-item">
+              <input type="checkbox" id="expiringTemplate" onchange="loadExpiringTemplate()">
+              <label for="expiringTemplate">💪 3 დღეში ვადაგასულებისთვის</label>
+            </div>
+            <div class="checkbox-item">
+              <input type="checkbox" id="gymClosedTemplate" onchange="loadGymClosedTemplate()">
+              <label for="gymClosedTemplate">⚠️ ჯიმი დახურულია</label>
+            </div>
+          </div>
+        </div>
+        
+        <label style="display: block; margin-bottom: 8px; font-weight: 600;">მიმღები:</label>
+        <div class="checkbox-group">
+          <div class="checkbox-item">
+            <input type="checkbox" id="statusActive" name="recipientStatus" value="active">
+            <label for="statusActive">აქტიური წევრები</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="statusExpired" name="recipientStatus" value="expired">
+            <label for="statusExpired">ვადაგასული წევრები</label>
+          </div>
+          <div class="checkbox-item">
+            <input type="checkbox" id="statusPaused" name="recipientStatus" value="paused">
+            <label for="statusPaused">შეჩერებული წევრები</label>
+          </div>
+          <div class="checkbox-item" style="border-top: 2px solid var(--border); padding-top: 12px; margin-top: 8px;">
+            <input type="checkbox" id="expiringOnly">
+            <label for="expiringOnly" style="color: var(--warning);">⏰ მხოლოდ 3 დღეში ვადაგასულები</label>
+          </div>
+        </div>
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">სათაური:</label>
+        <input type="text" id="bulkSubject" placeholder="მაგ. 🎉 დღეს ჯიმი დახურულია" class="form-input">
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">შეტყობინება:</label>
+        <textarea id="bulkMessage" placeholder="გამოიყენეთ {name} პერსონალიზაციისთვის
+
+მაგ. გამარჯობა {name}, გახსენებთ რომ..." class="form-input"></textarea>
+        
+        <div class="email-actions">
+          <button class="btn btn-success" id="sendBulkBtn" onclick="sendBulkMessage()">
+            <i class="fas fa-paper-plane"></i> გაგზავნა
+          </button>
+          <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeBulkMessageModal()">
+            გაუქმება
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="individualMessageModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>📧 ინდივიდუალური შეტყობინება</h3>
+        <button class="modal-close" onclick="closeIndividualMessageModal()">×</button>
+      </div>
+      
+      <div>
+        <input type="hidden" id="individualMemberId">
+        
+        <div style="background: var(--border); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <i class="fas fa-user" style="color: var(--accent);"></i>
+            <strong id="individualMemberName" style="font-size: 1.1rem;"></strong>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px; color: var(--text-light);">
+            <i class="fas fa-envelope"></i>
+            <span id="individualMemberEmail"></span>
+          </div>
+        </div>
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">სათაური:</label>
+        <input type="text" id="individualSubject" placeholder="მაგ. 💪 გილოცავ პროგრესს!" class="form-input">
+        
+        <label style="display: block; margin: 16px 0 8px; font-weight: 600;">შეტყობინება:</label>
+        <textarea id="individualMessage" placeholder="გამოიყენეთ {name} პერსონალიზაციისთვის
+
+მაგ. გამარჯობა {name}, გილოცავ მიღწევებს!" class="form-input"></textarea>
+        
+        <div class="email-actions">
+          <button class="btn btn-success" id="sendIndividualBtn" onclick="sendIndividualMessage()">
+            <i class="fas fa-paper-plane"></i> გაგზავნა
+          </button>
+          <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeIndividualMessageModal()">
+            გაუქმება
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
