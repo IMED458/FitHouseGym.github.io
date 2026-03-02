@@ -267,13 +267,15 @@ ${qrImageUrl}
       else showToast('QR გაგზავნა ვერ მოხერხდა', 'error');
     };
 
-    window.sendQrToAllMembers = async function() {
-      const targets = window.members.filter(m => m.email && String(m.email).trim());
+    window.sendQrToActiveMembers = async function() {
+      const targets = window.members.filter(
+        m => m.email && String(m.email).trim() && getEffectiveStatus(m) === 'active'
+      );
       if (targets.length === 0) {
-        showToast('Email მისამართები ვერ მოიძებნა', 'error');
+        showToast('აქტიური წევრები Email-ით ვერ მოიძებნა', 'error');
         return;
       }
-      const ok = confirm(`გაიგზავნოს QR კოდი ${targets.length} მომხმარებელთან?`);
+      const ok = confirm(`გაიგზავნოს QR კოდი ${targets.length} აქტიურ მომხმარებელთან?`);
       if (!ok) return;
 
       let success = 0;
@@ -295,7 +297,7 @@ ${qrImageUrl}
         await new Promise(resolve => setTimeout(resolve, 450));
       }
 
-      showToast(`QR გაგზავნა დასრულდა: ${success} წარმატებით, ${failed} შეცდომით`);
+      showToast(`აქტიურებზე QR გაგზავნა დასრულდა: ${success} წარმატებით, ${failed} შეცდომით`);
     };
 
     // ავტომატური შეტყობინება განახლებისთვის
