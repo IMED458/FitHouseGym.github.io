@@ -826,74 +826,89 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (!m) return;
       const effectiveStatus = getEffectiveStatus(m);
       const div = document.createElement('div');
-      div.className = 'edit-form';
+      div.className = 'edit-form edit-modal';
       const startDate = m.subscriptionStartDate ? toDateInputValue(m.subscriptionStartDate) : toDateInputValue(new Date().toISOString());
       const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
       div.innerHTML = `
-        <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
-          <h4 class="text-2xl font-bold mb-6 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
+        <div class="edit-modal-card">
+          <div class="edit-modal-header">
+            <h4 class="edit-modal-title">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
+            <button class="edit-modal-close" type="button" onclick="this.closest('.edit-form').remove()">×</button>
+          </div>
           <div class="edit-context">
             რედაქტირდება წევრი: <strong>${m.firstName} ${m.lastName}</strong> • პირადი: <strong>${m.personalId}</strong>
           </div>
           <div class="edit-grid">
-            <label class="edit-field-label" for="e_fn_${id}">სახელი</label>
-            <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
-
-            <label class="edit-field-label" for="e_ln_${id}">გვარი</label>
-            <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
-
-            <label class="edit-field-label" for="e_email_${id}">ელ-ფოსტა</label>
-            <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="Email">
-
-            <label class="edit-field-label" for="e_ph_${id}">ტელეფონი</label>
-            <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
-
-            <label class="edit-field-label" for="e_pid_${id}">პირადი ნომერი</label>
-            <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
-
-            <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
-            <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
-
-            <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
-            <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
-              <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
-              <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
-              <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
-              <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
-            </select>
-
-            <label class="edit-field-label" for="e_price_${id}">ფასი (₾)</label>
-            <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
-
-            <label class="edit-field-label" for="e_startdate_${id}">გააქტიურების თარიღი</label>
-            <input type="date" value="${startDate}" id="e_startdate_${id}" class="form-input">
-
-            <label class="edit-field-label" for="e_enddate_${id}">ვადის გასვლის თარიღი</label>
-            <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
-
-            <label class="edit-field-label" for="e_visits_${id}">დარჩენილი ვიზიტები</label>
-            <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
-
-            <label class="edit-field-label" for="e_status_${id}">სტატუსი</label>
-            <select id="e_status_${id}" class="form-input">
-              <option value="active" ${effectiveStatus==='active'?'selected':''}>აქტიური</option>
-              <option value="expired" ${effectiveStatus==='expired'?'selected':''}>ვადაგასული</option>
-              <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
-            </select>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_fn_${id}">სახელი</label>
+              <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_ln_${id}">გვარი</label>
+              <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_email_${id}">ელ-ფოსტა</label>
+              <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="Email">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_ph_${id}">ტელეფონი</label>
+              <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_pid_${id}">პირადი ნომერი</label>
+              <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
+              <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
+                <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
+                <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
+                <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
+                <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
+              </select>
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_price_${id}">ფასი (₾)</label>
+              <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_startdate_${id}">გააქტიურების თარიღი</label>
+              <input type="date" value="${startDate}" id="e_startdate_${id}" class="form-input">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_enddate_${id}">ვადის გასვლის თარიღი</label>
+              <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_visits_${id}">დარჩენილი ვიზიტები</label>
+              <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_status_${id}">სტატუსი</label>
+              <select id="e_status_${id}" class="form-input">
+                <option value="active" ${effectiveStatus==='active'?'selected':''}>აქტიური</option>
+                <option value="expired" ${effectiveStatus==='expired'?'selected':''}>ვადაგასული</option>
+                <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
+              </select>
+            </div>
+            <div class="edit-field">
+              <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
+              <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
+            </div>
           </div>
-          <div class="mt-6 flex gap-4 justify-center">
-            <button class="btn btn-success text-lg px-10 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
-            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
+          <div class="edit-actions">
+            <button class="btn btn-success px-8 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 px-8 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
-      const anchorFromEvent = e?.currentTarget?.closest('.member-card, .member-details-card, .search-member-card');
-      const container = anchorFromEvent || document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
-      if (container) {
-        container.after(div);
-      } else if (document.getElementById('expiredList')) {
-        document.getElementById('expiredList').prepend(div);
-      } else if (document.getElementById('searchResults')) {
-        document.getElementById('searchResults').prepend(div);
+      div.addEventListener('click', (ev) => {
+        if (ev.target === div) div.remove();
+      });
+      document.body.appendChild(div);
+      const firstInput = div.querySelector(`#e_fn_${id}`);
+      if (firstInput) {
+        firstInput.focus();
       }
     };
 
