@@ -1,25 +1,28 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
-    
+
+    // TODO: გადაიტანე .env ფაილში production-ზე
+    const ENV = window.__ENV__ || {};
     const firebaseConfig = {
-      apiKey: "AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8",
-      authDomain: "fit-house-gym-d3595.firebaseapp.com",
-      projectId: "fit-house-gym-d3595",
-      storageBucket: "fit-house-gym-d3595.firebasestorage.app",
-      messagingSenderId: "548276737406",
-      appId: "1:548276737406:web:12286429916b8c751fcf2f",
-      measurementId: "G-F4Y4CLVNFH"
+      apiKey: ENV.FIREBASE_API_KEY || "AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8",
+      authDomain: ENV.FIREBASE_AUTH_DOMAIN || "fit-house-gym-d3595.firebaseapp.com",
+      projectId: ENV.FIREBASE_PROJECT_ID || "fit-house-gym-d3595",
+      storageBucket: ENV.FIREBASE_STORAGE_BUCKET || "fit-house-gym-d3595.firebasestorage.app",
+      messagingSenderId: ENV.FIREBASE_MESSAGING_SENDER_ID || "548276737406",
+      appId: ENV.FIREBASE_APP_ID || "1:548276737406:web:12286429916b8c751fcf2f",
+      measurementId: ENV.FIREBASE_MEASUREMENT_ID || "G-F4Y4CLVNFH"
     };
-    
+
     // EmailJS Configuration
-    const EMAILJS_SERVICE_ID = 'service_q9x0cyo';
-    const EMAILJS_TEMPLATE_ID = 'template_ea0xdjl';
-    const EMAILJS_PUBLIC_KEY = 'eTWiK52sjfnLBVW9C';
-    
+    const EMAILJS_SERVICE_ID = ENV.EMAILJS_SERVICE_ID || 'service_q9x0cyo';
+    const EMAILJS_TEMPLATE_ID = ENV.EMAILJS_TEMPLATE_ID || 'template_ea0xdjl';
+    const EMAILJS_PUBLIC_KEY = ENV.EMAILJS_PUBLIC_KEY || 'eTWiK52sjfnLBVW9C';
+
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const ADMIN_PASSWORD = "1234";
+    const ADMIN_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
     let isAuthenticated = false;
+    let notificationsSchedulerStarted = false;
     let expandedSearchMemberId = null;
     window.members = [];
     window.selectedSubscription = null;
@@ -88,6 +91,25 @@
       return member.status;
     }
 
+    async function sha256Hex(text) {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      return Array.from(new Uint8Array(hashBuffer)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    function startExpiringNotificationsScheduler() {
+      if (notificationsSchedulerStarted) return;
+      notificationsSchedulerStarted = true;
+      setInterval(() => {
+        checkAndSendExpiringNotifications();
+      }, 3600000);
+
+      setTimeout(() => {
+        checkAndSendExpiringNotifications();
+      }, 5000);
+    }
+
     function buildMemberDetailsHTML(member) {
       const effectiveStatus = getEffectiveStatus(member);
       const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
@@ -127,12 +149,14 @@
       }
     }
 
-    window.login = function() {
+    window.login = async function() {
       const input = document.getElementById('adminPassword').value;
-      if (input === ADMIN_PASSWORD) {
+      const inputHash = await sha256Hex(input);
+      if (inputHash === ADMIN_PASSWORD_HASH) {
         isAuthenticated = true;
         checkAuth();
         loadMembers();
+        startExpiringNotificationsScheduler();
         showToast("ავტორიზაცია წარმატებით განხორციელდა!", "success");
       } else {
         showToast("პაროლი არასწორია!", "error");
@@ -264,14 +288,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
     }
 
-    setInterval(() => {
-      checkAndSendExpiringNotifications();
-    }, 3600000);
-
-    setTimeout(() => {
-      checkAndSendExpiringNotifications();
-    }, 5000);
-
     window.openBulkMessageModal = function() {
       document.getElementById('bulkMessageModal').style.display = 'flex';
       document.getElementById('bulkSubject').value = '';
@@ -284,6 +300,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('bulkMessage').value = '';
       document.querySelectorAll('input[name="recipientStatus"]').forEach(cb => cb.checked = false);
       document.getElementById('expiringOnly').checked = false;
+      document.getElementById('expiringTemplate').checked = false;
       document.getElementById('gymClosedTemplate').checked = false;
     };
 
@@ -335,7 +352,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (selectedStatuses.length === 0) {
         recipients = window.members.filter(m => m.email);
       } else {
-        recipients = window.members.filter(m => m.email && selectedStatuses.includes(m.status));
+        recipients = window.members.filter(m => m.email && selectedStatuses.includes(getEffectiveStatus(m)));
       }
       
       if (document.getElementById('expiringOnly').checked) {
@@ -459,7 +476,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     window.confirmDelete = async function(id, modal) {
       const pass = document.getElementById('deletePassword').value;
-      if (pass !== ADMIN_PASSWORD) {
+      const passHash = await sha256Hex(pass);
+      if (passHash !== ADMIN_PASSWORD_HASH) {
         showToast("პაროლი არასწორია!", "error");
         return;
       }
@@ -649,6 +667,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const effectiveStatus = getEffectiveStatus(m);
       const div = document.createElement('div');
       div.className = 'edit-form';
+      const startDate = m.subscriptionStartDate ? toDateInputValue(m.subscriptionStartDate) : toDateInputValue(new Date().toISOString());
       const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
       div.innerHTML = `
         <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
@@ -667,6 +686,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
             </select>
             <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
+            <input type="date" value="${startDate}" id="e_startdate_${id}" class="form-input">
             <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
             <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
             <select id="e_status_${id}" class="form-input">
@@ -711,9 +731,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.saveEdit = async function(id) {
       const m = window.members.find(x => x.id === id);
       if (!m) return;
+      const startDate = document.getElementById(`e_startdate_${id}`).value;
       const endDate = document.getElementById(`e_enddate_${id}`).value;
-      if (!endDate) { 
-        showToast("ვადა სავალდებულოა!", 'error'); 
+      if (!startDate || !endDate) {
+        showToast("გააქტიურების და ვადის თარიღი სავალდებულოა!", 'error');
         return; 
       }
       const updated = {
@@ -726,6 +747,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         note: document.getElementById(`e_note_${id}`).value.trim() || null,
         subscriptionType: document.getElementById(`e_subtype_${id}`).value,
         subscriptionPrice: parseFloat(document.getElementById(`e_price_${id}`).value) || 0,
+        subscriptionStartDate: dateInputToISOEndOfDay(startDate),
         subscriptionEndDate: dateInputToISOEndOfDay(endDate),
         remainingVisits: document.getElementById(`e_visits_${id}`).value === '' ? null : parseInt(document.getElementById(`e_visits_${id}`).value),
         status: document.getElementById(`e_status_${id}`).value
