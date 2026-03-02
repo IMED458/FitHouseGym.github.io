@@ -267,6 +267,37 @@ ${qrImageUrl}
       else showToast('QR გაგზავნა ვერ მოხერხდა', 'error');
     };
 
+    window.sendQrToAllMembers = async function() {
+      const targets = window.members.filter(m => m.email && String(m.email).trim());
+      if (targets.length === 0) {
+        showToast('Email მისამართები ვერ მოიძებნა', 'error');
+        return;
+      }
+      const ok = confirm(`გაიგზავნოს QR კოდი ${targets.length} მომხმარებელთან?`);
+      if (!ok) return;
+
+      let success = 0;
+      let failed = 0;
+      for (const member of targets) {
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(member.id)}`;
+        const subject = '📱 თქვენი Fit House Gym QR კოდი';
+        const message = `გამარჯობა ${member.firstName || ''}, თქვენი QR კოდი ქვემოთაა:\n${qrImageUrl}`;
+        const htmlMessage = `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`;
+
+        const sent = await sendEmail(member.email, member.firstName || 'მომხმარებელი', subject, message, {
+          qr_image_url: qrImageUrl,
+          qr_url: qrImageUrl,
+          html_message: htmlMessage
+        });
+
+        if (sent) success++;
+        else failed++;
+        await new Promise(resolve => setTimeout(resolve, 450));
+      }
+
+      showToast(`QR გაგზავნა დასრულდა: ${success} წარმატებით, ${failed} შეცდომით`);
+    };
+
     // ავტომატური შეტყობინება განახლებისთვის
     async function sendRenewalEmail(member) {
       if (!member.email) return;
