@@ -397,12 +397,12 @@
     .edit-grid {
       display: grid;
       grid-template-columns: 1fr;
-      gap: 12px;
+      gap: 10px;
     }
     .edit-field {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 4px;
     }
     .edit-field-label {
       font-size: 0.88rem;
@@ -412,11 +412,13 @@
       margin: 0;
     }
     .edit-note-input {
-      min-height: 90px;
+      min-height: 70px;
       resize: vertical;
     }
     .edit-grid .form-input {
       min-width: 0;
+      padding: 10px 12px;
+      font-size: 14px;
     }
     .edit-modal {
       position: fixed;
@@ -430,14 +432,14 @@
       backdrop-filter: blur(3px);
     }
     .edit-modal-card {
-      width: min(760px, 96vw);
+      width: min(520px, 92vw);
       max-height: 90vh;
       overflow: auto;
       background: var(--card-bg);
       border: 2px solid #3b82f6;
       border-radius: 16px;
       box-shadow: 0 26px 70px var(--shadow);
-      padding: 18px;
+      padding: 14px;
     }
     .edit-modal-header {
       display: flex;
@@ -608,7 +610,7 @@
       .gym-title{font-size:2.3rem} 
       .header{flex-direction:column} 
       .form-grid{grid-template-columns:1fr} 
-      .edit-modal-card{padding:14px}
+      .edit-modal-card{width:min(460px,92vw); padding:12px}
       .edit-actions .btn { width: 100%; }
       .modal-content {
         padding: 24px;
