@@ -385,6 +385,35 @@
       margin:12px 0 20px; 
       box-shadow:0 12px 40px rgba(96,165,250,0.3);
     }
+    .edit-context {
+      background: rgba(96, 165, 250, 0.12);
+      border: 1px solid rgba(96, 165, 250, 0.45);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 14px;
+      font-size: 0.92rem;
+      color: var(--text-light);
+    }
+    .edit-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .edit-field-label {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: var(--text-light);
+      line-height: 1.2;
+      margin: 0;
+    }
+    .edit-note-input {
+      min-height: 90px;
+      resize: vertical;
+    }
+    .edit-grid .form-input {
+      min-width: 0;
+    }
     #loginScreen { 
       position:fixed; 
       inset:0; 
@@ -523,6 +552,7 @@
       .gym-title{font-size:2.3rem} 
       .header{flex-direction:column} 
       .form-grid{grid-template-columns:1fr} 
+      .edit-grid{grid-template-columns:1fr}
       .modal-content {
         padding: 24px;
       }
