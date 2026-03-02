@@ -109,10 +109,10 @@
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
           </div>
           <div class="flex flex-wrap gap-3 justify-center">
-            <button class="btn btn-warning text-sm px-6 py-2" onclick="renewMembership('${member.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="showEditForm(event, '${member.id}')">რედაქტირება</button>
-            ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
-            <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="deleteMember('${member.id}')">წაშლა</button>
+            <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="window.showEditForm(event, '${member.id}')">რედაქტირება</button>
+            ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
+            <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
         </div>
       `;
@@ -694,7 +694,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
             <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
             <textarea id="e_note_${id}" class="form-input" style="height:90px;" placeholder="შენიშვნა">${m.note || ''}</textarea>
-            <select id="e_subtype_${id}" class="form-input" onchange="autoFillSubscription('${id}')">
+            <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
               <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
               <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
               <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
@@ -710,12 +710,19 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             </select>
           </div>
           <div class="mt-6 flex gap-4 justify-center">
-            <button class="btn btn-success text-lg px-10 py-3" onclick="saveEdit('${id}')">შენახვა</button>
+            <button class="btn btn-success text-lg px-10 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
             <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
-      const container = document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
-      container.after(div);
+      const anchorFromEvent = e?.currentTarget?.closest('.member-card, .member-details-card, .search-member-card');
+      const container = anchorFromEvent || document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
+      if (container) {
+        container.after(div);
+      } else if (document.getElementById('expiredList')) {
+        document.getElementById('expiredList').prepend(div);
+      } else if (document.getElementById('searchResults')) {
+        document.getElementById('searchResults').prepend(div);
+      }
     };
 
     window.autoFillSubscription = function(id) {
@@ -828,7 +835,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           </div>
           <div class="mt-4 flex gap-3 justify-center text-sm">
             <button class="btn btn-warning px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(null, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="window.deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
@@ -905,7 +912,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           </div>
           <div class="mt-4 flex gap-3 justify-center">
             <button class="btn btn-warning text-sm px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
-            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="window.showEditForm(null, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
           </div></div>`;
       }).join('');
