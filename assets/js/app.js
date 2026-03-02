@@ -132,6 +132,7 @@
           <div class="flex flex-wrap gap-3 justify-center">
             <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="window.showEditForm(event, '${member.id}')">რედაქტირება</button>
+            <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
@@ -164,14 +165,15 @@
     };
 
     // ფუნქცია ემეილის გასაგზავნად
-    window.sendEmail = async function(toEmail, toName, subject, message) {
+    window.sendEmail = async function(toEmail, toName, subject, message, extraParams = {}) {
       try {
         const templateParams = {
           to_email: toEmail,
           to_name: toName,
           subject: subject,
           message: message,
-          from_name: 'Fit House Gym'
+          from_name: 'Fit House Gym',
+          ...extraParams
         };
         
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
@@ -185,32 +187,20 @@
     // ავტომატური შეტყობინება ახალი რეგისტრაციისთვის
     async function sendWelcomeEmail(member) {
       if (!member.email) return;
-      
-      const subject = '🎉 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ში!';
-      const startDate = formatDate(member.subscriptionStartDate);
-      const endDate = formatDate(member.subscriptionEndDate);
-      const subType = getSubscriptionName(member.subscriptionType);
-      
-      const message = `კეთილი იყოს თქვენი მობრძანება Fit House Gym-ის ოჯახში! 🎉
 
-თქვენი აბონემენტი წარმატებით გააქტიურდა და  მზად ვართ დაგეხმაროთ თქვენი მიზნების მიღწევაში.
+      const subject = '🎉 Fit House Gym — თქვენი QR კოდი';
+      const qrImageUrl = member.id ? getMemberQrImageUrl(member.id) : '';
+      const message = qrImageUrl
+        ? `თქვენი QR კოდი თან ერთვის ამ წერილს.\n\nთუ სურათი არ ჩანს, QR გახსენი ამ ბმულზე:\n${qrImageUrl}`
+        : 'თქვენი QR კოდი თან ერთვის ამ წერილს.';
+      const htmlMessage = qrImageUrl
+        ? `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`
+        : '';
 
-📋 აბონემენტის დეტალები:
-
-🎫 ტიპი: ${subType}
-💰 ფასი: ${member.subscriptionPrice}₾
-📅 გააქტიურების თარიღი: ${startDate}
-⏰ ვადის გასვლის თარიღი: ${endDate}
-${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : '♾️ ვიზიტები: ულიმიტო'}
-
-
-📍 მისამართი: თელავი, საქართველო
-📞 ტელეფონი: +995 511 77 63 37
-
-
-გელოდებით ჯიმში და გისურვებთ წარმატებებს! 🔥`;
-
-      await sendEmail(member.email, member.firstName, subject, message);
+      await sendEmail(member.email, member.firstName, subject, message, {
+        qr_image_url: qrImageUrl,
+        html_message: htmlMessage
+      });
     }
 
     // ავტომატური შეტყობინება განახლებისთვის
@@ -502,13 +492,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     async function createMember(m) {
       try { 
-        await addDoc(collection(db, "members"), m);
+        const docRef = await addDoc(collection(db, "members"), m);
         showToast("დარეგისტრირდა!");
         
         if (m.email) {
-          setTimeout(() => {
-            sendWelcomeEmail(m);
-          }, 1000);
+          const memberWithId = { ...m, id: docRef.id };
+          setTimeout(() => sendWelcomeEmail(memberWithId), 1000);
         }
       }
       catch (e) { 
@@ -523,6 +512,89 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       catch (e) { 
         console.error(e); 
       }
+    }
+
+    // ======= QR კოდის ფუნქციები =======
+
+    function getMemberQrPayload(memberId) {
+      return `FH_MEMBER:${memberId}`;
+    }
+
+    function getMemberQrImageUrl(memberId) {
+      const payload = getMemberQrPayload(memberId);
+      return `https://api.qrserver.com/v1/create-qr-code/?size=280x280&margin=8&data=${encodeURIComponent(payload)}`;
+    }
+
+    window.showMemberQr = function(memberId) {
+      const member = window.members.find(m => m.id === memberId);
+      if (!member) return;
+      document.getElementById('qrViewName').textContent = `${member.firstName} ${member.lastName}`;
+      document.getElementById('qrViewId').textContent = `პირადი: ${member.personalId}`;
+      const container = document.getElementById('qrViewCode');
+      container.innerHTML = '';
+      new QRCode(container, {
+        text: getMemberQrPayload(member.id),
+        width: 200,
+        height: 200,
+        colorDark: '#000000',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H
+      });
+      document.getElementById('qrViewModal').style.display = 'flex';
+    };
+
+    let html5QrScanner = null;
+
+    window.openQrScanner = function() {
+      document.getElementById('qrScannerModal').style.display = 'flex';
+      document.getElementById('qr-scan-result').innerHTML = '';
+      setTimeout(() => {
+        html5QrScanner = new Html5Qrcode('qr-reader');
+        html5QrScanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          async (decodedText) => {
+            await html5QrScanner.stop();
+            html5QrScanner = null;
+            handleQrScan(decodedText);
+          },
+          () => {}
+        ).catch(err => {
+          document.getElementById('qr-scan-result').innerHTML = `<div style="color:#f87171;text-align:center;padding:16px;">კამერა ვერ გაიხსნა.<br><small>${err}</small></div>`;
+        });
+      }, 200);
+    };
+
+    window.closeQrScanner = async function() {
+      if (html5QrScanner) {
+        try { await html5QrScanner.stop(); } catch (e) {}
+        html5QrScanner = null;
+      }
+      document.getElementById('qrScannerModal').style.display = 'none';
+      const reader = document.getElementById('qr-reader');
+      if (reader) reader.innerHTML = '';
+      document.getElementById('qr-scan-result').innerHTML = '';
+    };
+
+    async function handleQrScan(decodedText) {
+      let memberId = decodedText.trim();
+      if (memberId.startsWith('FH_MEMBER:')) {
+        memberId = memberId.slice('FH_MEMBER:'.length);
+      }
+      const member = window.members.find(m => m.id === memberId);
+      if (!member) {
+        document.getElementById('qr-scan-result').innerHTML = `
+          <div style="text-align:center;padding:16px;">
+            <div style="color:#f87171;font-size:1.1rem;font-weight:700;margin-bottom:8px;">❌ წევრი ვერ მოიძებნა</div>
+            <div style="color:#9ca3af;font-size:0.9rem;margin-bottom:12px;">QR კოდი სისტემაში არ არსებობს</div>
+            <button class="btn bg-indigo-600 hover:bg-indigo-700" onclick="window.openQrScanner()">ხელახლა სკანი</button>
+          </div>`;
+        return;
+      }
+
+      await window.closeQrScanner();
+      window.showTab('checkin');
+      await window.processCheckIn(member.id);
     }
 
     window.showTab = function(tab) {
@@ -865,6 +937,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="mt-4 flex gap-3 justify-center text-sm">
             <button class="btn btn-warning px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-indigo-600 hover:bg-indigo-700 px-5 py-2" onclick="window.showMemberQr('${m.id}')"><i class="fas fa-qrcode"></i> QR</button>
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="window.deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
@@ -1009,11 +1082,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       
       document.getElementById('registrationForm').addEventListener('submit', async e => {
         e.preventDefault();
+        const btn = document.getElementById('registerBtn');
+        if (btn.disabled) return;
         if (!window.selectedSubscription) { 
           showToast("აირჩიეთ აბონემენტი", 'error'); 
           return; 
         }
-        const btn = document.getElementById('registerBtn'); 
         btn.disabled = true; 
         btn.innerHTML = '<div class="spinner"></div>';
         try {

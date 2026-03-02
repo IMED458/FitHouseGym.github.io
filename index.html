@@ -10,6 +10,10 @@
   
   <!-- EmailJS SDK -->
   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <!-- QR Code Generator -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- QR Code Scanner -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   
   <script type="module" src="assets/js/app.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -127,7 +131,12 @@
       
       <div id="checkin" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">შესვლა</h2>
-        <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-xl py-4">
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;">
+          <input type="text" id="checkinSearch" placeholder="სახელი ან პირადი..." class="search-input w-full text-xl py-4" style="flex:1;">
+          <button class="btn bg-indigo-600 hover:bg-indigo-700 text-lg px-6 py-4" onclick="window.openQrScanner()" style="white-space:nowrap;">
+            <i class="fas fa-qrcode"></i> QR სკანი
+          </button>
+        </div>
         <div id="checkinResult" class="mt-8"></div>
       </div>
       
@@ -236,6 +245,39 @@
           <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeIndividualMessageModal()">
             გაუქმება
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR Scanner Modal -->
+  <div id="qrScannerModal" class="modal">
+    <div class="modal-content" style="max-width:480px;">
+      <div class="modal-header">
+        <h3><i class="fas fa-qrcode"></i> QR კოდის სკანერი</h3>
+        <button class="modal-close" onclick="window.closeQrScanner()">×</button>
+      </div>
+      <div style="padding:8px 0;">
+        <div id="qr-reader" style="width:100%;border-radius:12px;overflow:hidden;"></div>
+        <div id="qr-scan-result" style="margin-top:16px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QR View Modal -->
+  <div id="qrViewModal" class="modal">
+    <div class="modal-content" style="max-width:380px;text-align:center;">
+      <div class="modal-header">
+        <h3><i class="fas fa-qrcode"></i> წევრის QR კოდი</h3>
+        <button class="modal-close" onclick="document.getElementById('qrViewModal').style.display='none'">×</button>
+      </div>
+      <div style="padding:16px 0;">
+        <div id="qrViewName" style="font-size:1.2rem;font-weight:700;margin-bottom:4px;"></div>
+        <div id="qrViewId" style="font-size:0.9rem;color:var(--text-light);margin-bottom:20px;"></div>
+        <div id="qrViewCode" style="display:flex;justify-content:center;margin-bottom:20px;"></div>
+        <div style="font-size:0.85rem;color:var(--text-light);line-height:1.6;">
+          ეს QR კოდი მუდმივია და არ იცვლება.<br>
+          სკანერი ავტომატურად შეამოწმებს აბონემენტს.
         </div>
       </div>
     </div>
