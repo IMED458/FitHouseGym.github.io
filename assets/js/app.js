@@ -20,7 +20,6 @@
     const db = getFirestore(app);
     const ADMIN_PASSWORD = "1234";
     let isAuthenticated = false;
-    let hasRunEndDateNormalization = false;
     let expandedSearchMemberId = null;
     window.members = [];
     window.selectedSubscription = null;
@@ -116,33 +115,6 @@
           </div>
         </div>
       `;
-    }
-
-    async function normalizeExistingMembershipEndDates(members) {
-      const oneMonthTypes = new Set(['12visits', 'morning', 'unlimited']);
-      const updates = members.filter((m) => {
-        if (!m?.id || !m.subscriptionStartDate || !m.subscriptionEndDate) return false;
-        if (!oneMonthTypes.has(m.subscriptionType)) return false;
-
-        const expectedEnd = setToEndOfDay(addMonthsPreserveDay(new Date(m.subscriptionStartDate), 1));
-        const currentEnd = new Date(m.subscriptionEndDate);
-
-        const expectedDateKey = toDateInputValue(expectedEnd.toISOString());
-        const currentDateKey = toDateInputValue(currentEnd.toISOString());
-        const hasWrongDate = expectedDateKey !== currentDateKey;
-        const hasWrongTime = currentEnd.getHours() !== 23 || currentEnd.getMinutes() !== 59 || currentEnd.getSeconds() !== 59;
-
-        return hasWrongDate || hasWrongTime;
-      });
-
-      if (updates.length === 0) return;
-
-      for (const member of updates) {
-        const fixedEnd = setToEndOfDay(addMonthsPreserveDay(new Date(member.subscriptionStartDate), 1)).toISOString();
-        await updateMember({ id: member.id, subscriptionEndDate: fixedEnd });
-      }
-
-      showToast(`გასწორდა ${updates.length} წევრის ვადის თარიღი`, 'success');
     }
 
     function checkAuth() {
@@ -504,14 +476,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     function loadMembers() {
       const q = query(collection(db, "members"));
-      onSnapshot(q, async (snapshot) => {
+      onSnapshot(q, (snapshot) => {
         window.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-
-        if (!hasRunEndDateNormalization) {
-          hasRunEndDateNormalization = true;
-          await normalizeExistingMembershipEndDates(window.members);
-        }
-
         updateAll();
       });
     }
