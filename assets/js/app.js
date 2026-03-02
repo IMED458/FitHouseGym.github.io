@@ -189,16 +189,39 @@
     async function sendWelcomeEmail(member) {
       if (!member.email) return;
       
-      const subject = '🎉 Fit House Gym — თქვენი QR კოდი';
-      const qrImageUrl = member.id ? getMemberQrImageUrl(member.id) : '';
-      const message = 'თქვენი QR კოდი თან ერთვის ამ წერილს.';
+      const subject = '🎉 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ში!';
+      const startDate = formatDate(member.subscriptionStartDate);
+      const endDate = formatDate(member.subscriptionEndDate);
+      const subType = getSubscriptionName(member.subscriptionType);
+      const qrImageUrl = member.id
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(member.id)}`
+        : '';
+      const message = `კეთილი იყოს თქვენი მობრძანება Fit House Gym-ის ოჯახში! 🎉
+
+თქვენი აბონემენტი წარმატებით გააქტიურდა და მზად ვართ დაგეხმაროთ თქვენი მიზნების მიღწევაში.
+
+📋 აბონემენტის დეტალები:
+🎫 ტიპი: ${subType}
+💰 ფასი: ${member.subscriptionPrice}₾
+📅 გააქტიურების თარიღი: ${startDate}
+⏰ ვადის გასვლის თარიღი: ${endDate}
+${member.remainingVisits != null ? `🔢 ვიზიტების რაოდენობა: ${member.remainingVisits}` : '♾️ ვიზიტები: ულიმიტო'}
+
+📱 თქვენი QR კოდის ლინკი:
+${qrImageUrl}
+
+📍 მისამართი: თელავი, საქართველო
+📞 ტელეფონი: +995 511 77 63 37
+
+გელოდებით ჯიმში და გისურვებთ წარმატებებს! 🔥`;
       const htmlMessage = qrImageUrl
         ? `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`
         : '';
 
       await sendEmail(member.email, member.firstName, subject, message, {
         qr_image_url: qrImageUrl,
-        html_message: htmlMessage
+        html_message: htmlMessage,
+        qr_url: qrImageUrl
       });
     }
 
