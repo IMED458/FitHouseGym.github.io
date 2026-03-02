@@ -215,12 +215,13 @@
 
       const subject = '📱 თქვენი Fit House Gym QR კოდი';
       const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(member.id)}`;
-      const message = `გამარჯობა ${member.firstName}, თქვენი QR კოდი თან ერთვის ამ წერილს.`;
+      const message = `გამარჯობა ${member.firstName}, თქვენი QR კოდი ქვემოთაა:\n${qrImageUrl}`;
       const htmlMessage = `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`;
 
       const sent = await sendEmail(member.email, member.firstName, subject, message, {
         qr_image_url: qrImageUrl,
-        html_message: htmlMessage
+        html_message: htmlMessage,
+        qr_url: qrImageUrl
       });
 
       if (sent) showToast(`QR გაიგზავნა: ${member.firstName} ${member.lastName}`);
