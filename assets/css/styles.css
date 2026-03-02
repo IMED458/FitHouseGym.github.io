@@ -396,9 +396,13 @@
     }
     .edit-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px 14px;
-      align-items: center;
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+    .edit-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .edit-field-label {
       font-size: 0.88rem;
@@ -604,7 +608,6 @@
       .gym-title{font-size:2.3rem} 
       .header{flex-direction:column} 
       .form-grid{grid-template-columns:1fr} 
-      .edit-grid{grid-template-columns:1fr}
       .edit-modal-card{padding:14px}
       .edit-actions .btn { width: 100%; }
       .modal-content {
