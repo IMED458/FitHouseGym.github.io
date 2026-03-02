@@ -187,12 +187,10 @@
     // ავტომატური შეტყობინება ახალი რეგისტრაციისთვის
     async function sendWelcomeEmail(member) {
       if (!member.email) return;
-
+      
       const subject = '🎉 Fit House Gym — თქვენი QR კოდი';
       const qrImageUrl = member.id ? getMemberQrImageUrl(member.id) : '';
-      const message = qrImageUrl
-        ? `თქვენი QR კოდი თან ერთვის ამ წერილს.\n\nთუ სურათი არ ჩანს, QR გახსენი ამ ბმულზე:\n${qrImageUrl}`
-        : 'თქვენი QR კოდი თან ერთვის ამ წერილს.';
+      const message = 'თქვენი QR კოდი თან ერთვის ამ წერილს.';
       const htmlMessage = qrImageUrl
         ? `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`
         : '';
@@ -487,6 +485,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       onSnapshot(q, (snapshot) => {
         window.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         updateAll();
+        checkUrlQrParam();
       });
     }
 
@@ -496,6 +495,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         showToast("დარეგისტრირდა!");
         
         if (m.email) {
+          // მხოლოდ ერთი წერილი: welcome + QR იმავე წერილში
           const memberWithId = { ...m, id: docRef.id };
           setTimeout(() => sendWelcomeEmail(memberWithId), 1000);
         }
@@ -532,6 +532,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('qrViewId').textContent = `პირადი: ${member.personalId}`;
       const container = document.getElementById('qrViewCode');
       container.innerHTML = '';
+      // QR-ში ვინახავთ მხოლოდ შიდა payload-ს (არასოდეს URL)
       new QRCode(container, {
         text: getMemberQrPayload(member.id),
         width: 200,
@@ -567,7 +568,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     window.closeQrScanner = async function() {
       if (html5QrScanner) {
-        try { await html5QrScanner.stop(); } catch (e) {}
+        try { await html5QrScanner.stop(); } catch(e) {}
         html5QrScanner = null;
       }
       document.getElementById('qrScannerModal').style.display = 'none';
@@ -577,12 +578,17 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     async function handleQrScan(decodedText) {
+      // QR-ში ინახება მხოლოდ შიდა payload (FH_MEMBER:<id>) ან fallback member.id
       let memberId = decodedText.trim();
       if (memberId.startsWith('FH_MEMBER:')) {
         memberId = memberId.slice('FH_MEMBER:'.length);
       }
+
       const member = window.members.find(m => m.id === memberId);
+
+      // წევრი ვერ მოიძებნა
       if (!member) {
+        document.getElementById('qrScannerModal').style.display = 'flex';
         document.getElementById('qr-scan-result').innerHTML = `
           <div style="text-align:center;padding:16px;">
             <div style="color:#f87171;font-size:1.1rem;font-weight:700;margin-bottom:8px;">❌ წევრი ვერ მოიძებნა</div>
@@ -592,10 +598,92 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
 
+      // სკანერი იხურება
       await window.closeQrScanner();
       window.showTab('checkin');
-      await window.processCheckIn(member.id);
+
+      const now = new Date();
+      const hour = now.getHours();
+      const el = document.getElementById('checkinResult');
+      const noteBanner = member.note
+        ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>`
+        : '';
+
+      // შესვლის შემაფერხებელი პირობები
+      if (member.status !== 'active') {
+        el.innerHTML = `<div class="member-card p-6">${noteBanner}
+          <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+            <div><strong>პირადი:</strong> ${member.personalId}</div>
+          </div>
+          <div class="text-center text-2xl font-bold text-red-400 py-4">❌ შეჩერებულია</div>
+        </div>`;
+        showToast("არააქტიურია", 'error');
+        return;
+      }
+      if (isExpired(member.subscriptionEndDate)) {
+        await updateMember({...member, status: 'expired'});
+        el.innerHTML = `<div class="member-card p-6">${noteBanner}
+          <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+            <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
+          </div>
+          <div class="text-center text-2xl font-bold text-red-400 py-4">❌ ვადა გასულია</div>
+        </div>`;
+        showToast("ვადა გასულია!", 'error');
+        return;
+      }
+      if (member.remainingVisits !== null && member.remainingVisits <= 0) {
+        await updateMember({...member, status: 'expired'});
+        el.innerHTML = `<div class="member-card p-6">${noteBanner}
+          <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+            <div><strong>დარჩენილი:</strong> 0</div>
+          </div>
+          <div class="text-center text-2xl font-bold text-red-400 py-4">❌ ვიზიტები ამოწურულია</div>
+        </div>`;
+        showToast("ვიზიტები ამოწურულია", 'error');
+        return;
+      }
+      if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) {
+        el.innerHTML = `<div class="member-card p-6">${noteBanner}
+          <div class="grid grid-cols-2 gap-4 text-sm mb-4">
+            <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+            <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
+          </div>
+          <div class="text-center text-2xl font-bold text-red-400 py-4">❌ მხოლოდ 09:00–16:00</div>
+        </div>`;
+        showToast("მხოლოდ 09:00–16:00", 'error');
+        return;
+      }
+
+      // ✅ შესვლა დაშვებულია — processCheckIn-ის იგივე ლოგიკა
+      let updated = { ...member };
+      updated.lastVisit = now.toISOString();
+      updated.totalVisits = (updated.totalVisits || 0) + 1;
+      if (member.remainingVisits !== null) {
+        updated.remainingVisits = member.remainingVisits - 1;
+        if (updated.remainingVisits <= 0) updated.status = 'expired';
+      }
+      await updateMember(updated);
+
+      const remainingText = updated.remainingVisits != null
+        ? `<div><strong>დარჩენილი ვიზიტი:</strong> ${updated.remainingVisits}</div>`
+        : '';
+      el.innerHTML = `<div class="member-card p-6">${noteBanner}
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
+          <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
+          <div><strong>პირადი:</strong> ${member.personalId}</div>
+          <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
+          <div><strong>ვადა:</strong> ${formatDate(member.subscriptionEndDate)}</div>
+          ${remainingText}
+        </div>
+        <div class="text-center text-2xl font-bold text-green-400 py-4">✅ შესვლა დაფიქსირდა!</div>
+      </div>`;
+      showToast(`✅ ${member.firstName} ${member.lastName} — შესვლა დაფიქსირდა!`);
     }
+
+    function checkUrlQrParam() {}
 
     window.showTab = function(tab) {
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -738,89 +826,74 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (!m) return;
       const effectiveStatus = getEffectiveStatus(m);
       const div = document.createElement('div');
-      div.className = 'edit-form edit-modal';
+      div.className = 'edit-form';
       const startDate = m.subscriptionStartDate ? toDateInputValue(m.subscriptionStartDate) : toDateInputValue(new Date().toISOString());
       const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
       div.innerHTML = `
-        <div class="edit-modal-card">
-          <div class="edit-modal-header">
-            <h4 class="edit-modal-title">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
-            <button class="edit-modal-close" type="button" onclick="this.closest('.edit-form').remove()">×</button>
-          </div>
+        <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
+          <h4 class="text-2xl font-bold mb-6 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
           <div class="edit-context">
             რედაქტირდება წევრი: <strong>${m.firstName} ${m.lastName}</strong> • პირადი: <strong>${m.personalId}</strong>
           </div>
           <div class="edit-grid">
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_fn_${id}">სახელი</label>
-              <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_ln_${id}">გვარი</label>
-              <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_email_${id}">ელ-ფოსტა</label>
-              <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="Email">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_ph_${id}">ტელეფონი</label>
-              <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_pid_${id}">პირადი ნომერი</label>
-              <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
-              <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
-                <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
-                <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
-                <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
-                <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
-              </select>
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_price_${id}">ფასი (₾)</label>
-              <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_startdate_${id}">გააქტიურების თარიღი</label>
-              <input type="date" value="${startDate}" id="e_startdate_${id}" class="form-input">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_enddate_${id}">ვადის გასვლის თარიღი</label>
-              <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_visits_${id}">დარჩენილი ვიზიტები</label>
-              <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_status_${id}">სტატუსი</label>
-              <select id="e_status_${id}" class="form-input">
-                <option value="active" ${effectiveStatus==='active'?'selected':''}>აქტიური</option>
-                <option value="expired" ${effectiveStatus==='expired'?'selected':''}>ვადაგასული</option>
-                <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
-              </select>
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
-              <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
-            </div>
+            <label class="edit-field-label" for="e_fn_${id}">სახელი</label>
+            <input type="text" value="${m.firstName}" id="e_fn_${id}" class="form-input" placeholder="სახელი">
+
+            <label class="edit-field-label" for="e_ln_${id}">გვარი</label>
+            <input type="text" value="${m.lastName}" id="e_ln_${id}" class="form-input" placeholder="გვარი">
+
+            <label class="edit-field-label" for="e_email_${id}">ელ-ფოსტა</label>
+            <input type="email" value="${m.email || ''}" id="e_email_${id}" class="form-input" placeholder="Email">
+
+            <label class="edit-field-label" for="e_ph_${id}">ტელეფონი</label>
+            <input type="tel" value="${m.phone || ''}" id="e_ph_${id}" class="form-input" placeholder="ტელეფონი">
+
+            <label class="edit-field-label" for="e_pid_${id}">პირადი ნომერი</label>
+            <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
+
+            <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
+            <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
+
+            <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
+            <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
+              <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
+              <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
+              <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
+              <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
+            </select>
+
+            <label class="edit-field-label" for="e_price_${id}">ფასი (₾)</label>
+            <input type="number" value="${m.subscriptionPrice||0}" id="e_price_${id}" class="form-input" placeholder="ფასი">
+
+            <label class="edit-field-label" for="e_startdate_${id}">გააქტიურების თარიღი</label>
+            <input type="date" value="${startDate}" id="e_startdate_${id}" class="form-input">
+
+            <label class="edit-field-label" for="e_enddate_${id}">ვადის გასვლის თარიღი</label>
+            <input type="date" value="${endDate}" id="e_enddate_${id}" class="form-input">
+
+            <label class="edit-field-label" for="e_visits_${id}">დარჩენილი ვიზიტები</label>
+            <input type="number" value="${m.remainingVisits == null ? '' : m.remainingVisits}" id="e_visits_${id}" class="form-input" placeholder="ვიზიტები">
+
+            <label class="edit-field-label" for="e_status_${id}">სტატუსი</label>
+            <select id="e_status_${id}" class="form-input">
+              <option value="active" ${effectiveStatus==='active'?'selected':''}>აქტიური</option>
+              <option value="expired" ${effectiveStatus==='expired'?'selected':''}>ვადაგასული</option>
+              <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
+            </select>
           </div>
-          <div class="edit-actions">
-            <button class="btn btn-success px-8 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
-            <button class="btn bg-red-600 hover:bg-red-700 px-8 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
+          <div class="mt-6 flex gap-4 justify-center">
+            <button class="btn btn-success text-lg px-10 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
-      div.addEventListener('click', (ev) => {
-        if (ev.target === div) div.remove();
-      });
-      document.body.appendChild(div);
-      const firstInput = div.querySelector(`#e_fn_${id}`);
-      if (firstInput) {
-        firstInput.focus();
+      const anchorFromEvent = e?.currentTarget?.closest('.member-card, .member-details-card, .search-member-card');
+      const container = anchorFromEvent || document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
+      if (container) {
+        container.after(div);
+      } else if (document.getElementById('expiredList')) {
+        document.getElementById('expiredList').prepend(div);
+      } else if (document.getElementById('searchResults')) {
+        document.getElementById('searchResults').prepend(div);
       }
     };
 
