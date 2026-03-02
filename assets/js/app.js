@@ -666,12 +666,15 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (!m) return;
       const effectiveStatus = getEffectiveStatus(m);
       const div = document.createElement('div');
-      div.className = 'edit-form';
+      div.className = 'edit-form edit-modal';
       const startDate = m.subscriptionStartDate ? toDateInputValue(m.subscriptionStartDate) : toDateInputValue(new Date().toISOString());
       const endDate = m.subscriptionEndDate ? toDateInputValue(m.subscriptionEndDate) : toDateInputValue(new Date().toISOString());
       div.innerHTML = `
-        <div class="bg-slate-800 p-8 rounded-2xl border-4 border-blue-500 mt-6 shadow-2xl">
-          <h4 class="text-2xl font-bold mb-6 text-center text-blue-400">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
+        <div class="edit-modal-card">
+          <div class="edit-modal-header">
+            <h4 class="edit-modal-title">რედაქტირება — ${m.firstName} ${m.lastName}</h4>
+            <button class="edit-modal-close" type="button" onclick="this.closest('.edit-form').remove()">×</button>
+          </div>
           <div class="edit-context">
             რედაქტირდება წევრი: <strong>${m.firstName} ${m.lastName}</strong> • პირადი: <strong>${m.personalId}</strong>
           </div>
@@ -721,19 +724,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <option value="paused" ${effectiveStatus==='paused'?'selected':''}>შეჩერებული</option>
             </select>
           </div>
-          <div class="mt-6 flex gap-4 justify-center">
-            <button class="btn btn-success text-lg px-10 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
-            <button class="btn bg-red-600 hover:bg-red-700 text-lg px-10 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
+          <div class="edit-actions">
+            <button class="btn btn-success px-8 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
+            <button class="btn bg-red-600 hover:bg-red-700 px-8 py-3" onclick="this.closest('.edit-form').remove()">გაუქმება</button>
           </div>
         </div>`;
-      const anchorFromEvent = e?.currentTarget?.closest('.member-card, .member-details-card, .search-member-card');
-      const container = anchorFromEvent || document.getElementById(`details-${id}`) || document.querySelector(`[data-member-id="${id}"]`);
-      if (container) {
-        container.after(div);
-      } else if (document.getElementById('expiredList')) {
-        document.getElementById('expiredList').prepend(div);
-      } else if (document.getElementById('searchResults')) {
-        document.getElementById('searchResults').prepend(div);
+      div.addEventListener('click', (ev) => {
+        if (ev.target === div) div.remove();
+      });
+      document.body.appendChild(div);
+      const firstInput = div.querySelector(`#e_fn_${id}`);
+      if (firstInput) {
+        firstInput.focus();
       }
     };
 
