@@ -591,11 +591,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     async function createMember(m) {
       try { 
         const docRef = await addDoc(collection(db, "members"), m);
+        const memberWithId = { ...m, id: docRef.id };
+        await logDateAudit(
+          'create_member',
+          memberWithId,
+          { startDate: null, endDate: null },
+          { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
+          { source: 'registration_form' }
+        );
         showToast("დარეგისტრირდა!");
         
         if (m.email) {
           // მხოლოდ ერთი წერილი: welcome + QR იმავე წერილში
-          const memberWithId = { ...m, id: docRef.id };
           setTimeout(() => sendWelcomeEmail(memberWithId), 1000);
         }
       }
@@ -618,6 +625,38 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         await setDoc(doc(db, "members", id), fields, { merge: true });
       } catch (e) {
         console.error(e);
+      }
+    }
+
+    function dateKey(iso) {
+      if (!iso) return '';
+      return toDateInputValue(iso);
+    }
+
+    function hasDateChanged(beforeDates, afterDates) {
+      return dateKey(beforeDates?.startDate) !== dateKey(afterDates?.startDate) ||
+        dateKey(beforeDates?.endDate) !== dateKey(afterDates?.endDate);
+    }
+
+    async function logDateAudit(action, member, beforeDates, afterDates, meta = {}) {
+      const payload = {
+        action,
+        memberId: member?.id || null,
+        memberName: `${member?.firstName || ''} ${member?.lastName || ''}`.trim(),
+        personalId: member?.personalId || null,
+        beforeStartDate: beforeDates?.startDate || null,
+        beforeEndDate: beforeDates?.endDate || null,
+        afterStartDate: afterDates?.startDate || null,
+        afterEndDate: afterDates?.endDate || null,
+        changedAt: new Date().toISOString(),
+        meta
+      };
+
+      console.info('[DATE_AUDIT]', payload);
+      try {
+        await addDoc(collection(db, "member_date_history"), payload);
+      } catch (e) {
+        console.error('date audit write failed', e);
       }
     }
 
@@ -917,6 +956,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       };
       
       await updateMember(updated);
+      await logDateAudit(
+        'renew_membership',
+        updated,
+        { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
+        { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate },
+        { source: 'renew_button' }
+      );
       showToast("განახლდა!");
       
       if (updated.email) {
@@ -1061,6 +1107,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         status: document.getElementById(`e_status_${id}`).value
       };
       await updateMember(updated);
+      if (hasDateChanged(
+        { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
+        { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate }
+      )) {
+        await logDateAudit(
+          'edit_membership_dates',
+          updated,
+          { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
+          { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate },
+          { source: 'edit_modal_save' }
+        );
+      }
       showToast("შენახულია!");
       document.querySelectorAll('.edit-form').forEach(f => f.remove());
       updateAll();
