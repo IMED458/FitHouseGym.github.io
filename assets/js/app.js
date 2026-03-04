@@ -368,7 +368,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           const sent = await sendEmail(member.email, member.firstName, subject, message);
           
           if (sent) {
-            await updateMember({...member, expiringEmailSent: true});
+            await updateMemberFields(member.id, { expiringEmailSent: true });
             console.log('Expiring notification sent to:', member.firstName, member.lastName);
           }
         }
@@ -613,6 +613,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
     }
 
+    async function updateMemberFields(id, fields) {
+      try {
+        await setDoc(doc(db, "members", id), fields, { merge: true });
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
     // ======= QR კოდის ფუნქციები =======
 
     function getMemberQrPayload(memberId) {
@@ -721,7 +729,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
       if (isExpired(member.subscriptionEndDate)) {
-        await updateMember({...member, status: 'expired'});
+        await updateMemberFields(member.id, { status: 'expired' });
         el.innerHTML = `<div class="member-card p-6">${noteBanner}
           <div class="grid grid-cols-2 gap-4 text-sm mb-4">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
@@ -733,7 +741,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
       if (member.remainingVisits !== null && member.remainingVisits <= 0) {
-        await updateMember({...member, status: 'expired'});
+        await updateMemberFields(member.id, { status: 'expired' });
         el.innerHTML = `<div class="member-card p-6">${noteBanner}
           <div class="grid grid-cols-2 gap-4 text-sm mb-4">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
@@ -831,7 +839,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
       const now = new Date(), hour = now.getHours();
       if (isExpired(m.subscriptionEndDate)) { 
-        await updateMember({...m, status: 'expired'}); 
+        await updateMemberFields(m.id, { status: 'expired' }); 
         showToast("ვადა გასულია!", 'error'); 
         return; 
       }
@@ -862,12 +870,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       else if (isExpired(member.subscriptionEndDate)) { 
         allowed = false; 
         msg = 'ვადა გასულია'; 
-        await updateMember({...member, status:'expired'}); 
+        await updateMemberFields(member.id, { status: 'expired' }); 
       }
       else if (member.remainingVisits !== null && member.remainingVisits <= 0) { 
         allowed = false; 
         msg = 'ვიზიტები ამოწურულია'; 
-        await updateMember({...member, status:'expired'}); 
+        await updateMemberFields(member.id, { status: 'expired' }); 
       }
       else if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { 
         allowed = false; 
