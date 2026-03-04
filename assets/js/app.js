@@ -1,5 +1,5 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { getFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     // TODO: გადაიტანე .env ფაილში production-ზე
     const ENV = window.__ENV__ || {};
@@ -19,7 +19,10 @@
     const EMAILJS_PUBLIC_KEY = ENV.EMAILJS_PUBLIC_KEY || 'eTWiK52sjfnLBVW9C';
 
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    const db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+      useFetchStreams: false
+    });
     const ADMIN_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
     let isAuthenticated = false;
     let notificationsSchedulerStarted = false;
