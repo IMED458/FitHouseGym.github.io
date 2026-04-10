@@ -1023,10 +1023,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
               <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
                 <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
-                <option value="single_visit" ${m.subscriptionType==='single_visit'?'selected':''}>ერთჯერადი ვიზიტი (15₾)</option>
                 <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
                 <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
                 <option value="other" ${!['12visits','single_visit','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
+                <option value="single_visit" ${m.subscriptionType==='single_visit'?'selected':''}>ერთჯერადი ვიზიტი (15₾)</option>
               </select>
             </div>
             <div class="edit-field">
