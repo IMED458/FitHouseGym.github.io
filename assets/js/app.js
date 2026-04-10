@@ -1,5 +1,5 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     // TODO: გადაიტანე .env ფაილში production-ზე
     const ENV = window.__ENV__ || {};
@@ -23,12 +23,17 @@
       experimentalForceLongPolling: true,
       useFetchStreams: false
     });
-    const ADMIN_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+    const STAFF_PASSWORD_HASH = "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4";
+    const ADMIN_PASSWORD_HASH = "25f43b1486ad95a1398e3eeb3d83bc4010015fcc9bedb35b432e00298d5021f7";
     let isAuthenticated = false;
+    let currentUserRole = null;
     let notificationsSchedulerStarted = false;
     let expandedSearchMemberId = null;
     window.members = [];
+    window.products = [];
+    window.transactions = [];
     window.selectedSubscription = null;
+    window.editingProductId = null;
 
     // EmailJS ინიციალიზაცია
     (function() {
@@ -42,6 +47,66 @@
       const month = String(d.getMonth() + 1).padStart(2, '0');
       const year = d.getFullYear();
       return `${day}/${month}/${year}`;
+    }
+
+    function formatDateTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      const date = formatDate(iso);
+      const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+      return `${date} ${time}`;
+    }
+
+    function formatCurrency(value) {
+      return `${Number(value || 0).toFixed(2)}₾`;
+    }
+
+    function normalizeProductCode(value) {
+      return String(value || '').trim().toUpperCase();
+    }
+
+    function isAdmin() {
+      return currentUserRole === 'admin';
+    }
+
+    function isKnownPasswordHash(hash) {
+      return hash === STAFF_PASSWORD_HASH || hash === ADMIN_PASSWORD_HASH;
+    }
+
+    function getRoleLabel() {
+      return isAdmin() ? 'ადმინისტრატორი' : 'ოპერატორი';
+    }
+
+    function applyRoleVisibility() {
+      document.querySelectorAll('[data-admin-only]').forEach((el) => {
+        el.classList.toggle('role-hidden', !isAdmin());
+      });
+      const badge = document.getElementById('roleBadge');
+      if (badge) {
+        badge.textContent = isAuthenticated ? getRoleLabel() : '';
+        badge.classList.toggle('admin-role', isAdmin());
+      }
+      if (!isAdmin() && document.getElementById('finance')?.classList.contains('active')) {
+        window.showTab('dashboard');
+      }
+    }
+
+    function isSameCalendarDay(first, second) {
+      const a = new Date(first);
+      const b = new Date(second);
+      return a.getFullYear() === b.getFullYear() &&
+        a.getMonth() === b.getMonth() &&
+        a.getDate() === b.getDate();
+    }
+
+    function isSameCalendarMonth(first, second) {
+      const a = new Date(first);
+      const b = new Date(second);
+      return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+    }
+
+    function getSortedTransactions() {
+      return [...window.transactions].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
 
     function startOfDay(date) {
@@ -113,6 +178,67 @@
       }, 5000);
     }
 
+    function getFinancialSummary() {
+      const now = new Date();
+      const transactions = getSortedTransactions();
+      const todayTransactions = transactions.filter((tx) => isSameCalendarDay(tx.createdAt, now));
+      const monthTransactions = transactions.filter((tx) => isSameCalendarMonth(tx.createdAt, now));
+
+      const sumAmount = (list, category) => list
+        .filter((tx) => !category || tx.category === category)
+        .reduce((total, tx) => total + Number(tx.amount || 0), 0);
+
+      const monthlyProductUnits = monthTransactions
+        .filter((tx) => tx.type === 'product_sale')
+        .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
+
+      return {
+        todayMembership: sumAmount(todayTransactions, 'membership'),
+        todayProducts: sumAmount(todayTransactions, 'product'),
+        todayTotal: sumAmount(todayTransactions),
+        monthMembership: sumAmount(monthTransactions, 'membership'),
+        monthProducts: sumAmount(monthTransactions, 'product'),
+        monthTotal: sumAmount(monthTransactions),
+        monthMembershipCount: monthTransactions.filter((tx) => tx.category === 'membership').length,
+        monthProductSalesCount: monthTransactions.filter((tx) => tx.type === 'product_sale').length,
+        monthProductUnits,
+        recentTransactions: transactions.slice(0, 20),
+        recentProductSales: transactions.filter((tx) => tx.type === 'product_sale').slice(0, 10)
+      };
+    }
+
+    async function recordTransaction(transaction) {
+      try {
+        await addDoc(collection(db, "transactions"), {
+          ...transaction,
+          amount: Number(transaction.amount || 0),
+          createdAt: transaction.createdAt || new Date().toISOString(),
+          createdByRole: transaction.createdByRole || currentUserRole || 'system'
+        });
+        return true;
+      } catch (e) {
+        console.error('transaction write failed', e);
+        showToast('ფინანსური ჩანაწერის შენახვა ვერ მოხერხდა', 'error');
+        return false;
+      }
+    }
+
+    async function recordMembershipTransaction(actionType, member) {
+      return recordTransaction({
+        type: actionType,
+        category: 'membership',
+        amount: Number(member.subscriptionPrice || 0),
+        memberId: member.id,
+        memberName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
+        personalId: member.personalId || '',
+        subscriptionType: member.subscriptionType,
+        subscriptionName: getSubscriptionName(member.subscriptionType),
+        description: actionType === 'membership_registration'
+          ? `ახალი აბონემენტი: ${getSubscriptionName(member.subscriptionType)}`
+          : `აბონემენტის განახლება: ${getSubscriptionName(member.subscriptionType)}`
+      });
+    }
+
     function buildMemberDetailsHTML(member) {
       const effectiveStatus = getEffectiveStatus(member);
       const noteBanner = member.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${member.note}</div>` : '';
@@ -152,17 +278,21 @@
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
       }
+      applyRoleVisibility();
     }
 
     window.login = async function() {
       const input = document.getElementById('adminPassword').value;
       const inputHash = await sha256Hex(input);
-      if (inputHash === ADMIN_PASSWORD_HASH) {
+      if (inputHash === ADMIN_PASSWORD_HASH || inputHash === STAFF_PASSWORD_HASH) {
         isAuthenticated = true;
+        currentUserRole = inputHash === ADMIN_PASSWORD_HASH ? 'admin' : 'staff';
         checkAuth();
         loadMembers();
+        loadProducts();
+        loadTransactions();
         startExpiringNotificationsScheduler();
-        showToast("ავტორიზაცია წარმატებით განხორციელდა!", "success");
+        showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
       } else {
         showToast("პაროლი არასწორია!", "error");
       }
@@ -567,7 +697,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.confirmDelete = async function(id, modal) {
       const pass = document.getElementById('deletePassword').value;
       const passHash = await sha256Hex(pass);
-      if (passHash !== ADMIN_PASSWORD_HASH) {
+      if (!isKnownPasswordHash(passHash)) {
         showToast("პაროლი არასწორია!", "error");
         return;
       }
@@ -591,10 +721,29 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
     }
 
+    function loadProducts() {
+      const q = query(collection(db, "products"));
+      onSnapshot(q, (snapshot) => {
+        window.products = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
+        updateAll();
+      });
+    }
+
+    function loadTransactions() {
+      const q = query(collection(db, "transactions"));
+      onSnapshot(q, (snapshot) => {
+        window.transactions = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        updateAll();
+      });
+    }
+
     async function createMember(m) {
       try { 
         const docRef = await addDoc(collection(db, "members"), m);
         const memberWithId = { ...m, id: docRef.id };
+        await recordMembershipTransaction('membership_registration', memberWithId);
         await logDateAudit(
           'create_member',
           memberWithId,
@@ -617,17 +766,38 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     async function updateMember(m) {
       try { 
         await setDoc(doc(db, "members", m.id), m, { merge: true }); 
+        return true;
       }
       catch (e) { 
         console.error(e); 
+        showToast('წევრის შენახვა ვერ მოხერხდა', 'error');
+        return false;
       }
     }
 
     async function updateMemberFields(id, fields) {
       try {
         await setDoc(doc(db, "members", id), fields, { merge: true });
+        return true;
       } catch (e) {
         console.error(e);
+        return false;
+      }
+    }
+
+    async function saveProductRecord(product) {
+      try {
+        const { id, ...payload } = product;
+        if (id) {
+          await setDoc(doc(db, "products", id), payload, { merge: true });
+        } else {
+          await addDoc(collection(db, "products"), payload);
+        }
+        return true;
+      } catch (e) {
+        console.error('product save failed', e);
+        showToast('პროდუქტის შენახვა ვერ მოხერხდა', 'error');
+        return false;
       }
     }
 
@@ -814,7 +984,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         updated.remainingVisits = member.remainingVisits - 1;
         if (updated.remainingVisits <= 0) updated.status = 'expired';
       }
-      await updateMember(updated);
+      const saved = await updateMember(updated);
+      if (!saved) return;
 
       const remainingText = updated.remainingVisits != null
         ? `<div><strong>დარჩენილი ვიზიტი:</strong> ${updated.remainingVisits}</div>`
@@ -835,13 +1006,24 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     function checkUrlQrParam() {}
 
     window.showTab = function(tab) {
+      if (tab === 'finance' && !isAdmin()) {
+        showToast('ფინანსები მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
+        tab = 'dashboard';
+      }
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
       document.getElementById(tab).classList.add('active');
-      document.querySelector(`[onclick="showTab('${tab}')"]`).classList.add('active');
+      const activeButton = document.querySelector(`[onclick="showTab('${tab}')"]`);
+      if (activeButton) activeButton.classList.add('active');
       if (tab === 'search') {
         document.getElementById('searchResults').innerHTML = '';
         updateSearchMemberList();
+      }
+      if (tab === 'products') {
+        updateProductsTab();
+      }
+      if (tab === 'finance') {
+        updateFinanceTab();
       }
       if (tab === 'dashboard') {
         document.getElementById('expiringSoonSection').style.display = 'none';
@@ -962,7 +1144,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         expiringEmailSent: false
       };
       
-      await updateMember(updated);
+      const saved = await updateMember(updated);
+      if (!saved) return;
+      await recordMembershipTransaction('membership_renewal', updated);
       await logDateAudit(
         'renew_membership',
         updated,
@@ -1118,7 +1302,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         remainingVisits: document.getElementById(`e_visits_${id}`).value === '' ? null : parseInt(document.getElementById(`e_visits_${id}`).value),
         status: document.getElementById(`e_status_${id}`).value
       };
-      await updateMember(updated);
+      const saved = await updateMember(updated);
+      if (!saved) return;
       if (hasDateChanged(
         { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
         { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate }
@@ -1136,8 +1321,325 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       updateAll();
     };
 
+    function buildProductCardHTML(product) {
+      const stock = Number(product.stock || 0);
+      const canSell = stock > 0;
+      const imageHtml = product.imageUrl
+        ? `<img src="${product.imageUrl}" alt="${product.name}" class="product-card-image" onerror="this.parentElement.innerHTML='<div class=&quot;product-photo-fallback&quot;><i class=&quot;fas fa-bottle-water&quot;></i></div>'">`
+        : `<div class="product-photo-fallback"><i class="fas fa-bottle-water"></i></div>`;
+
+      return `
+        <div class="product-card ${canSell ? '' : 'product-card-empty'}">
+          <div class="product-card-media">${imageHtml}</div>
+          <div class="product-card-body">
+            <div class="product-card-head">
+              <div>
+                <div class="product-card-title">${product.name}</div>
+                <div class="product-card-code">კოდი: ${product.code}</div>
+              </div>
+              <span class="status-badge ${canSell ? 'status-active' : 'status-expired'}">${canSell ? 'მარაგშია' : 'ამოიწურა'}</span>
+            </div>
+            <div class="product-card-price">${formatCurrency(product.price)}</div>
+            <div class="product-card-meta">მარაგი: ${stock}</div>
+            <div class="product-card-actions">
+              <button class="btn btn-success" ${canSell ? '' : 'disabled'} onclick="window.openProductSaleModal('${product.id}')">
+                <i class="fas fa-cash-register"></i> გაყიდვა
+              </button>
+              ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : ''}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderRecentProductSales() {
+      const container = document.getElementById('recentProductSales');
+      if (!container) return;
+      const sales = getFinancialSummary().recentProductSales;
+      if (sales.length === 0) {
+        container.innerHTML = '<p class="empty-state">ჯერ არცერთი პროდუქტი არ გაყიდულა</p>';
+        return;
+      }
+      container.innerHTML = sales.map((sale) => `
+        <div class="transaction-row">
+          <div>
+            <div class="transaction-title">${sale.productName}</div>
+            <div class="transaction-meta">${sale.quantity} ცალი • ${formatDateTime(sale.createdAt)}</div>
+          </div>
+          <div class="transaction-amount">${isAdmin() ? formatCurrency(sale.amount) : `${sale.quantity} ცალი`}</div>
+        </div>
+      `).join('');
+    }
+
+    function updateProductsTab() {
+      const grid = document.getElementById('productsGrid');
+      if (!grid) return;
+
+      const searchValue = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
+      const filteredProducts = window.products.filter((product) => {
+        if (!searchValue) return true;
+        return String(product.name || '').toLowerCase().includes(searchValue) ||
+          String(product.code || '').toLowerCase().includes(searchValue);
+      });
+
+      const lowStockCount = window.products.filter((product) => Number(product.stock || 0) > 0 && Number(product.stock || 0) <= 3).length;
+      const todayProductUnits = window.transactions
+        .filter((tx) => tx.type === 'product_sale' && isSameCalendarDay(tx.createdAt, new Date()))
+        .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
+
+      const productsCountEl = document.getElementById('productsCount');
+      const lowStockEl = document.getElementById('productLowStockCount');
+      const todayUnitsEl = document.getElementById('todayProductUnits');
+      if (productsCountEl) productsCountEl.textContent = window.products.length;
+      if (lowStockEl) lowStockEl.textContent = lowStockCount;
+      if (todayUnitsEl) todayUnitsEl.textContent = todayProductUnits;
+
+      if (filteredProducts.length === 0) {
+        grid.innerHTML = `<p class="empty-state">${window.products.length === 0 ? 'პროდუქტები ჯერ არ დამატებულა' : 'მითითებული პროდუქტები ვერ მოიძებნა'}</p>`;
+      } else {
+        grid.innerHTML = filteredProducts.map(buildProductCardHTML).join('');
+      }
+
+      renderRecentProductSales();
+    }
+
+    function renderFinanceBreakdown(summary) {
+      const container = document.getElementById('financeBreakdownList');
+      if (!container) return;
+
+      const monthlyTopProductsMap = {};
+      window.transactions
+        .filter((tx) => tx.type === 'product_sale' && isSameCalendarMonth(tx.createdAt, new Date()))
+        .forEach((tx) => {
+          const key = tx.productId || tx.productCode || tx.productName;
+          if (!monthlyTopProductsMap[key]) {
+            monthlyTopProductsMap[key] = { name: tx.productName, quantity: 0, amount: 0 };
+          }
+          monthlyTopProductsMap[key].quantity += Number(tx.quantity || 0);
+          monthlyTopProductsMap[key].amount += Number(tx.amount || 0);
+        });
+
+      const topProducts = Object.values(monthlyTopProductsMap)
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 5);
+
+      container.innerHTML = `
+        <div class="finance-breakdown-row"><span>ამ თვეში აბონემენტები</span><strong>${summary.monthMembershipCount}</strong></div>
+        <div class="finance-breakdown-row"><span>პროდუქტის გაყიდვები</span><strong>${summary.monthProductSalesCount}</strong></div>
+        <div class="finance-breakdown-row"><span>გაყიდული ერთეულები</span><strong>${summary.monthProductUnits}</strong></div>
+        ${topProducts.length > 0 ? `<div class="finance-breakdown-title">ტოპ პროდუქტები ამ თვეში</div>` : ''}
+        ${topProducts.map((product) => `
+          <div class="finance-breakdown-row">
+            <span>${product.name} (${product.quantity} ც.)</span>
+            <strong>${formatCurrency(product.amount)}</strong>
+          </div>
+        `).join('')}
+      `;
+    }
+
+    function updateFinanceTab() {
+      const summary = getFinancialSummary();
+      const ids = {
+        todayMembershipRevenue: summary.todayMembership,
+        todayProductRevenue: summary.todayProducts,
+        todayTotalRevenue: summary.todayTotal,
+        monthMembershipRevenue: summary.monthMembership,
+        monthProductRevenue: summary.monthProducts,
+        monthTotalRevenue: summary.monthTotal
+      };
+
+      Object.entries(ids).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = formatCurrency(value);
+      });
+
+      const transactionsList = document.getElementById('financeTransactionsList');
+      if (transactionsList) {
+        if (summary.recentTransactions.length === 0) {
+          transactionsList.innerHTML = '<p class="empty-state">ტრანზაქციები ჯერ არ არის</p>';
+        } else {
+          transactionsList.innerHTML = summary.recentTransactions.map((tx) => `
+            <div class="transaction-row">
+              <div>
+                <div class="transaction-title">${tx.description || (tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი')}</div>
+                <div class="transaction-meta">${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}</div>
+              </div>
+              <div class="transaction-amount">${formatCurrency(tx.amount)}</div>
+            </div>
+          `).join('');
+        }
+      }
+
+      renderFinanceBreakdown(summary);
+    }
+
+    window.openProductForm = function(productId = '') {
+      if (!isAdmin()) {
+        showToast('პროდუქტის მართვა მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
+        return;
+      }
+      const modal = document.getElementById('productFormModal');
+      const product = productId ? window.products.find((item) => item.id === productId) : null;
+      window.editingProductId = product?.id || null;
+      document.getElementById('productFormTitle').textContent = product ? 'პროდუქტის რედაქტირება' : 'პროდუქტის დამატება';
+      document.getElementById('productFormId').value = product?.id || '';
+      document.getElementById('productCode').value = product?.code || '';
+      document.getElementById('productName').value = product?.name || '';
+      document.getElementById('productPrice').value = product?.price ?? '';
+      document.getElementById('productStock').value = product?.stock ?? 0;
+      document.getElementById('productImageUrl').value = product?.imageUrl || '';
+      modal.style.display = 'flex';
+    };
+
+    window.closeProductForm = function() {
+      document.getElementById('productFormModal').style.display = 'none';
+      document.getElementById('productFormId').value = '';
+      document.getElementById('productCode').value = '';
+      document.getElementById('productName').value = '';
+      document.getElementById('productPrice').value = '';
+      document.getElementById('productStock').value = '0';
+      document.getElementById('productImageUrl').value = '';
+      window.editingProductId = null;
+    };
+
+    window.saveProduct = async function() {
+      if (!isAdmin()) {
+        showToast('პროდუქტის დამატება მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
+        return;
+      }
+
+      const id = document.getElementById('productFormId').value.trim();
+      const code = normalizeProductCode(document.getElementById('productCode').value);
+      const name = document.getElementById('productName').value.trim();
+      const price = Number(document.getElementById('productPrice').value || 0);
+      const stock = Math.max(0, parseInt(document.getElementById('productStock').value || '0', 10));
+      const imageUrl = document.getElementById('productImageUrl').value.trim() || null;
+
+      if (!code || !name || price <= 0) {
+        showToast('კოდი, სახელი და ფასი სავალდებულოა', 'error');
+        return;
+      }
+
+      const duplicate = window.products.find((product) => normalizeProductCode(product.code) === code && product.id !== id);
+      if (duplicate) {
+        showToast('ასეთი კოდით პროდუქტი უკვე არსებობს', 'error');
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const payload = {
+        code,
+        name,
+        price,
+        stock,
+        imageUrl,
+        updatedAt: nowIso
+      };
+      if (!id) {
+        payload.createdAt = nowIso;
+      } else {
+        payload.id = id;
+      }
+
+      const saved = await saveProductRecord(payload);
+      if (!saved) return;
+
+      showToast(id ? 'პროდუქტი განახლდა' : 'პროდუქტი დაემატა');
+      window.closeProductForm();
+    };
+
+    window.openProductSaleModal = function(productId) {
+      const product = window.products.find((item) => item.id === productId);
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      if (Number(product.stock || 0) <= 0) {
+        showToast('პროდუქტი მარაგში აღარ არის', 'error');
+        return;
+      }
+      document.getElementById('saleProductId').value = product.id;
+      document.getElementById('saleProductName').textContent = product.name;
+      document.getElementById('saleProductCode').textContent = `კოდი: ${product.code}`;
+      document.getElementById('saleProductStock').textContent = `მარაგი: ${product.stock}`;
+      document.getElementById('saleProductPrice').textContent = `ფასი: ${formatCurrency(product.price)}`;
+      document.getElementById('saleQuantity').value = 1;
+      document.getElementById('saleQuantity').max = Math.max(1, Number(product.stock || 0));
+      document.getElementById('saleNote').value = '';
+      document.getElementById('productSaleModal').style.display = 'flex';
+      window.updateProductSaleTotal();
+    };
+
+    window.closeProductSaleModal = function() {
+      document.getElementById('productSaleModal').style.display = 'none';
+      document.getElementById('saleProductId').value = '';
+      document.getElementById('saleQuantity').value = '1';
+      document.getElementById('saleNote').value = '';
+      document.getElementById('saleTotalAmount').textContent = formatCurrency(0);
+    };
+
+    window.updateProductSaleTotal = function() {
+      const productId = document.getElementById('saleProductId').value;
+      const product = window.products.find((item) => item.id === productId);
+      const quantity = Math.max(1, parseInt(document.getElementById('saleQuantity').value || '1', 10));
+      const total = product ? Number(product.price || 0) * quantity : 0;
+      document.getElementById('saleTotalAmount').textContent = formatCurrency(total);
+    };
+
+    window.recordProductSale = async function() {
+      const productId = document.getElementById('saleProductId').value;
+      const product = window.products.find((item) => item.id === productId);
+      const quantity = Math.max(1, parseInt(document.getElementById('saleQuantity').value || '1', 10));
+      const note = document.getElementById('saleNote').value.trim() || null;
+
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      if (Number(product.stock || 0) < quantity) {
+        showToast('მარაგში საკმარისი რაოდენობა არ არის', 'error');
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+      const nextStock = Number(product.stock || 0) - quantity;
+      const totalAmount = Number(product.price || 0) * quantity;
+      const batch = writeBatch(db);
+      const productRef = doc(db, "products", product.id);
+      const transactionRef = doc(collection(db, "transactions"));
+
+      batch.set(productRef, {
+        stock: nextStock,
+        updatedAt: nowIso
+      }, { merge: true });
+
+      batch.set(transactionRef, {
+        type: 'product_sale',
+        category: 'product',
+        amount: totalAmount,
+        quantity,
+        unitPrice: Number(product.price || 0),
+        productId: product.id,
+        productCode: product.code,
+        productName: product.name,
+        description: `პროდუქტის გაყიდვა: ${product.name}`,
+        note,
+        createdAt: nowIso,
+        createdByRole: currentUserRole || 'system'
+      });
+
+      try {
+        await batch.commit();
+        showToast(`გაყიდვა დაფიქსირდა: ${product.name}`);
+        window.closeProductSaleModal();
+      } catch (e) {
+        console.error('product sale failed', e);
+        showToast('გაყიდვის დაფიქსირება ვერ მოხერხდა', 'error');
+      }
+    };
+
     window.exportToExcel = function() {
-      const data = window.members.map(m => ({
+      const membersData = window.members.map(m => ({
         "სახელი": m.firstName, 
         "გვარი": m.lastName, 
         "Email": m.email || '',
@@ -1145,6 +1647,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         "ტელეფონი": m.phone || '', 
         "აბონემენტი": getSubscriptionName(m.subscriptionType),
         "ფასი": m.subscriptionPrice + "₾", 
+        "გააქტიურდა": formatDate(m.subscriptionStartDate),
         "დასრულება": formatDate(m.subscriptionEndDate),
         "სტატუსი": getStatusText(m.status), 
         "დარჩენილი": m.remainingVisits != null ? m.remainingVisits : "ულიმიტო",
@@ -1152,8 +1655,45 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         "ბოლო ვიზიტი": m.lastVisit ? formatDate(m.lastVisit) : "—"
       }));
       const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(data);
-      XLSX.utils.book_append_sheet(wb, ws, "წევრები");
+      const membersSheet = XLSX.utils.json_to_sheet(membersData);
+      XLSX.utils.book_append_sheet(wb, membersSheet, "წევრები");
+
+      if (isAdmin()) {
+        const summary = getFinancialSummary();
+        const productsData = window.products.map((product) => ({
+          "კოდი": product.code,
+          "პროდუქტი": product.name,
+          "ფასი": formatCurrency(product.price),
+          "მარაგი": Number(product.stock || 0),
+          "ფოტო": product.imageUrl || ''
+        }));
+        const transactionsData = getSortedTransactions().map((tx) => ({
+          "თარიღი": formatDateTime(tx.createdAt),
+          "კატეგორია": tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი',
+          "ტიპი": tx.type,
+          "აღწერა": tx.description || '',
+          "თანხა": formatCurrency(tx.amount),
+          "რაოდენობა": tx.quantity || '',
+          "პროდუქტი": tx.productName || '',
+          "წევრი": tx.memberName || ''
+        }));
+        const financeData = [
+          { "მეტრიკა": "დღევანდელი აბონემენტები", "მნიშვნელობა": formatCurrency(summary.todayMembership) },
+          { "მეტრიკა": "დღევანდელი პროდუქტები", "მნიშვნელობა": formatCurrency(summary.todayProducts) },
+          { "მეტრიკა": "დღევანდელი ჯამი", "მნიშვნელობა": formatCurrency(summary.todayTotal) },
+          { "მეტრიკა": "ამ თვის აბონემენტები", "მნიშვნელობა": formatCurrency(summary.monthMembership) },
+          { "მეტრიკა": "ამ თვის პროდუქტები", "მნიშვნელობა": formatCurrency(summary.monthProducts) },
+          { "მეტრიკა": "ამ თვის ჯამი", "მნიშვნელობა": formatCurrency(summary.monthTotal) },
+          { "მეტრიკა": "ამ თვის აბონემენტების რაოდენობა", "მნიშვნელობა": summary.monthMembershipCount },
+          { "მეტრიკა": "ამ თვის პროდუქტის გაყიდვები", "მნიშვნელობა": summary.monthProductSalesCount },
+          { "მეტრიკა": "ამ თვის გაყიდული ერთეულები", "მნიშვნელობა": summary.monthProductUnits }
+        ];
+
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productsData), "პროდუქტები");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(transactionsData), "ტრანზაქციები");
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(financeData), "ფინანსები");
+      }
+
       XLSX.writeFile(wb, `FitHouse_${new Date().toISOString().slice(0,10)}.xlsx`);
       showToast("Excel ჩამოიტვირთა!");
     };
@@ -1163,6 +1703,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       updateExpiredList(); 
       updateSearchMemberList(); 
       showExpiringSoon();
+      updateProductsTab();
+      updateFinanceTab();
     }
 
     function updateDashboard() {
@@ -1334,6 +1876,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     document.addEventListener('DOMContentLoaded', () => {
       checkAuth();
+      applyRoleVisibility();
       if (localStorage.getItem('gym-theme') === 'light') {
         document.body.classList.add('light-mode');
         document.querySelector('.theme-toggle i').className = 'fas fa-moon';
@@ -1422,6 +1965,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
       
       document.getElementById('searchInput')?.addEventListener('input', updateSearchMemberList);
+      document.getElementById('productSearchInput')?.addEventListener('input', updateProductsTab);
+      document.getElementById('saleQuantity')?.addEventListener('input', window.updateProductSaleTotal);
+      document.getElementById('productFormModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'productFormModal') window.closeProductForm();
+      });
+      document.getElementById('productSaleModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'productSaleModal') window.closeProductSaleModal();
+      });
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
         if (v.length >= 2) {

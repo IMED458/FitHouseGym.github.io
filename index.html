@@ -38,6 +38,7 @@
       <div class="header">
         <img src="fithause logo.png" alt="Fit House" class="logo" onerror="this.style.display='none'">
         <h1 class="gym-title">Fit House Gym</h1>
+        <div id="roleBadge" class="role-badge"></div>
       </div>
       
       <div class="nav-tabs">
@@ -46,6 +47,8 @@
         <button class="nav-tab" onclick="showTab('search')">ძიება</button>
         <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
         <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
+        <button class="nav-tab" onclick="showTab('products')">პროდუქტები</button>
+        <button class="nav-tab" data-admin-only onclick="showTab('finance')">ფინანსები</button>
         <button class="nav-tab bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
           <i class="fas fa-envelope"></i> შეტყობინება
         </button>
@@ -146,6 +149,94 @@
       <div id="expired" class="tab-content">
         <h2 class="text-3xl font-bold mb-8 text-center">ვადაგასული წევრები</h2>
         <div id="expiredList"></div>
+      </div>
+
+      <div id="products" class="tab-content">
+        <div class="section-header">
+          <div class="section-copy">
+            <h2 class="section-title">პროდუქტები</h2>
+            <p class="section-subtitle">პროდუქციის აღრიცხვა, გაყიდვა და მარტივი მარაგის მართვა</p>
+          </div>
+          <div class="section-actions">
+            <input type="text" id="productSearchInput" placeholder="სახელი ან კოდი..." class="search-input product-search-input">
+            <button class="btn bg-emerald-600 hover:bg-emerald-700" data-admin-only onclick="openProductForm()">
+              <i class="fas fa-plus"></i> პროდუქტის დამატება
+            </button>
+          </div>
+        </div>
+
+        <div class="products-kpi-grid">
+          <div class="mini-stat-card">
+            <div class="mini-stat-value" id="productsCount">0</div>
+            <div class="mini-stat-label">სულ პროდუქტები</div>
+          </div>
+          <div class="mini-stat-card">
+            <div class="mini-stat-value" id="productLowStockCount">0</div>
+            <div class="mini-stat-label">დაბალი მარაგი</div>
+          </div>
+          <div class="mini-stat-card">
+            <div class="mini-stat-value" id="todayProductUnits">0</div>
+            <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
+          </div>
+        </div>
+
+        <div class="admin-inline-note" data-admin-only>
+          ადმინისტრატორს შეუძლია პროდუქტის დამატება, რედაქტირება, ფასისა და მარაგის მართვა.
+        </div>
+
+        <div id="productsGrid" class="products-grid"></div>
+
+        <div class="section-panel">
+          <h3 class="panel-title">ბოლო გაყიდვები</h3>
+          <div id="recentProductSales" class="transaction-list"></div>
+        </div>
+      </div>
+
+      <div id="finance" class="tab-content" data-admin-only>
+        <div class="section-header">
+          <div class="section-copy">
+            <h2 class="section-title">ფინანსები</h2>
+            <p class="section-subtitle">აბონემენტებისა და პროდუქტების სრული ფინანსური სურათი</p>
+          </div>
+        </div>
+
+        <div class="finance-summary-grid">
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს აბონემენტები</div>
+            <div class="finance-card-value" id="todayMembershipRevenue">0.00₾</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს პროდუქტები</div>
+            <div class="finance-card-value" id="todayProductRevenue">0.00₾</div>
+          </div>
+          <div class="finance-card finance-card-accent">
+            <div class="finance-card-label">დღეს სულ</div>
+            <div class="finance-card-value" id="todayTotalRevenue">0.00₾</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">ამ თვეში აბონემენტები</div>
+            <div class="finance-card-value" id="monthMembershipRevenue">0.00₾</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">ამ თვეში პროდუქტები</div>
+            <div class="finance-card-value" id="monthProductRevenue">0.00₾</div>
+          </div>
+          <div class="finance-card finance-card-accent">
+            <div class="finance-card-label">ამ თვეში სულ</div>
+            <div class="finance-card-value" id="monthTotalRevenue">0.00₾</div>
+          </div>
+        </div>
+
+        <div class="finance-layout">
+          <div class="section-panel">
+            <h3 class="panel-title">ბოლო ტრანზაქციები</h3>
+            <div id="financeTransactionsList" class="transaction-list"></div>
+          </div>
+          <div class="section-panel">
+            <h3 class="panel-title">ამ თვის ჭრილი</h3>
+            <div id="financeBreakdownList" class="finance-breakdown"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -284,6 +375,87 @@
           ეს QR კოდი მუდმივია და არ იცვლება.<br>
           სკანერი ავტომატურად შეამოწმებს აბონემენტს.
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="productFormModal" class="modal">
+    <div class="modal-content" style="max-width:560px;">
+      <div class="modal-header">
+        <h3 id="productFormTitle">პროდუქტის დამატება</h3>
+        <button class="modal-close" onclick="closeProductForm()">×</button>
+      </div>
+      <input type="hidden" id="productFormId">
+      <div class="product-form-grid">
+        <div class="product-form-field">
+          <label for="productCode">უნიკალური კოდი</label>
+          <input type="text" id="productCode" class="form-input" placeholder="მაგ: WTR01">
+        </div>
+        <div class="product-form-field">
+          <label for="productName">სახელი</label>
+          <input type="text" id="productName" class="form-input" placeholder="მაგ: წყალი 0.5ლ">
+        </div>
+        <div class="product-form-field">
+          <label for="productPrice">ფასი (₾)</label>
+          <input type="number" id="productPrice" class="form-input" placeholder="ფასი" min="0" step="0.01">
+        </div>
+        <div class="product-form-field">
+          <label for="productStock">მარაგი</label>
+          <input type="number" id="productStock" class="form-input" placeholder="მარაგი" min="0" step="1">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="productImageUrl">ფოტოს ბმული (არასავალდებულო)</label>
+          <input type="text" id="productImageUrl" class="form-input" placeholder="https://...">
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="saveProduct()">
+          <i class="fas fa-save"></i> შენახვა
+        </button>
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeProductForm()">
+          გაუქმება
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="productSaleModal" class="modal">
+    <div class="modal-content" style="max-width:480px;">
+      <div class="modal-header">
+        <h3>პროდუქტის გაყიდვა</h3>
+        <button class="modal-close" onclick="closeProductSaleModal()">×</button>
+      </div>
+      <input type="hidden" id="saleProductId">
+
+      <div class="sale-product-summary">
+        <div class="sale-product-name" id="saleProductName">პროდუქტი</div>
+        <div class="sale-product-meta" id="saleProductCode"></div>
+        <div class="sale-product-meta" id="saleProductStock"></div>
+        <div class="sale-product-meta" id="saleProductPrice"></div>
+      </div>
+
+      <div class="product-form-grid">
+        <div class="product-form-field">
+          <label for="saleQuantity">რაოდენობა</label>
+          <input type="number" id="saleQuantity" class="form-input" min="1" step="1" value="1">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="saleNote">შენიშვნა (არასავალდებულო)</label>
+          <input type="text" id="saleNote" class="form-input" placeholder="მაგ: ნაღდი გადახდა">
+        </div>
+      </div>
+
+      <div class="sale-total-box">
+        ჯამი: <strong id="saleTotalAmount">0.00₾</strong>
+      </div>
+
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="recordProductSale()">
+          <i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება
+        </button>
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeProductSaleModal()">
+          გაუქმება
+        </button>
       </div>
     </div>
   </div>
