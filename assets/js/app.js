@@ -1395,16 +1395,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           String(product.code || '').toLowerCase().includes(searchValue);
       });
 
-      const lowStockCount = window.products.filter((product) => Number(product.stock || 0) > 0 && Number(product.stock || 0) <= 3).length;
       const todayProductUnits = window.transactions
         .filter((tx) => tx.type === 'product_sale' && isSameCalendarDay(tx.createdAt, new Date()))
         .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
 
       const productsCountEl = document.getElementById('productsCount');
-      const lowStockEl = document.getElementById('productLowStockCount');
       const todayUnitsEl = document.getElementById('todayProductUnits');
       if (productsCountEl) productsCountEl.textContent = window.products.length;
-      if (lowStockEl) lowStockEl.textContent = lowStockCount;
       if (todayUnitsEl) todayUnitsEl.textContent = todayProductUnits;
 
       if (filteredProducts.length === 0) {
