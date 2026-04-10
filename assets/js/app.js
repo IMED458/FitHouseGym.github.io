@@ -1,5 +1,5 @@
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     // TODO: გადაიტანე .env ფაილში production-ზე
     const ENV = window.__ENV__ || {};
@@ -275,7 +275,7 @@
       };
     }
 
-    async function recordTransaction(transaction) {
+    async function recordTransaction(transaction, options = {}) {
       try {
         const payload = {
           ...transaction,
@@ -288,7 +288,9 @@
         return true;
       } catch (e) {
         console.error('transaction write failed', e);
-        showToast('ფინანსური ჩანაწერის შენახვა ვერ მოხერხდა', 'error');
+        if (!options.silent) {
+          showToast('ფინანსური ჩანაწერის შენახვა ვერ მოხერხდა', 'error');
+        }
         return false;
       }
     }
@@ -1575,6 +1577,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productPrice').value = product?.price ?? '';
       document.getElementById('productStock').value = product?.stock ?? 0;
       document.getElementById('productImageUrl').value = product?.sourceUrl || product?.imageUrl || '';
+      const saveBtn = document.getElementById('saveProductBtn');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+      }
       modal.style.display = 'flex';
     };
 
@@ -1586,6 +1593,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productPrice').value = '';
       document.getElementById('productStock').value = '0';
       document.getElementById('productImageUrl').value = '';
+      const saveBtn = document.getElementById('saveProductBtn');
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+      }
       window.editingProductId = null;
     };
 
@@ -1618,6 +1630,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         showToast('პროდუქტის დამატება მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
         return;
       }
+      const saveBtn = document.getElementById('saveProductBtn');
+      if (saveBtn?.disabled) return;
 
       const id = document.getElementById('productFormId').value.trim();
       const existingProduct = id ? window.products.find((item) => item.id === id) : null;
@@ -1636,6 +1650,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (duplicate) {
         showToast('ასეთი კოდით პროდუქტი უკვე არსებობს', 'error');
         return;
+      }
+
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = '<div class="spinner"></div>';
       }
 
       let imageUrl = null;
@@ -1668,7 +1687,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
 
       const saved = await saveProductRecord(payload);
-      if (!saved.ok) return;
+      if (!saved.ok) {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+        }
+        return;
+      }
 
       if (rawImageUrl && !isDirectImageUrl(rawImageUrl) && !unchangedImageSource) {
         resolveProductImageInBackground(saved.id, rawImageUrl, imageUrl);
@@ -1695,8 +1720,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('saleProductPrice').textContent = `ფასი: ${formatCurrency(product.price)}`;
       document.getElementById('saleQuantity').value = 1;
       document.getElementById('saleQuantity').max = Math.max(1, Number(product.stock || 0));
-      document.getElementById('salePaymentMethod').value = 'CASH';
+      document.getElementById('salePaymentMethod').value = 'TBC';
       document.getElementById('saleNote').value = '';
+      const saleBtn = document.getElementById('recordProductSaleBtn');
+      if (saleBtn) {
+        saleBtn.disabled = false;
+        saleBtn.innerHTML = '<i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება';
+      }
       document.getElementById('productSaleModal').style.display = 'flex';
       window.updateProductSaleTotal();
     };
@@ -1705,9 +1735,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productSaleModal').style.display = 'none';
       document.getElementById('saleProductId').value = '';
       document.getElementById('saleQuantity').value = '1';
-      document.getElementById('salePaymentMethod').value = 'CASH';
+      document.getElementById('salePaymentMethod').value = 'TBC';
       document.getElementById('saleNote').value = '';
       document.getElementById('saleTotalAmount').textContent = formatCurrency(0);
+      const saleBtn = document.getElementById('recordProductSaleBtn');
+      if (saleBtn) {
+        saleBtn.disabled = false;
+        saleBtn.innerHTML = '<i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება';
+      }
     };
 
     window.updateProductSaleTotal = function() {
@@ -1719,6 +1754,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     window.recordProductSale = async function() {
+      const saleBtn = document.getElementById('recordProductSaleBtn');
+      if (saleBtn?.disabled) return;
       const productId = document.getElementById('saleProductId').value;
       const product = window.products.find((item) => item.id === productId);
       const quantity = Math.max(1, parseInt(document.getElementById('saleQuantity').value || '1', 10));
@@ -1734,12 +1771,19 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
 
+      if (!paymentMethod) {
+        showToast('აირჩიე გადახდის მეთოდი', 'error');
+        return;
+      }
+
+      if (saleBtn) {
+        saleBtn.disabled = true;
+        saleBtn.innerHTML = '<div class="spinner"></div>';
+      }
+
       const nowIso = new Date().toISOString();
       const nextStock = Number(product.stock || 0) - quantity;
       const totalAmount = Number(product.price || 0) * quantity;
-      const batch = writeBatch(db);
-      const productRef = doc(db, "products", product.id);
-      const transactionRef = doc(collection(db, "transactions"));
       const transactionPayload = {
         type: 'product_sale',
         category: 'product',
@@ -1756,22 +1800,35 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         createdByRole: currentUserRole || 'system'
       };
 
-      batch.set(productRef, {
-        stock: nextStock,
-        updatedAt: nowIso
-      }, { merge: true });
-
-      batch.set(transactionRef, transactionPayload);
-
       try {
-        await batch.commit();
-        window.products = window.products.map((item) => item.id === product.id ? { ...item, stock: nextStock, updatedAt: nowIso } : item);
-        prependTransactionLocally({ id: transactionRef.id, ...transactionPayload });
+        const stockSave = await saveProductRecord({
+          id: product.id,
+          stock: nextStock,
+          updatedAt: nowIso
+        }, { silent: true });
+        if (!stockSave.ok) {
+          throw new Error('product stock save failed');
+        }
+
+        const txSaved = await recordTransaction(transactionPayload, { silent: true });
+        if (!txSaved) {
+          await saveProductRecord({
+            id: product.id,
+            stock: product.stock,
+            updatedAt: new Date().toISOString()
+          }, { silent: true });
+          throw new Error('transaction save failed');
+        }
+
         showToast(`გაყიდვა დაფიქსირდა: ${product.name}`);
         window.closeProductSaleModal();
       } catch (e) {
         console.error('product sale failed', e);
         showToast('გაყიდვის დაფიქსირება ვერ მოხერხდა', 'error');
+        if (saleBtn) {
+          saleBtn.disabled = false;
+          saleBtn.innerHTML = '<i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება';
+        }
       }
     };
 

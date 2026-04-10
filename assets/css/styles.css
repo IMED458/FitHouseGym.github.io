@@ -886,6 +886,121 @@
       border: 1px solid rgba(16, 185, 129, 0.35);
       font-size: 1rem;
     }
+    .product-editor-modal {
+      max-width: 780px !important;
+      padding: 0;
+      background: #ffffff;
+      color: #334155;
+      border: none;
+      overflow: hidden;
+      box-shadow: 0 28px 90px rgba(15, 23, 42, 0.28);
+    }
+    .product-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 28px 34px 18px;
+      background: #ffffff;
+    }
+    .product-editor-title {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 900;
+      color: #4361ee;
+      line-height: 1.1;
+    }
+    .product-editor-close {
+      width: 42px;
+      height: 42px;
+      border: none;
+      border-radius: 12px;
+      background: transparent;
+      color: #94a3b8;
+      font-size: 2rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    .product-editor-close:hover {
+      background: #f1f5f9;
+      color: #64748b;
+    }
+    .product-editor-divider {
+      height: 1px;
+      background: #e8eef8;
+    }
+    .product-editor-body {
+      padding: 26px 34px 22px;
+      background: #ffffff;
+    }
+    .product-editor-modal .product-form-grid {
+      gap: 22px 28px;
+    }
+    .product-editor-modal .product-form-field {
+      gap: 10px;
+    }
+    .product-editor-modal .product-form-field label {
+      color: #94a3b8;
+      font-size: 0.98rem;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .product-editor-modal .product-form-field label i {
+      color: #94a3b8;
+      width: 18px;
+      text-align: center;
+    }
+    .product-editor-input {
+      background: #f8fafc !important;
+      color: #334155 !important;
+      border: 1px solid #e2e8f0 !important;
+      border-radius: 22px !important;
+      min-height: 78px;
+      font-size: 1rem !important;
+      font-weight: 700;
+      padding: 18px 22px !important;
+      box-shadow: none !important;
+    }
+    .product-editor-input:focus {
+      border-color: #c7d2fe !important;
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.12) !important;
+    }
+    .product-editor-footer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      padding: 22px 34px 28px;
+      background: #ffffff;
+      border-top: 1px solid #eef2ff;
+    }
+    .product-editor-submit,
+    .product-editor-cancel {
+      min-height: 80px;
+      border-radius: 24px;
+      font-size: 1rem;
+      font-weight: 800;
+      border: 1px solid #dbe4f0;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .product-editor-submit {
+      background: #49be85;
+      color: #ffffff;
+      border-color: #49be85;
+      box-shadow: 0 14px 24px rgba(73, 190, 133, 0.22);
+    }
+    .product-editor-submit:hover {
+      background: #40ac78;
+    }
+    .product-editor-cancel {
+      background: #ffffff;
+      color: #475569;
+    }
+    .product-editor-cancel:hover {
+      background: #f8fafc;
+    }
     .empty-state {
       text-align: center;
       color: var(--text-light);
@@ -903,6 +1018,13 @@
       .product-search-input{min-width:0; width:100%}
       .finance-layout{grid-template-columns:1fr}
       .product-form-grid{grid-template-columns:1fr}
+      .product-editor-modal{max-width: calc(100vw - 22px) !important;}
+      .product-editor-header,
+      .product-editor-body,
+      .product-editor-footer{padding-left:18px; padding-right:18px}
+      .product-editor-title{font-size:1.5rem}
+      .product-editor-footer{grid-template-columns:1fr}
+      .product-editor-input{min-height:64px}
       .transaction-row{flex-direction:column; align-items:flex-start}
       .edit-actions .btn { width: 100%; }
       .modal-content {

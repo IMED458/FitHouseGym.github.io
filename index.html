@@ -385,39 +385,42 @@
   </div>
 
   <div id="productFormModal" class="modal">
-    <div class="modal-content" style="max-width:560px;">
-      <div class="modal-header">
-        <h3 id="productFormTitle">პროდუქტის დამატება</h3>
-        <button class="modal-close" onclick="window.closeProductForm()">×</button>
+    <div class="modal-content product-editor-modal">
+      <div class="product-editor-header">
+        <h3 id="productFormTitle" class="product-editor-title">პროდუქტის რედაქტირება</h3>
+        <button class="product-editor-close" onclick="window.closeProductForm()">×</button>
       </div>
-      <input type="hidden" id="productFormId">
-      <div class="product-form-grid">
-        <div class="product-form-field">
-          <label for="productCode">უნიკალური კოდი</label>
-          <input type="text" id="productCode" class="form-input" placeholder="მაგ: WTR01">
-        </div>
-        <div class="product-form-field">
-          <label for="productName">სახელი</label>
-          <input type="text" id="productName" class="form-input" placeholder="მაგ: წყალი 0.5ლ">
-        </div>
-        <div class="product-form-field">
-          <label for="productPrice">ფასი (₾)</label>
-          <input type="number" id="productPrice" class="form-input" placeholder="ფასი" min="0" step="0.01">
-        </div>
-        <div class="product-form-field">
-          <label for="productStock">მარაგი</label>
-          <input type="number" id="productStock" class="form-input" placeholder="მარაგი" min="0" step="1">
-        </div>
-        <div class="product-form-field product-form-field-full">
-          <label for="productImageUrl">ფოტოს ან პროდუქტის გვერდის ბმული (არასავალდებულო)</label>
-          <input type="text" id="productImageUrl" class="form-input" placeholder="მაგ: https://vitamini.ge/ru/product/...">
+      <div class="product-editor-divider"></div>
+      <div class="product-editor-body">
+        <input type="hidden" id="productFormId">
+        <div class="product-form-grid">
+          <div class="product-form-field">
+            <label for="productCode"><i class="far fa-file-lines"></i> უნიკალური კოდი</label>
+            <input type="text" id="productCode" class="form-input product-editor-input" placeholder="123">
+          </div>
+          <div class="product-form-field">
+            <label for="productName"><i class="far fa-user"></i> სახელი</label>
+            <input type="text" id="productName" class="form-input product-editor-input" placeholder='წყალი "მთის"'>
+          </div>
+          <div class="product-form-field">
+            <label for="productPrice"><i class="far fa-circle-check"></i> ფასი (₾)</label>
+            <input type="number" id="productPrice" class="form-input product-editor-input" placeholder="2" min="0" step="0.01">
+          </div>
+          <div class="product-form-field">
+            <label for="productStock"><i class="far fa-circle-dot"></i> მარაგი</label>
+            <input type="number" id="productStock" class="form-input product-editor-input" placeholder="3" min="0" step="1">
+          </div>
+          <div class="product-form-field product-form-field-full">
+            <label for="productImageUrl"><i class="fas fa-plus"></i> ფოტოს ბმული (არასავალდებულო)</label>
+            <input type="text" id="productImageUrl" class="form-input product-editor-input" placeholder="https://beverage.ge/products/274?lang=1">
+          </div>
         </div>
       </div>
-      <div class="email-actions">
-        <button class="btn btn-success" onclick="window.saveProduct()">
-          <i class="fas fa-save"></i> შენახვა
+      <div class="product-editor-footer">
+        <button class="product-editor-submit" id="saveProductBtn" onclick="window.saveProduct()">
+          <i class="far fa-circle-check"></i> შენახვა
         </button>
-        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeProductForm()">
+        <button class="product-editor-cancel" onclick="window.closeProductForm()">
           გაუქმება
         </button>
       </div>
@@ -449,12 +452,11 @@
           <select id="salePaymentMethod" class="form-input">
             <option value="TBC">TBC</option>
             <option value="BOG">BOG</option>
-            <option value="CASH" selected>CASH</option>
           </select>
         </div>
         <div class="product-form-field product-form-field-full">
           <label for="saleNote">შენიშვნა (არასავალდებულო)</label>
-          <input type="text" id="saleNote" class="form-input" placeholder="მაგ: ნაღდი გადახდა">
+          <input type="text" id="saleNote" class="form-input" placeholder="მაგ: გადარიცხვა">
         </div>
       </div>
 
@@ -463,7 +465,7 @@
       </div>
 
       <div class="email-actions">
-        <button class="btn btn-success" onclick="window.recordProductSale()">
+        <button class="btn btn-success" id="recordProductSaleBtn" onclick="window.recordProductSale()">
           <i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeProductSaleModal()">
