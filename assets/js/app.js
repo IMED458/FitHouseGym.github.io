@@ -61,6 +61,54 @@
       return `${Number(value || 0).toFixed(2)}₾`;
     }
 
+    function isDirectImageUrl(url) {
+      return /^https?:\/\/.+\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(String(url || '').trim());
+    }
+
+    function buildPagePreviewUrl(url) {
+      return `https://image.thum.io/get/width/900/crop/700/noanimate/${String(url || '').trim()}`;
+    }
+
+    async function extractPageImageUrl(pageUrl) {
+      const response = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(pageUrl)}`);
+      if (!response.ok) throw new Error('image lookup failed');
+      const html = await response.text();
+      const parser = new DOMParser();
+      const page = parser.parseFromString(html, 'text/html');
+      const candidates = [
+        page.querySelector('meta[property="og:image"]')?.getAttribute('content'),
+        page.querySelector('meta[name="twitter:image"]')?.getAttribute('content'),
+        page.querySelector('link[rel="image_src"]')?.getAttribute('href'),
+        page.querySelector('img[src]')?.getAttribute('src')
+      ].filter(Boolean);
+
+      if (!candidates.length) return null;
+      return new URL(candidates[0], pageUrl).toString();
+    }
+
+    async function normalizeProductImageInput(value) {
+      const trimmed = String(value || '').trim();
+      if (!trimmed) return null;
+      if (!/^https?:\/\//i.test(trimmed)) return trimmed;
+      if (isDirectImageUrl(trimmed)) return trimmed;
+      try {
+        const extracted = await extractPageImageUrl(trimmed);
+        return extracted || buildPagePreviewUrl(trimmed);
+      } catch (e) {
+        console.warn('page image extraction failed, using page preview', e);
+        return buildPagePreviewUrl(trimmed);
+      }
+    }
+
+    function prependTransactionLocally(transaction) {
+      if (!transaction?.id) return;
+      window.transactions = [
+        transaction,
+        ...window.transactions.filter((item) => item.id !== transaction.id)
+      ];
+      updateAll();
+    }
+
     function normalizeProductCode(value) {
       return String(value || '').trim().toUpperCase();
     }
@@ -209,12 +257,14 @@
 
     async function recordTransaction(transaction) {
       try {
-        await addDoc(collection(db, "transactions"), {
+        const payload = {
           ...transaction,
           amount: Number(transaction.amount || 0),
           createdAt: transaction.createdAt || new Date().toISOString(),
           createdByRole: transaction.createdByRole || currentUserRole || 'system'
-        });
+        };
+        const docRef = await addDoc(collection(db, "transactions"), payload);
+        prependTransactionLocally({ id: docRef.id, ...payload });
         return true;
       } catch (e) {
         console.error('transaction write failed', e);
@@ -1497,7 +1547,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productName').value = product?.name || '';
       document.getElementById('productPrice').value = product?.price ?? '';
       document.getElementById('productStock').value = product?.stock ?? 0;
-      document.getElementById('productImageUrl').value = product?.imageUrl || '';
+      document.getElementById('productImageUrl').value = product?.sourceUrl || product?.imageUrl || '';
       modal.style.display = 'flex';
     };
 
@@ -1523,7 +1573,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const name = document.getElementById('productName').value.trim();
       const price = Number(document.getElementById('productPrice').value || 0);
       const stock = Math.max(0, parseInt(document.getElementById('productStock').value || '0', 10));
-      const imageUrl = document.getElementById('productImageUrl').value.trim() || null;
+      const rawImageUrl = document.getElementById('productImageUrl').value.trim() || null;
 
       if (!code || !name || price <= 0) {
         showToast('კოდი, სახელი და ფასი სავალდებულოა', 'error');
@@ -1536,6 +1586,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
 
+      const imageUrl = await normalizeProductImageInput(rawImageUrl);
       const nowIso = new Date().toISOString();
       const payload = {
         code,
@@ -1543,6 +1594,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         price,
         stock,
         imageUrl,
+        sourceUrl: rawImageUrl,
         updatedAt: nowIso
       };
       if (!id) {
@@ -1617,13 +1669,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const batch = writeBatch(db);
       const productRef = doc(db, "products", product.id);
       const transactionRef = doc(collection(db, "transactions"));
-
-      batch.set(productRef, {
-        stock: nextStock,
-        updatedAt: nowIso
-      }, { merge: true });
-
-      batch.set(transactionRef, {
+      const transactionPayload = {
         type: 'product_sale',
         category: 'product',
         amount: totalAmount,
@@ -1636,10 +1682,19 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         note,
         createdAt: nowIso,
         createdByRole: currentUserRole || 'system'
-      });
+      };
+
+      batch.set(productRef, {
+        stock: nextStock,
+        updatedAt: nowIso
+      }, { merge: true });
+
+      batch.set(transactionRef, transactionPayload);
 
       try {
         await batch.commit();
+        window.products = window.products.map((item) => item.id === product.id ? { ...item, stock: nextStock, updatedAt: nowIso } : item);
+        prependTransactionLocally({ id: transactionRef.id, ...transactionPayload });
         showToast(`გაყიდვა დაფიქსირდა: ${product.name}`);
         window.closeProductSaleModal();
       } catch (e) {

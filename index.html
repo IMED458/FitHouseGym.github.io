@@ -58,7 +58,7 @@
       <div id="dashboard" class="tab-content active">
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
-          <div class="stat-card" id="todayVisitsCard" onclick="toggleTodayVisits()">
+          <div class="stat-card" id="todayVisitsCard" onclick="window.toggleTodayVisits()">
             <div class="text-4xl font-bold" id="todayVisits">0</div>
             <div class="text-lg mt-2">დღევანდელი ვიზიტები</div>
           </div>
@@ -168,7 +168,7 @@
           </div>
           <div class="section-actions">
             <input type="text" id="productSearchInput" placeholder="სახელი ან კოდი..." class="search-input product-search-input">
-            <button class="btn bg-emerald-600 hover:bg-emerald-700" data-admin-only onclick="openProductForm()">
+            <button class="btn bg-emerald-600 hover:bg-emerald-700" data-admin-only onclick="window.openProductForm()">
               <i class="fas fa-plus"></i> პროდუქტის დამატება
             </button>
           </div>
@@ -388,7 +388,7 @@
     <div class="modal-content" style="max-width:560px;">
       <div class="modal-header">
         <h3 id="productFormTitle">პროდუქტის დამატება</h3>
-        <button class="modal-close" onclick="closeProductForm()">×</button>
+        <button class="modal-close" onclick="window.closeProductForm()">×</button>
       </div>
       <input type="hidden" id="productFormId">
       <div class="product-form-grid">
@@ -409,15 +409,15 @@
           <input type="number" id="productStock" class="form-input" placeholder="მარაგი" min="0" step="1">
         </div>
         <div class="product-form-field product-form-field-full">
-          <label for="productImageUrl">ფოტოს ბმული (არასავალდებულო)</label>
-          <input type="text" id="productImageUrl" class="form-input" placeholder="https://...">
+          <label for="productImageUrl">ფოტოს ან პროდუქტის გვერდის ბმული (არასავალდებულო)</label>
+          <input type="text" id="productImageUrl" class="form-input" placeholder="მაგ: https://vitamini.ge/ru/product/...">
         </div>
       </div>
       <div class="email-actions">
-        <button class="btn btn-success" onclick="saveProduct()">
+        <button class="btn btn-success" onclick="window.saveProduct()">
           <i class="fas fa-save"></i> შენახვა
         </button>
-        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeProductForm()">
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeProductForm()">
           გაუქმება
         </button>
       </div>
@@ -428,7 +428,7 @@
     <div class="modal-content" style="max-width:480px;">
       <div class="modal-header">
         <h3>პროდუქტის გაყიდვა</h3>
-        <button class="modal-close" onclick="closeProductSaleModal()">×</button>
+        <button class="modal-close" onclick="window.closeProductSaleModal()">×</button>
       </div>
       <input type="hidden" id="saleProductId">
 
@@ -455,10 +455,10 @@
       </div>
 
       <div class="email-actions">
-        <button class="btn btn-success" onclick="recordProductSale()">
+        <button class="btn btn-success" onclick="window.recordProductSale()">
           <i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება
         </button>
-        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="closeProductSaleModal()">
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeProductSaleModal()">
           გაუქმება
         </button>
       </div>
