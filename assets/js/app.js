@@ -61,6 +61,15 @@
       return `${Number(value || 0).toFixed(2)}₾`;
     }
 
+    function getPaymentMethodLabel(method) {
+      const map = {
+        TBC: 'TBC',
+        BOG: 'BOG',
+        CASH: 'CASH'
+      };
+      return map[method] || method || '—';
+    }
+
     function isDirectImageUrl(url) {
       return /^https?:\/\/.+\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(String(url || '').trim());
     }
@@ -1427,7 +1436,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         <div class="transaction-row">
           <div>
             <div class="transaction-title">${sale.productName}</div>
-            <div class="transaction-meta">${sale.quantity} ცალი • ${formatDateTime(sale.createdAt)}</div>
+            <div class="transaction-meta">${sale.quantity} ცალი • ${getPaymentMethodLabel(sale.paymentMethod)} • ${formatDateTime(sale.createdAt)}</div>
           </div>
           <div class="transaction-amount">${isAdmin() ? formatCurrency(sale.amount) : `${sale.quantity} ცალი`}</div>
         </div>
@@ -1522,7 +1531,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div class="transaction-row">
               <div>
                 <div class="transaction-title">${tx.description || (tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი')}</div>
-                <div class="transaction-meta">${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}</div>
+                <div class="transaction-meta">${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}${tx.paymentMethod ? ` • ${getPaymentMethodLabel(tx.paymentMethod)}` : ''}</div>
               </div>
               <div class="transaction-amount">${formatCurrency(tx.amount)}</div>
             </div>
@@ -1627,6 +1636,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('saleProductPrice').textContent = `ფასი: ${formatCurrency(product.price)}`;
       document.getElementById('saleQuantity').value = 1;
       document.getElementById('saleQuantity').max = Math.max(1, Number(product.stock || 0));
+      document.getElementById('salePaymentMethod').value = 'CASH';
       document.getElementById('saleNote').value = '';
       document.getElementById('productSaleModal').style.display = 'flex';
       window.updateProductSaleTotal();
@@ -1636,6 +1646,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productSaleModal').style.display = 'none';
       document.getElementById('saleProductId').value = '';
       document.getElementById('saleQuantity').value = '1';
+      document.getElementById('salePaymentMethod').value = 'CASH';
       document.getElementById('saleNote').value = '';
       document.getElementById('saleTotalAmount').textContent = formatCurrency(0);
     };
@@ -1652,6 +1663,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const productId = document.getElementById('saleProductId').value;
       const product = window.products.find((item) => item.id === productId);
       const quantity = Math.max(1, parseInt(document.getElementById('saleQuantity').value || '1', 10));
+      const paymentMethod = document.getElementById('salePaymentMethod').value;
       const note = document.getElementById('saleNote').value.trim() || null;
 
       if (!product) {
@@ -1679,6 +1691,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         productCode: product.code,
         productName: product.name,
         description: `პროდუქტის გაყიდვა: ${product.name}`,
+        paymentMethod,
         note,
         createdAt: nowIso,
         createdByRole: currentUserRole || 'system'
@@ -1737,6 +1750,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           "კატეგორია": tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი',
           "ტიპი": tx.type,
           "აღწერა": tx.description || '',
+          "გადახდა": getPaymentMethodLabel(tx.paymentMethod),
           "თანხა": formatCurrency(tx.amount),
           "რაოდენობა": tx.quantity || '',
           "პროდუქტი": tx.productName || '',
