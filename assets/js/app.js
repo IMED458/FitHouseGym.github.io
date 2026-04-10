@@ -1027,16 +1027,29 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
       if (tab === 'dashboard') {
         document.getElementById('expiringSoonSection').style.display = 'none';
+        document.getElementById('todayVisitsSection').style.display = 'none';
       }
     };
 
     window.toggleExpiringSoon = function() {
+      document.getElementById('todayVisitsSection').style.display = 'none';
       const section = document.getElementById('expiringSoonSection');
       if (section.style.display === 'block') {
         section.style.display = 'none';
       } else {
         section.style.display = 'block';
         showExpiringSoon();
+      }
+    };
+
+    window.toggleTodayVisits = function() {
+      document.getElementById('expiringSoonSection').style.display = 'none';
+      const section = document.getElementById('todayVisitsSection');
+      if (section.style.display === 'block') {
+        section.style.display = 'none';
+      } else {
+        section.style.display = 'block';
+        showTodayVisits();
       }
     };
 
@@ -1703,12 +1716,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       updateExpiredList(); 
       updateSearchMemberList(); 
       showExpiringSoon();
+      showTodayVisits();
       updateProductsTab();
       updateFinanceTab();
     }
 
     function updateDashboard() {
       const todayKey = new Date().toDateString();
+      const totalMembers = window.members.length;
       const todayVisits = window.members.filter(m => m.lastVisit && new Date(m.lastVisit).toDateString() === todayKey).length;
       const active = window.members.filter(m => m.status === 'active').length;
       const expired = window.members.filter(m => m.status === 'expired').length;
@@ -1722,6 +1737,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         const end = startOfDay(m.subscriptionEndDate);
         return end >= today && end <= soonDate;
       }).length;
+      document.getElementById('totalMembers').textContent = totalMembers;
       document.getElementById('todayVisits').textContent = todayVisits;
       document.getElementById('activeMembers').textContent = active;
       document.getElementById('expiredMembers').textContent = expired;
@@ -1826,6 +1842,40 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> QR გაგზავნა</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
           </div></div>`;
+      }).join('');
+    }
+
+    function showTodayVisits() {
+      const container = document.getElementById('todayVisitsList');
+      if (!container) return;
+
+      const now = new Date();
+      const list = window.members
+        .filter((m) => m.lastVisit && isSameCalendarDay(m.lastVisit, now))
+        .sort((a, b) => new Date(b.lastVisit) - new Date(a.lastVisit));
+
+      if (list.length === 0) {
+        container.innerHTML = '<p class="text-center py-10 text-gray-500">დღეს ჯერ არცერთი ვიზიტი არ დაფიქსირებულა</p>';
+        return;
+      }
+
+      container.innerHTML = list.map((m) => {
+        const note = m.note ? `<div class="note-banner text-sm"><i class="fas fa-exclamation-triangle"></i> <strong>შენიშვნა:</strong> ${m.note}</div>` : '';
+        const effectiveStatus = getEffectiveStatus(m);
+        return `<div class="member-card text-sm">${note}
+          <div class="grid grid-cols-2 gap-3">
+            <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
+            <div><strong>პირადი:</strong> ${m.personalId}</div>
+            <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
+            <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
+            <div><strong>შემოსვლის დრო:</strong> <span class="text-green-400 font-bold">${formatDateTime(m.lastVisit)}</span></div>
+            <div><strong>ვადა:</strong> ${formatDate(m.subscriptionEndDate)}</div>
+          </div>
+          <div class="mt-4 flex gap-3 justify-center">
+            <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-5 py-2" onclick="window.showMemberQr('${m.id}')"><i class="fas fa-qrcode"></i> QR</button>
+          </div>
+        </div>`;
       }).join('');
     }
 

@@ -251,6 +251,9 @@
       background:linear-gradient(135deg,#ea580c,#f97316); 
       cursor:pointer; 
     }
+    #todayVisitsCard {
+      cursor: pointer;
+    }
     .toast { 
       position:fixed; 
       top:20px; 
@@ -508,6 +511,14 @@
       padding:24px; 
       margin-top:32px; 
       display:none; 
+    }
+    #todayVisitsSection {
+      background:var(--card-bg);
+      border:2px solid #10b981;
+      border-radius:20px;
+      padding:24px;
+      margin-top:32px;
+      display:none;
     }
     
     .modal {
