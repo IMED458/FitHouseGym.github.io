@@ -943,10 +943,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const m = window.members.find(x => x.id === id);
       if (!m) return;
       const start = new Date();
-      const end = setToEndOfDay(addMonthsPreserveDay(start, 1));
+      let end = setToEndOfDay(addMonthsPreserveDay(start, 1));
       let visits = null;
       if (m.subscriptionType === '12visits') { 
         visits = 12; 
+      }
+      else if (m.subscriptionType === 'single_visit') {
+        end = setToEndOfDay(start);
+        visits = 1;
       }
       
       const updated = { 
@@ -1019,9 +1023,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
               <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
               <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
                 <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
+                <option value="single_visit" ${m.subscriptionType==='single_visit'?'selected':''}>ერთჯერადი ვიზიტი (15₾)</option>
                 <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
                 <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
-                <option value="other" ${!['12visits','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
+                <option value="other" ${!['12visits','single_visit','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
               </select>
             </div>
             <div class="edit-field">
@@ -1073,6 +1078,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (type === '12visits') { 
         document.getElementById(`e_price_${id}`).value = 70; 
         document.getElementById(`e_visits_${id}`).value = 12; 
+      }
+      else if (type === 'single_visit') {
+        document.getElementById(`e_price_${id}`).value = 15;
+        document.getElementById(`e_visits_${id}`).value = 1;
       }
       else if (type === 'morning') { 
         document.getElementById(`e_price_${id}`).value = 90; 
@@ -1281,6 +1290,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     function getSubscriptionName(t) { 
       const map = {
         '12visits':'12 ვარჯიში',
+        'single_visit':'ერთჯერადი ვიზიტი',
         'morning':'დილის ულიმიტო',
         'unlimited':'ულიმიტო',
         'other':'სხვა'
@@ -1357,6 +1367,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           
           if (type === '12visits') { 
             visits = 12; 
+          }
+          else if (type === 'single_visit') {
+            end = setToEndOfDay(start);
+            visits = 1;
           }
           else if (type === 'other') {
             const cp = +document.getElementById('customPrice').value;
