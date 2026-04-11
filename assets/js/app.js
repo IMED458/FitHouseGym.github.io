@@ -111,8 +111,10 @@
 
     function upsertLocalProduct(product) {
       if (!product?.id) return;
+      const existingProduct = window.products.find((item) => item.id === product.id) || {};
+      const mergedProduct = { ...existingProduct, ...product };
       window.products = [
-        product,
+        mergedProduct,
         ...window.products.filter((item) => item.id !== product.id)
       ].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
       updateAll();
@@ -1090,6 +1092,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     async function saveProductRecord(product, options = {}) {
       let savedId = product.id || null;
       let payload = null;
+      const existingProduct = product.id
+        ? window.products.find((item) => item.id === product.id) || null
+        : null;
       try {
         const { id, ...restPayload } = product;
         payload = restPayload;
@@ -1125,7 +1130,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         }
         return { ok: false, id: null, product: null };
       }
-      const savedProduct = { id: savedId, ...payload };
+      const savedProduct = { ...(existingProduct || {}), id: savedId, ...payload };
       try {
         upsertLocalProduct(savedProduct);
       } catch (e) {
