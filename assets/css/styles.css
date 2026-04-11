@@ -1,3 +1,6 @@
+    * {
+      box-sizing: border-box;
+    }
     :root { 
       --bg: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%); 
       --card-bg: #1e293b; 
@@ -616,6 +619,10 @@
       margin-top: 20px;
       flex-wrap: wrap;
     }
+    .email-actions .btn {
+      flex: 1 1 180px;
+      min-width: 0;
+    }
     .role-hidden {
       display: none !important;
     }
@@ -851,16 +858,21 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 14px;
+      align-items: start;
     }
     .product-form-field {
       display: flex;
       flex-direction: column;
       gap: 6px;
+      min-width: 0;
     }
     .product-form-field label {
       font-size: 0.9rem;
       font-weight: 700;
       color: var(--text-light);
+    }
+    .product-form-field .form-input {
+      min-width: 0;
     }
     .product-form-field-full {
       grid-column: 1 / -1;

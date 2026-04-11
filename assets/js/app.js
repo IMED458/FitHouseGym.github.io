@@ -29,6 +29,9 @@
     let currentUserRole = null;
     let notificationsSchedulerStarted = false;
     let expandedSearchMemberId = null;
+    let financeReconcileTimer = null;
+    let membersLoadedOnce = false;
+    let transactionsLoadedOnce = false;
     window.members = [];
     window.products = [];
     window.transactions = [];
@@ -177,6 +180,101 @@
       return [...window.transactions].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
 
+    function safeUiUpdate(label, fn) {
+      try {
+        fn();
+      } catch (e) {
+        console.error(`[UI_UPDATE:${label}]`, e);
+      }
+    }
+
+    function getFirestoreCollectionUrl(collectionName, pageToken = '') {
+      const url = new URL(`https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${collectionName}`);
+      url.searchParams.set('key', firebaseConfig.apiKey);
+      url.searchParams.set('pageSize', '1000');
+      if (pageToken) url.searchParams.set('pageToken', pageToken);
+      return url.toString();
+    }
+
+    function parseFirestoreValue(value) {
+      if (!value || typeof value !== 'object') return null;
+      if ('stringValue' in value) return value.stringValue;
+      if ('integerValue' in value) return Number(value.integerValue);
+      if ('doubleValue' in value) return Number(value.doubleValue);
+      if ('booleanValue' in value) return value.booleanValue;
+      if ('nullValue' in value) return null;
+      if ('timestampValue' in value) return value.timestampValue;
+      if ('referenceValue' in value) return value.referenceValue;
+      if ('mapValue' in value) {
+        return Object.fromEntries(
+          Object.entries(value.mapValue.fields || {}).map(([key, innerValue]) => [key, parseFirestoreValue(innerValue)])
+        );
+      }
+      if ('arrayValue' in value) {
+        return (value.arrayValue.values || []).map(parseFirestoreValue);
+      }
+      return null;
+    }
+
+    function parseFirestoreDocument(documentData) {
+      const id = String(documentData.name || '').split('/').pop();
+      const fields = Object.entries(documentData.fields || {}).reduce((acc, [key, value]) => {
+        acc[key] = parseFirestoreValue(value);
+        return acc;
+      }, {});
+      return { id, ...fields };
+    }
+
+    async function fetchCollectionViaRest(collectionName) {
+      const items = [];
+      let pageToken = '';
+      do {
+        const response = await fetch(getFirestoreCollectionUrl(collectionName, pageToken), { cache: 'no-store' });
+        if (!response.ok) {
+          throw new Error(`${collectionName} fetch failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        (data.documents || []).forEach((documentData) => {
+          items.push(parseFirestoreDocument(documentData));
+        });
+        pageToken = data.nextPageToken || '';
+      } while (pageToken);
+      return items;
+    }
+
+    async function hydrateMembersFromRest() {
+      try {
+        window.members = await fetchCollectionViaRest('members');
+        membersLoadedOnce = true;
+        updateAll();
+        checkUrlQrParam();
+        queueTodayMembershipTransactionReconcile();
+      } catch (e) {
+        console.warn('members rest hydrate failed', e);
+      }
+    }
+
+    async function hydrateProductsFromRest() {
+      try {
+        window.products = (await fetchCollectionViaRest('products'))
+          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
+        updateAll();
+      } catch (e) {
+        console.warn('products rest hydrate failed', e);
+      }
+    }
+
+    async function hydrateTransactionsFromRest() {
+      try {
+        window.transactions = await fetchCollectionViaRest('transactions');
+        transactionsLoadedOnce = true;
+        updateAll();
+        queueTodayMembershipTransactionReconcile();
+      } catch (e) {
+        console.warn('transactions rest hydrate failed', e);
+      }
+    }
+
     function startOfDay(date) {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
@@ -246,6 +344,60 @@
       }, 5000);
     }
 
+    function queueTodayMembershipTransactionReconcile() {
+      if (!isAuthenticated || !membersLoadedOnce || !transactionsLoadedOnce) return;
+      if (financeReconcileTimer) clearTimeout(financeReconcileTimer);
+      financeReconcileTimer = setTimeout(() => {
+        reconcileTodayMembershipTransactions();
+      }, 1200);
+    }
+
+    async function reconcileTodayMembershipTransactions() {
+      if (!window.members.length) return;
+      const today = new Date();
+      const missingTransactions = [];
+
+      for (const member of window.members) {
+        const createdToday = member.createdAt && isSameCalendarDay(member.createdAt, today);
+        const startedToday = member.subscriptionStartDate && isSameCalendarDay(member.subscriptionStartDate, today);
+
+        if (createdToday) {
+          const hasRegistrationTx = window.transactions.some((tx) =>
+            tx.type === 'membership_registration' &&
+            tx.memberId === member.id &&
+            isSameCalendarDay(tx.createdAt, today)
+          );
+          if (!hasRegistrationTx) {
+            missingTransactions.push({ type: 'membership_registration', member });
+          }
+          continue;
+        }
+
+        if (startedToday) {
+          const hasRenewalTx = window.transactions.some((tx) =>
+            tx.type === 'membership_renewal' &&
+            tx.memberId === member.id &&
+            isSameCalendarDay(tx.createdAt, today)
+          );
+          if (!hasRenewalTx) {
+            missingTransactions.push({ type: 'membership_renewal', member });
+          }
+        }
+      }
+
+      if (missingTransactions.length === 0) return;
+
+      let restoredCount = 0;
+      for (const item of missingTransactions) {
+        const saved = await recordMembershipTransaction(item.type, item.member);
+        if (saved) restoredCount++;
+      }
+
+      if (restoredCount > 0) {
+        showToast(`ფინანსებში აღდგა ${restoredCount} დღევანდელი ჩანაწერი`);
+      }
+    }
+
     function getFinancialSummary() {
       const now = new Date();
       const transactions = getSortedTransactions();
@@ -276,16 +428,16 @@
     }
 
     async function recordTransaction(transaction, options = {}) {
+      let payload = null;
+      let docRef = null;
       try {
-        const payload = {
+        payload = {
           ...transaction,
           amount: Number(transaction.amount || 0),
           createdAt: transaction.createdAt || new Date().toISOString(),
           createdByRole: transaction.createdByRole || currentUserRole || 'system'
         };
-        const docRef = await addDoc(collection(db, "transactions"), payload);
-        prependTransactionLocally({ id: docRef.id, ...payload });
-        return true;
+        docRef = await addDoc(collection(db, "transactions"), payload);
       } catch (e) {
         console.error('transaction write failed', e);
         if (!options.silent) {
@@ -293,6 +445,12 @@
         }
         return false;
       }
+      try {
+        prependTransactionLocally({ id: docRef.id, ...payload });
+      } catch (e) {
+        console.error('local transaction update failed', e);
+      }
+      return true;
     }
 
     async function recordMembershipTransaction(actionType, member) {
@@ -785,29 +943,45 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     function loadMembers() {
+      hydrateMembersFromRest();
       const q = query(collection(db, "members"));
       onSnapshot(q, (snapshot) => {
         window.members = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        membersLoadedOnce = true;
         updateAll();
         checkUrlQrParam();
+        queueTodayMembershipTransactionReconcile();
+      }, (error) => {
+        console.warn('members snapshot failed, using rest fallback', error);
+        hydrateMembersFromRest();
       });
     }
 
     function loadProducts() {
+      hydrateProductsFromRest();
       const q = query(collection(db, "products"));
       onSnapshot(q, (snapshot) => {
         window.products = snapshot.docs
           .map((d) => ({ id: d.id, ...d.data() }))
           .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
         updateAll();
+      }, (error) => {
+        console.warn('products snapshot failed, using rest fallback', error);
+        hydrateProductsFromRest();
       });
     }
 
     function loadTransactions() {
+      hydrateTransactionsFromRest();
       const q = query(collection(db, "transactions"));
       onSnapshot(q, (snapshot) => {
         window.transactions = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        transactionsLoadedOnce = true;
         updateAll();
+        queueTodayMembershipTransactionReconcile();
+      }, (error) => {
+        console.warn('transactions snapshot failed, using rest fallback', error);
+        hydrateTransactionsFromRest();
       });
     }
 
@@ -858,18 +1032,17 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     }
 
     async function saveProductRecord(product, options = {}) {
+      let savedId = product.id || null;
+      let payload = null;
       try {
-        const { id, ...payload } = product;
-        let savedId = id || null;
+        const { id, ...restPayload } = product;
+        payload = restPayload;
         if (id) {
           await setDoc(doc(db, "products", id), payload, { merge: true });
         } else {
           const docRef = await addDoc(collection(db, "products"), payload);
           savedId = docRef.id;
         }
-        const savedProduct = { id: savedId, ...payload };
-        upsertLocalProduct(savedProduct);
-        return { ok: true, id: savedId, product: savedProduct };
       } catch (e) {
         console.error('product save failed', e);
         if (!options.silent) {
@@ -877,6 +1050,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         }
         return { ok: false, id: null, product: null };
       }
+      const savedProduct = { id: savedId, ...payload };
+      try {
+        upsertLocalProduct(savedProduct);
+      } catch (e) {
+        console.error('local product update failed', e);
+      }
+      return { ok: true, id: savedId, product: savedProduct };
     }
 
     function dateKey(iso) {
@@ -1580,7 +1760,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const saveBtn = document.getElementById('saveProductBtn');
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> შენახვა';
       }
       modal.style.display = 'flex';
     };
@@ -1596,7 +1776,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const saveBtn = document.getElementById('saveProductBtn');
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+        saveBtn.innerHTML = '<i class="fas fa-save"></i> შენახვა';
       }
       window.editingProductId = null;
     };
@@ -1690,7 +1870,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (!saved.ok) {
         if (saveBtn) {
           saveBtn.disabled = false;
-          saveBtn.innerHTML = '<i class="far fa-circle-check"></i> შენახვა';
+          saveBtn.innerHTML = '<i class="fas fa-save"></i> შენახვა';
         }
         return;
       }
@@ -1894,13 +2074,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     function updateAll() {
-      updateDashboard(); 
-      updateExpiredList(); 
-      updateSearchMemberList(); 
-      showExpiringSoon();
-      showTodayVisits();
-      updateProductsTab();
-      updateFinanceTab();
+      safeUiUpdate('dashboard', updateDashboard);
+      safeUiUpdate('expired', updateExpiredList);
+      safeUiUpdate('search', updateSearchMemberList);
+      safeUiUpdate('expiringSoon', showExpiringSoon);
+      safeUiUpdate('todayVisits', showTodayVisits);
+      safeUiUpdate('products', updateProductsTab);
+      safeUiUpdate('finance', updateFinanceTab);
     }
 
     function updateDashboard() {
@@ -2109,6 +2289,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     document.addEventListener('DOMContentLoaded', () => {
       checkAuth();
       applyRoleVisibility();
+      document.getElementById('adminPassword')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.login();
+        }
+      });
       if (localStorage.getItem('gym-theme') === 'light') {
         document.body.classList.add('light-mode');
         document.querySelector('.theme-toggle i').className = 'fas fa-moon';
