@@ -625,8 +625,20 @@
 
       <div class="day-sales-meta-grid">
         <div class="day-sales-meta-item">
-          <span>გაყიდვები</span>
-          <strong id="daySalesCount">0</strong>
+          <span>აბონემენტებიდან</span>
+          <strong id="daySalesMembershipAmount">0.00₾</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>პროდუქტებიდან</span>
+          <strong id="daySalesProductsAmount">0.00₾</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>აბონემენტები</span>
+          <strong id="daySalesMembershipCount">0</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>პროდუქტის გაყიდვები</span>
+          <strong id="daySalesProductSalesCount">0</strong>
         </div>
         <div class="day-sales-meta-item">
           <span>გაყიდული ერთეულები</span>
@@ -643,7 +655,12 @@
       </div>
 
       <div class="section-panel day-sales-list-panel">
-        <h4 class="panel-title">დღევანდელი გაყიდვები</h4>
+        <h4 class="panel-title">დღევანდელი აბონემენტები</h4>
+        <div id="daySalesMembershipList" class="transaction-list"></div>
+      </div>
+
+      <div class="section-panel day-sales-list-panel">
+        <h4 class="panel-title">დღევანდელი პროდუქტები</h4>
         <div id="daySalesRecentList" class="transaction-list"></div>
       </div>
     </div>

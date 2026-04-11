@@ -652,13 +652,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     function renderDaySalesModal() {
       const summary = getFinancialSummary();
       const todaySales = summary.todayProductTransactions;
-      const cashAmount = todaySales
-        .filter((tx) => tx.paymentMethod === 'CASH')
+      const membershipTransactions = summary.todayMembershipTransactions;
+      const allTransactions = [...membershipTransactions, ...todaySales];
+      const cashAmount = allTransactions
+        .filter((tx) => !tx.paymentMethod || tx.paymentMethod === 'CASH')
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-      const tbcAmount = todaySales
+      const tbcAmount = allTransactions
         .filter((tx) => tx.paymentMethod === 'TBC')
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-      const bogAmount = todaySales
+      const bogAmount = allTransactions
         .filter((tx) => tx.paymentMethod === 'BOG')
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
       const cardAmount = tbcAmount + bogAmount;
@@ -670,14 +672,34 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       setText('daySalesCashAmount', formatCurrency(cashAmount));
       setText('daySalesCardAmount', formatCurrency(cardAmount));
-      setText('daySalesTotalAmount', formatCurrency(summary.todayProducts));
-      setText('daySalesCount', String(summary.todayProductSalesCount));
+      setText('daySalesTotalAmount', formatCurrency(summary.todayTotal));
+      setText('daySalesMembershipAmount', formatCurrency(summary.todayMembership));
+      setText('daySalesProductsAmount', formatCurrency(summary.todayProducts));
+      setText('daySalesMembershipCount', String(summary.todayRegistrationCount + summary.todayRenewalCount));
+      setText('daySalesProductSalesCount', String(summary.todayProductSalesCount));
       setText('daySalesUnits', String(summary.todayProductUnits));
       setText('daySalesTbcAmount', formatCurrency(tbcAmount));
       setText('daySalesBogAmount', formatCurrency(bogAmount));
 
+      const membershipList = document.getElementById('daySalesMembershipList');
       const recentList = document.getElementById('daySalesRecentList');
-      if (!recentList) return;
+      if (!recentList || !membershipList) return;
+      if (membershipTransactions.length === 0) {
+        membershipList.innerHTML = '<p class="empty-state">დღეს აბონემენტების გაყიდვა/განახლება არ დაფიქსირებულა</p>';
+      } else {
+        membershipList.innerHTML = membershipTransactions
+          .slice()
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+          .map((tx) => `
+            <div class="transaction-row">
+              <div>
+                <div class="transaction-title">${tx.memberName || tx.subscriptionName || 'აბონემენტი'}</div>
+                <div class="transaction-meta">${tx.type === 'membership_registration' ? 'ახალი აბონემენტი' : 'განახლება'} • ${tx.subscriptionName || tx.subscriptionType || 'აბონემენტი'} • ${formatDateTime(tx.createdAt)}</div>
+              </div>
+              <div class="transaction-amount">${formatCurrency(tx.amount)}</div>
+            </div>
+          `).join('');
+      }
       if (todaySales.length === 0) {
         recentList.innerHTML = '<p class="empty-state">დღეს ჯერ გაყიდვები არ დაფიქსირებულა</p>';
         return;
@@ -1967,9 +1989,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const imageHtml = product.imageUrl
         ? `<img src="${product.imageUrl}" alt="${product.name}" class="product-card-image" onerror="this.parentElement.innerHTML='<div class=&quot;product-photo-fallback&quot;><i class=&quot;fas fa-bottle-water&quot;></i></div>'">`
         : `<div class="product-photo-fallback"><i class="fas fa-bottle-water"></i></div>`;
+      const cardClick = canSell ? `onclick="window.addProductToCart('${product.id}')"` : '';
+      const cardClickableClass = canSell ? 'product-card-clickable' : '';
 
       return `
-        <div class="product-card ${canSell ? '' : 'product-card-empty'}">
+        <div class="product-card ${canSell ? '' : 'product-card-empty'} ${cardClickableClass}" ${cardClick}>
           ${cartQuantity > 0 ? `<div class="product-card-cart-badge">${cartQuantity}</div>` : ''}
           <div class="product-card-media">${imageHtml}</div>
           <div class="product-card-body">
@@ -1983,16 +2007,16 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div class="product-card-price">${formatCurrency(product.price)}</div>
             <div class="product-card-meta">მარაგი: ${stock}</div>
             <div class="product-card-actions">
-              <button class="btn btn-success product-card-select-btn" ${canSell ? '' : 'disabled'} onclick="window.addProductToCart('${product.id}')">
+              <button class="btn btn-success product-card-select-btn" ${canSell ? '' : 'disabled'} onclick="event.stopPropagation(); window.addProductToCart('${product.id}')">
                 <i class="fas fa-plus"></i> ${cartQuantity > 0 ? 'კალათაში დამატება' : 'კალათაში'}
               </button>
             </div>
             <div class="product-card-actions product-card-manage">
-              <button class="btn bg-amber-600 hover:bg-amber-700" onclick="window.openProductRestockModal('${product.id}')">
+              <button class="btn bg-amber-600 hover:bg-amber-700" onclick="event.stopPropagation(); window.openProductRestockModal('${product.id}')">
                 <i class="fas fa-box-open"></i> მარაგის შევსება
               </button>
-              ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : ''}
-              ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700" onclick="window.deleteProduct('${product.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
+              ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="event.stopPropagation(); window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : ''}
+              ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700" onclick="event.stopPropagation(); window.deleteProduct('${product.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
             </div>
           </div>
         </div>
