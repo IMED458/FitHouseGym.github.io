@@ -909,6 +909,10 @@
       border-color: transparent;
       box-shadow: 0 14px 24px rgba(37, 99, 235, 0.24);
     }
+    .product-payment-pill.active[data-payment-method="BOG"] {
+      background: linear-gradient(135deg, #ea580c, #fb923c);
+      box-shadow: 0 14px 24px rgba(234, 88, 12, 0.24);
+    }
     .product-cart-checkout-btn {
       width: 100%;
       min-height: 56px;
