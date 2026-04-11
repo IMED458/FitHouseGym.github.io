@@ -649,6 +649,45 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       `).join('');
     }
 
+    function renderInventoryRestockList() {
+      const container = document.getElementById('inventoryRestockList');
+      if (!container) return;
+
+      const searchValue = (document.getElementById('inventoryRestockSearch')?.value || '').trim().toLowerCase();
+      const filteredProducts = window.products.filter((product) => {
+        if (!searchValue) return true;
+        return String(product.name || '').toLowerCase().includes(searchValue) ||
+          String(product.code || '').toLowerCase().includes(searchValue);
+      });
+
+      if (filteredProducts.length === 0) {
+        container.innerHTML = '<p class="empty-state">მითითებული პროდუქტები ვერ მოიძებნა</p>';
+        return;
+      }
+
+      container.innerHTML = filteredProducts.map((product) => `
+        <div class="inventory-restock-row">
+          <div class="inventory-restock-main">
+            <div class="inventory-restock-name">${product.name}</div>
+            <div class="inventory-restock-meta">კოდი: ${product.code || '—'} • მიმდინარე მარაგი: ${Number(product.stock || 0)}</div>
+          </div>
+          <div class="inventory-restock-controls">
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value="1"
+              class="form-input inventory-restock-input"
+              id="inventoryRestockQty_${product.id}"
+            >
+            <button class="btn bg-amber-600 hover:bg-amber-700 inventory-restock-btn" onclick="window.applyInventoryRestock('${product.id}')">
+              <i class="fas fa-box-open"></i> შევსება
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
     function renderDaySalesModal() {
       const summary = getFinancialSummary();
       const todaySales = summary.todayProductTransactions;
@@ -1986,6 +2025,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const stock = Number(product.stock || 0);
       const canSell = stock > 0;
       const cartQuantity = getCartItemQuantity(product.id);
+      const manageButtons = [
+        isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="event.stopPropagation(); window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : '',
+        isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700" onclick="event.stopPropagation(); window.deleteProduct('${product.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''
+      ].filter(Boolean).join('');
       const imageHtml = product.imageUrl
         ? `<img src="${product.imageUrl}" alt="${product.name}" class="product-card-image" onerror="this.parentElement.innerHTML='<div class=&quot;product-photo-fallback&quot;><i class=&quot;fas fa-bottle-water&quot;></i></div>'">`
         : `<div class="product-photo-fallback"><i class="fas fa-bottle-water"></i></div>`;
@@ -2011,13 +2054,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
                 <i class="fas fa-plus"></i> ${cartQuantity > 0 ? 'კალათაში დამატება' : 'კალათაში'}
               </button>
             </div>
-            <div class="product-card-actions product-card-manage">
-              <button class="btn bg-amber-600 hover:bg-amber-700" onclick="event.stopPropagation(); window.openProductRestockModal('${product.id}')">
-                <i class="fas fa-box-open"></i> მარაგის შევსება
-              </button>
-              ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="event.stopPropagation(); window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : ''}
-              ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700" onclick="event.stopPropagation(); window.deleteProduct('${product.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
-            </div>
+            ${manageButtons ? `<div class="product-card-actions product-card-manage">${manageButtons}</div>` : ''}
           </div>
         </div>
       `;
@@ -2069,6 +2106,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
 
       renderProductCart();
+      renderInventoryRestockList();
       renderRecentProductSales('recentProductSales');
       if (document.getElementById('daySalesModal')?.style.display === 'flex') {
         renderDaySalesModal();
@@ -2852,6 +2890,69 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
     };
 
+    window.openInventoryRestockModal = function() {
+      renderInventoryRestockList();
+      document.getElementById('inventoryRestockSearch').value = '';
+      document.getElementById('inventoryRestockModal').style.display = 'flex';
+      setTimeout(() => {
+        document.getElementById('inventoryRestockSearch')?.focus();
+      }, 50);
+    };
+
+    window.closeInventoryRestockModal = function() {
+      document.getElementById('inventoryRestockModal').style.display = 'none';
+      document.getElementById('inventoryRestockSearch').value = '';
+    };
+
+    window.applyInventoryRestock = async function(productId) {
+      const product = window.products.find((item) => item.id === productId);
+      const qtyInput = document.getElementById(`inventoryRestockQty_${productId}`);
+      const actionBtn = qtyInput?.closest('.inventory-restock-controls')?.querySelector('.inventory-restock-btn');
+      const quantity = parseInt(qtyInput?.value || '0', 10);
+
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        showToast('შეიყვანე დასამატებელი რაოდენობა', 'error');
+        qtyInput?.focus();
+        return;
+      }
+
+      if (actionBtn) {
+        actionBtn.disabled = true;
+        actionBtn.innerHTML = '<div class="spinner"></div>';
+      }
+
+      const nowIso = new Date().toISOString();
+      const nextStock = Number(product.stock || 0) + quantity;
+
+      try {
+        const saved = await saveProductRecord({
+          id: product.id,
+          stock: nextStock,
+          updatedAt: nowIso
+        }, { silent: true });
+        if (!saved.ok) {
+          throw new Error('inventory restock save failed');
+        }
+        if (qtyInput) qtyInput.value = '1';
+        renderInventoryRestockList();
+        updateProductsTab();
+        showToast(`მარაგი განახლდა: ${product.name} (+${quantity})`);
+      } catch (e) {
+        console.error('inventory restock failed', e);
+        showToast('მარაგის შევსება ვერ მოხერხდა', 'error');
+      } finally {
+        const refreshedBtn = document.getElementById(`inventoryRestockQty_${productId}`)?.closest('.inventory-restock-controls')?.querySelector('.inventory-restock-btn');
+        if (refreshedBtn) {
+          refreshedBtn.disabled = false;
+          refreshedBtn.innerHTML = '<i class="fas fa-box-open"></i> შევსება';
+        }
+      }
+    };
+
     window.recordProductRestock = async function() {
       const restockBtn = document.getElementById('recordProductRestockBtn');
       if (restockBtn?.disabled) return;
@@ -3454,6 +3555,10 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('productRestockModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'productRestockModal') window.closeProductRestockModal();
       });
+      document.getElementById('inventoryRestockModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'inventoryRestockModal') window.closeInventoryRestockModal();
+      });
+      document.getElementById('inventoryRestockSearch')?.addEventListener('input', renderInventoryRestockList);
       document.getElementById('daySalesModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'daySalesModal') window.closeDaySalesModal();
       });

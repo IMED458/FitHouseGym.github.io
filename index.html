@@ -177,6 +177,9 @@
             <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshFinancialData()">
               <i class="fas fa-rotate-right"></i> განახლება
             </button>
+            <button class="btn bg-orange-600 hover:bg-orange-700" onclick="window.openInventoryRestockModal()">
+              <i class="fas fa-boxes-stacked"></i> მარაგის შევსება
+            </button>
             <button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.openDaySalesModal()">
               <i class="fas fa-chart-line"></i> დღის ნავაჭრი
             </button>
@@ -190,7 +193,7 @@
         </div>
 
         <div class="admin-inline-note">
-          ოპერატორს შეუძლია გაყიდვა, მარაგის შევსება და დღის დახურვის დაბეჭდვა. ადმინისტრატორს დამატებით შეუძლია პროდუქტის დამატება, რედაქტირება და წაშლა.
+          ოპერატორს შეუძლია გაყიდვა, ცალკე ფანჯრიდან მარაგის შევსება და დღის დახურვის დაბეჭდვა. ადმინისტრატორს დამატებით შეუძლია პროდუქტის დამატება, რედაქტირება და წაშლა.
         </div>
 
         <div class="products-pos-layout">
@@ -598,6 +601,22 @@
           გაუქმება
         </button>
       </div>
+    </div>
+  </div>
+
+  <div id="inventoryRestockModal" class="modal">
+    <div class="modal-content inventory-restock-modal">
+      <div class="modal-header">
+        <h3>მარაგის შევსება</h3>
+        <button class="modal-close" onclick="window.closeInventoryRestockModal()">×</button>
+      </div>
+
+      <div class="inventory-restock-header">
+        <input type="text" id="inventoryRestockSearch" class="search-input" placeholder="მოძებნე პროდუქტი სახელით ან კოდით...">
+        <div class="inventory-restock-note">აქედან მხოლოდ მარაგის დამატებაა შესაძლებელი.</div>
+      </div>
+
+      <div id="inventoryRestockList" class="inventory-restock-list"></div>
     </div>
   </div>
 

@@ -1106,6 +1106,61 @@
     .day-sales-list-panel {
       margin-top: 0;
     }
+    .inventory-restock-modal {
+      max-width: 860px;
+    }
+    .inventory-restock-header {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .inventory-restock-note {
+      color: var(--text-light);
+      font-size: 0.9rem;
+    }
+    .inventory-restock-list {
+      display: grid;
+      gap: 12px;
+      max-height: 62vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+    .inventory-restock-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      background: rgba(15, 23, 42, 0.18);
+    }
+    .light-mode .inventory-restock-row {
+      background: rgba(255,255,255,0.74);
+    }
+    .inventory-restock-name {
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .inventory-restock-meta {
+      margin-top: 4px;
+      color: var(--text-light);
+      font-size: 0.86rem;
+    }
+    .inventory-restock-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .inventory-restock-input {
+      width: 92px;
+      min-width: 92px;
+      text-align: center;
+    }
+    .inventory-restock-btn {
+      min-width: 118px;
+      justify-content: center;
+    }
     .transaction-list {
       display: grid;
       gap: 12px;
@@ -1348,6 +1403,10 @@
       .products-pos-layout{grid-template-columns:1fr}
       .product-cart-panel{position:static}
       .products-grid-catalog{grid-template-columns:repeat(auto-fit, minmax(140px, 1fr))}
+      .inventory-restock-row{grid-template-columns:1fr}
+      .inventory-restock-controls{width:100%}
+      .inventory-restock-input{width:100%; min-width:0}
+      .inventory-restock-btn{width:100%}
       .product-cart-item{grid-template-columns:1fr auto auto; align-items:start}
       .product-cart-item-main{grid-column:1 / -1}
       .product-cart-item-line-total{grid-column:2 / 4; justify-self:end}
