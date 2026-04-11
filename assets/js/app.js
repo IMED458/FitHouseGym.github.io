@@ -572,9 +572,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     }
 
     function buildTransactionDeleteAction(tx) {
-      if (!isAdmin() || !tx?.id) return '';
+      if (!tx?.id) return '';
       return `
-        <button type="button" class="transaction-delete-btn" onclick="window.deleteTransactionEntry('${tx.id}')">
+        <button type="button" class="transaction-delete-btn" data-admin-only onclick="window.deleteTransactionEntry('${tx.id}')">
           <i class="fas fa-trash"></i>
           <span>წაშლა</span>
         </button>
