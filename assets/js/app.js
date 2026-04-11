@@ -33,6 +33,7 @@
     let membersLoadedOnce = false;
     let transactionsLoadedOnce = false;
     let transactionsRefreshTimer = null;
+    let transactionsPollingStarted = false;
     window.members = [];
     window.products = [];
     window.transactions = [];
@@ -1026,16 +1027,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     function loadTransactions() {
       hydrateTransactionsFromRest();
-      const q = query(collection(db, "transactions"));
-      onSnapshot(q, (snapshot) => {
-        window.transactions = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        transactionsLoadedOnce = true;
-        updateAll();
-        queueTodayMembershipTransactionReconcile();
-      }, (error) => {
-        console.warn('transactions snapshot failed, using rest fallback', error);
-        hydrateTransactionsFromRest();
-      });
+      if (transactionsPollingStarted) return;
+      transactionsPollingStarted = true;
+      setInterval(() => {
+        if (isAuthenticated) {
+          hydrateTransactionsFromRest();
+        }
+      }, 15000);
     }
 
     async function createMember(m) {
@@ -2097,13 +2095,57 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       return wrapper;
     }
 
+    async function ensureHtml2PdfLibrary() {
+      if (window.html2pdf) return window.html2pdf;
+      const sources = [
+        'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
+        'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
+      ];
+
+      for (const src of sources) {
+        try {
+          await new Promise((resolve, reject) => {
+            const existing = Array.from(document.querySelectorAll('script')).find((script) => script.src === src);
+            if (existing) {
+              if (window.html2pdf) return resolve();
+              existing.addEventListener('load', resolve, { once: true });
+              existing.addEventListener('error', reject, { once: true });
+              return;
+            }
+
+            const script = document.createElement('script');
+            script.src = src;
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = reject;
+            document.head.appendChild(script);
+          });
+          if (window.html2pdf) return window.html2pdf;
+        } catch (e) {
+          console.warn('html2pdf load failed', src, e);
+        }
+      }
+
+      return null;
+    }
+
+    function openDailyClosurePrintPreview(reportElement, title) {
+      const preview = window.open('', '_blank', 'width=1100,height=800');
+      if (!preview) {
+        showToast('PDF preview ფანჯარა ვერ გაიხსნა', 'error');
+        return false;
+      }
+      preview.document.open();
+      preview.document.write(`<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>${title}</title></head><body>${reportElement.outerHTML}</body></html>`);
+      preview.document.close();
+      preview.focus();
+      setTimeout(() => preview.print(), 500);
+      return true;
+    }
+
     window.exportDailyClosurePdf = async function() {
       if (!isAdmin()) {
         showToast('დღის დახურვა მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
-        return;
-      }
-      if (!window.html2pdf) {
-        showToast('PDF ბიბლიოთეკა ვერ ჩაიტვირთა', 'error');
         return;
       }
 
@@ -2111,6 +2153,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       await hydrateMembersFromRest();
 
       const data = buildDailyClosureData();
+      const html2pdfLib = await ensureHtml2PdfLibrary();
       const reportElement = buildDailyClosureReportElement(data);
       reportElement.style.position = 'fixed';
       reportElement.style.left = '-20000px';
@@ -2120,18 +2163,36 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       const filename = `FitHouse-DayClose-${toDateInputValue(data.generatedAt)}.pdf`;
       try {
-        await window.html2pdf().set({
+        if (!html2pdfLib) {
+          const opened = openDailyClosurePrintPreview(reportElement, filename);
+          if (opened) {
+            showToast('PDF preview გაიხსნა');
+          } else {
+            showToast('PDF ბიბლიოთეკა ვერ ჩაიტვირთა', 'error');
+          }
+          return;
+        }
+
+        const worker = html2pdfLib().set({
           margin: [10, 10, 10, 10],
           filename,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'] }
-        }).from(reportElement).save();
+        }).from(reportElement);
+        await worker.toPdf();
+        const pdf = await worker.get('pdf');
+        pdf.save(filename);
         showToast('დღის დახურვის PDF ჩამოიტვირთა');
       } catch (e) {
         console.error('daily closure pdf failed', e);
-        showToast('PDF-ის შექმნა ვერ მოხერხდა', 'error');
+        const opened = openDailyClosurePrintPreview(reportElement, filename);
+        if (opened) {
+          showToast('PDF preview გაიხსნა');
+        } else {
+          showToast('PDF-ის შექმნა ვერ მოხერხდა', 'error');
+        }
       } finally {
         reportElement.remove();
       }
