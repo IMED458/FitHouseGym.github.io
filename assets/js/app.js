@@ -111,8 +111,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     function upsertLocalProduct(product) {
       if (!product?.id) return;
+      const existing = window.products.find((item) => item.id === product.id);
+      const merged = existing ? { ...existing, ...product } : product;
       window.products = [
-        product,
+        merged,
         ...window.products.filter((item) => item.id !== product.id)
       ].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
       updateAll();
@@ -2168,52 +2170,68 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         return;
       }
 
+      showToast('მონაცემები იტვირთება...');
       await hydrateTransactionsFromRest();
       await hydrateMembersFromRest();
 
       const data = buildDailyClosureData();
-      const html2pdfLib = await ensureHtml2PdfLibrary();
       const reportElement = buildDailyClosureReportElement(data);
-      reportElement.style.position = 'fixed';
-      reportElement.style.left = '-20000px';
-      reportElement.style.top = '0';
-      reportElement.style.width = '1024px';
-      document.body.appendChild(reportElement);
+      const filename = `FitHouse-DayClose-${toDateInputValue(data.generatedAt)}`;
 
-      const filename = `FitHouse-DayClose-${toDateInputValue(data.generatedAt)}.pdf`;
-      try {
-        if (!html2pdfLib) {
-          const opened = openDailyClosurePrintPreview(reportElement, filename);
-          if (opened) {
-            showToast('PDF preview გაიხსნა');
-          } else {
-            showToast('PDF ბიბლიოთეკა ვერ ჩაიტვირთა', 'error');
-          }
+      // პირველი ცდა: html2pdf
+      if (window.html2pdf) {
+        const clone = reportElement.cloneNode(true);
+        clone.style.cssText = 'position:fixed;left:-20000px;top:0;width:1024px;background:#fff;';
+        document.body.appendChild(clone);
+        try {
+          const worker = window.html2pdf().set({
+            margin: [10, 10, 10, 10],
+            filename: filename + '.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+            pagebreak: { mode: ['css', 'legacy'] }
+          }).from(clone);
+          await worker.toPdf();
+          const pdf = await worker.get('pdf');
+          pdf.save(filename + '.pdf');
+          clone.remove();
+          showToast('დღის დახურვის PDF ჩამოიტვირთა');
           return;
+        } catch (e) {
+          console.error('html2pdf failed, falling back to print', e);
+          clone.remove();
         }
+      }
 
-        const worker = html2pdfLib().set({
-          margin: [10, 10, 10, 10],
-          filename,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-          pagebreak: { mode: ['css', 'legacy'] }
-        }).from(reportElement);
-        await worker.toPdf();
-        const pdf = await worker.get('pdf');
-        pdf.save(filename);
-        showToast('დღის დახურვის PDF ჩამოიტვირთა');
-      } catch (e) {
-        console.error('daily closure pdf failed', e);
-        const opened = openDailyClosurePrintPreview(reportElement, filename);
-        if (opened) {
-          showToast('PDF preview გაიხსნა');
-        } else {
-          showToast('PDF-ის შექმნა ვერ მოხერხდა', 'error');
-        }
-      } finally {
-        reportElement.remove();
+      // fallback: iframe print (popup blocker-ს გვერდს უვლის)
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>${filename}</title>
+          <style>
+            @media print { body { margin: 0; } }
+            body { font-family: Arial, sans-serif; background: #fff; color: #111; }
+          </style>
+        </head><body>${reportElement.outerHTML}</body></html>`);
+        doc.close();
+        setTimeout(() => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch(e) {
+            console.error('iframe print failed', e);
+            showToast('ბეჭდვა ვერ მოხერხდა', 'error');
+          }
+          setTimeout(() => { try { iframe.remove(); } catch(e) {} }, 5000);
+        }, 800);
+        showToast('PDF ბეჭდვის დიალოგი გაიხსნა');
+      } catch(e) {
+        console.error('print fallback failed', e);
+        showToast('PDF-ის გენერაცია ვერ მოხერხდა', 'error');
       }
     };
 
@@ -2456,12 +2474,21 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       };
 
       try {
+        // stock განახლება Firestore-ში (merge:true - სხვა ველები უცვლელია)
+        // local cache-ში სრული პროდუქტი ვინახავთ merge-ით (upsertLocalProduct)
+        const updatedProduct = { ...product, stock: nextStock, updatedAt: nowIso };
+
         const [stockResult, txResult] = await Promise.allSettled([
-          saveProductRecord({
-            id: product.id,
-            stock: nextStock,
-            updatedAt: nowIso
-          }, { silent: true }),
+          (async () => {
+            try {
+              await setDoc(doc(db, "products", product.id), { stock: nextStock, updatedAt: nowIso }, { merge: true });
+              upsertLocalProduct(updatedProduct);
+              return { ok: true };
+            } catch(e) {
+              console.error('stock update failed', e);
+              return { ok: false };
+            }
+          })(),
           recordTransaction(transactionPayload, { silent: true })
         ]);
 
@@ -2470,11 +2497,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
         if (!txSaved) {
           if (stockSave.ok) {
-            await saveProductRecord({
-              id: product.id,
-              stock: product.stock,
-              updatedAt: new Date().toISOString()
-            }, { silent: true });
+            await setDoc(doc(db, "products", product.id), { stock: product.stock, updatedAt: new Date().toISOString() }, { merge: true });
+            upsertLocalProduct({ ...product });
           }
           throw new Error('transaction save failed');
         }
