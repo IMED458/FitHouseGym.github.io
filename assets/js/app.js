@@ -256,12 +256,16 @@
 
     async function hydrateProductsFromRest() {
       try {
-        window.products = (await fetchCollectionViaRest('products'))
-          .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
+        window.products = await fetchProductsViaRest();
         updateAll();
       } catch (e) {
         console.warn('products rest hydrate failed', e);
       }
+    }
+
+    async function fetchProductsViaRest() {
+      return (await fetchCollectionViaRest('products'))
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
     }
 
     async function hydrateTransactionsFromRest() {
@@ -1045,6 +1049,25 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         }
       } catch (e) {
         console.error('product save failed', e);
+        try {
+          const restProducts = await fetchProductsViaRest();
+          const recoveredProduct = product.id
+            ? restProducts.find((item) => item.id === product.id)
+            : restProducts.find((item) =>
+                normalizeProductCode(item.code) === normalizeProductCode(payload?.code) &&
+                String(item.name || '').trim() === String(payload?.name || '').trim() &&
+                Number(item.price || 0) === Number(payload?.price || 0)
+              );
+
+          if (recoveredProduct) {
+            window.products = restProducts;
+            updateAll();
+            console.warn('product save recovered from firestore after SDK error', recoveredProduct.id);
+            return { ok: true, id: recoveredProduct.id, product: recoveredProduct, recovered: true };
+          }
+        } catch (recoveryError) {
+          console.error('product save recovery failed', recoveryError);
+        }
         if (!options.silent) {
           showToast('პროდუქტის შენახვა ვერ მოხერხდა', 'error');
         }
