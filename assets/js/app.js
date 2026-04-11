@@ -1,4 +1,4 @@
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
     import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     // TODO: გადაიტანე .env ფაილში production-ზე
@@ -111,10 +111,8 @@
 
     function upsertLocalProduct(product) {
       if (!product?.id) return;
-      const existingProduct = window.products.find((item) => item.id === product.id) || {};
-      const mergedProduct = { ...existingProduct, ...product };
       window.products = [
-        mergedProduct,
+        product,
         ...window.products.filter((item) => item.id !== product.id)
       ].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
       updateAll();
@@ -434,32 +432,28 @@
       const monthTransactions = transactions.filter((tx) => isSameCalendarMonth(tx.createdAt, now));
       const todayMembershipTransactions = todayTransactions.filter((tx) => tx.category === 'membership');
       const todayProductTransactions = todayTransactions.filter((tx) => tx.type === 'product_sale');
-      const monthProductTransactions = monthTransactions.filter((tx) => tx.type === 'product_sale');
 
       const sumAmount = (list, category) => list
         .filter((tx) => !category || tx.category === category)
         .reduce((total, tx) => total + Number(tx.amount || 0), 0);
 
-      const sumAmountByType = (list, type) => list
-        .filter((tx) => tx.type === type)
-        .reduce((total, tx) => total + Number(tx.amount || 0), 0);
-
-      const monthlyProductUnits = monthProductTransactions
+      const monthlyProductUnits = monthTransactions
+        .filter((tx) => tx.type === 'product_sale')
         .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
 
       return {
         todayMembership: sumAmount(todayTransactions, 'membership'),
-        todayProducts: sumAmountByType(todayTransactions, 'product_sale'),
+        todayProducts: sumAmount(todayTransactions, 'product'),
         todayTotal: sumAmount(todayTransactions),
         monthMembership: sumAmount(monthTransactions, 'membership'),
-        monthProducts: sumAmountByType(monthTransactions, 'product_sale'),
+        monthProducts: sumAmount(monthTransactions, 'product'),
         monthTotal: sumAmount(monthTransactions),
         todayRegistrationCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_registration').length,
         todayRenewalCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_renewal').length,
         todayProductSalesCount: todayProductTransactions.length,
         todayProductUnits: todayProductTransactions.reduce((total, tx) => total + Number(tx.quantity || 0), 0),
         monthMembershipCount: monthTransactions.filter((tx) => tx.category === 'membership').length,
-        monthProductSalesCount: monthProductTransactions.length,
+        monthProductSalesCount: monthTransactions.filter((tx) => tx.type === 'product_sale').length,
         monthProductUnits,
         todayMembershipTransactions,
         todayProductTransactions,
@@ -513,12 +507,11 @@
       return true;
     }
 
-    async function recordMembershipTransaction(actionType, member, paymentMethod = 'CASH') {
+    async function recordMembershipTransaction(actionType, member) {
       return recordTransaction({
         type: actionType,
         category: 'membership',
         amount: Number(member.subscriptionPrice || 0),
-        paymentMethod,
         memberId: member.id,
         memberName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
         personalId: member.personalId || '',
@@ -1036,11 +1029,21 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       hydrateTransactionsFromRest();
       if (transactionsPollingStarted) return;
       transactionsPollingStarted = true;
-      setInterval(() => {
-        if (isAuthenticated) {
-          hydrateTransactionsFromRest();
-        }
-      }, 15000);
+
+      const q = query(collection(db, "transactions"));
+      onSnapshot(q, (snapshot) => {
+        window.transactions = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        transactionsLoadedOnce = true;
+        updateAll();
+        queueTodayMembershipTransactionReconcile();
+      }, (error) => {
+        console.warn('transactions snapshot failed, using rest fallback', error);
+        setInterval(() => {
+          if (isAuthenticated) hydrateTransactionsFromRest();
+        }, 15000);
+      });
     }
 
     async function createMember(m) {
@@ -1092,9 +1095,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     async function saveProductRecord(product, options = {}) {
       let savedId = product.id || null;
       let payload = null;
-      const existingProduct = product.id
-        ? window.products.find((item) => item.id === product.id) || null
-        : null;
       try {
         const { id, ...restPayload } = product;
         payload = restPayload;
@@ -1130,7 +1130,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         }
         return { ok: false, id: null, product: null };
       }
-      const savedProduct = { ...(existingProduct || {}), id: savedId, ...payload };
+      const savedProduct = { id: savedId, ...payload };
       try {
         upsertLocalProduct(savedProduct);
       } catch (e) {
@@ -1847,7 +1847,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="finance-breakdown-row"><span>გაყიდული ერთეულები</span><strong>${summary.todayProductUnits}</strong></div>
           <div class="finance-breakdown-row"><span>TBC</span><strong>${formatCurrency(paymentTotals.TBC || 0)}</strong></div>
           <div class="finance-breakdown-row"><span>BOG</span><strong>${formatCurrency(paymentTotals.BOG || 0)}</strong></div>
-          <div class="finance-breakdown-row"><span>CASH</span><strong>${formatCurrency(paymentTotals.CASH || 0)}</strong></div>
         `;
       }
 
@@ -2112,21 +2111,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js',
         'https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js'
       ];
-
       for (const src of sources) {
         try {
           await new Promise((resolve, reject) => {
-            const existing = Array.from(document.querySelectorAll('script')).find((script) => script.src === src);
+            const existing = Array.from(document.querySelectorAll('script')).find((s) => s.src === src);
             if (existing) {
               if (window.html2pdf) return resolve();
               existing.addEventListener('load', resolve, { once: true });
               existing.addEventListener('error', reject, { once: true });
               return;
             }
-
             const script = document.createElement('script');
             script.src = src;
-            script.async = true;
             script.onload = resolve;
             script.onerror = reject;
             document.head.appendChild(script);
@@ -2136,22 +2132,34 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           console.warn('html2pdf load failed', src, e);
         }
       }
-
       return null;
     }
 
     function openDailyClosurePrintPreview(reportElement, title) {
-      const preview = window.open('', '_blank', 'width=1100,height=800');
-      if (!preview) {
-        showToast('PDF preview ფანჯარა ვერ გაიხსნა', 'error');
+      try {
+        const iframe = document.createElement('iframe');
+        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;';
+        document.body.appendChild(iframe);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write('<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>' + title + '</title><style>body{margin:0;padding:16px;font-family:Arial,sans-serif;}</style></head><body>' + reportElement.outerHTML + '</body></html>');
+        doc.close();
+        setTimeout(() => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch(printErr) {
+            console.error('iframe print failed', printErr);
+          }
+          setTimeout(() => {
+            try { iframe.remove(); } catch(e) {}
+          }, 4000);
+        }, 700);
+        return true;
+      } catch(e) {
+        console.error('print preview failed', e);
         return false;
       }
-      preview.document.open();
-      preview.document.write(`<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>${title}</title></head><body>${reportElement.outerHTML}</body></html>`);
-      preview.document.close();
-      preview.focus();
-      setTimeout(() => preview.print(), 500);
-      return true;
     }
 
     window.exportDailyClosurePdf = async function() {
@@ -2184,14 +2192,17 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           return;
         }
 
-        await html2pdfLib().set({
+        const worker = html2pdfLib().set({
           margin: [10, 10, 10, 10],
           filename,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'] }
-        }).from(reportElement).save();
+        }).from(reportElement);
+        await worker.toPdf();
+        const pdf = await worker.get('pdf');
+        pdf.save(filename);
         showToast('დღის დახურვის PDF ჩამოიტვირთა');
       } catch (e) {
         console.error('daily closure pdf failed', e);
@@ -2445,23 +2456,31 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       };
 
       try {
-        const stockSave = await saveProductRecord({
-          id: product.id,
-          stock: nextStock,
-          updatedAt: nowIso
-        }, { silent: true });
-        if (!stockSave.ok) {
-          throw new Error('product stock save failed');
+        const [stockResult, txResult] = await Promise.allSettled([
+          saveProductRecord({
+            id: product.id,
+            stock: nextStock,
+            updatedAt: nowIso
+          }, { silent: true }),
+          recordTransaction(transactionPayload, { silent: true })
+        ]);
+
+        const stockSave = stockResult.status === 'fulfilled' ? stockResult.value : { ok: false };
+        const txSaved = txResult.status === 'fulfilled' ? txResult.value : false;
+
+        if (!txSaved) {
+          if (stockSave.ok) {
+            await saveProductRecord({
+              id: product.id,
+              stock: product.stock,
+              updatedAt: new Date().toISOString()
+            }, { silent: true });
+          }
+          throw new Error('transaction save failed');
         }
 
-        const txSaved = await recordTransaction(transactionPayload, { silent: true });
-        if (!txSaved) {
-          await saveProductRecord({
-            id: product.id,
-            stock: product.stock,
-            updatedAt: new Date().toISOString()
-          }, { silent: true });
-          throw new Error('transaction save failed');
+        if (!stockSave.ok) {
+          showToast('გაყიდვა ჩაიწერა, მარაგი ვერ განახლდა', 'warning');
         }
 
         showToast(`გაყიდვა დაფიქსირდა: ${product.name}`);
