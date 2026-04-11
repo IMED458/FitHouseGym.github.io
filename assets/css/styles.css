@@ -637,6 +637,21 @@
       font-size: 0.92rem;
       white-space: nowrap;
     }
+    .header-tools {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .header-tools .role-badge {
+      margin-left: 0;
+    }
+    .header-logout-btn {
+      box-shadow: none;
+      white-space: nowrap;
+    }
     .role-badge.admin-role {
       background: rgba(16, 185, 129, 0.15);
       border-color: rgba(16, 185, 129, 0.4);
@@ -1029,6 +1044,7 @@
       .gym-title{font-size:2.3rem} 
       .header{flex-direction:column} 
       .role-badge{margin-left:0}
+      .header-tools{margin-left:0; width:100%; justify-content:center}
       .form-grid{grid-template-columns:1fr} 
       .edit-grid{grid-template-columns:1fr}
       .edit-modal-card{width:min(460px,92vw); padding:12px}

@@ -34,6 +34,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let transactionsLoadedOnce = false;
     let transactionsRefreshTimer = null;
     let transactionsPollingStarted = false;
+    let dataStreamsStarted = false;
     window.members = [];
     window.products = [];
     window.transactions = [];
@@ -161,21 +162,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         badge.textContent = isAuthenticated ? getRoleLabel() : '';
         badge.classList.toggle('admin-role', isAdmin());
       }
-
-      // გამოსვლის / როლის შეცვლის ღილაკი
-      let switchBtn = document.getElementById('switchRoleBtn');
-      if (!switchBtn && isAuthenticated) {
-        switchBtn = document.createElement('button');
-        switchBtn.id = 'switchRoleBtn';
-        switchBtn.className = 'btn text-xs px-3 py-1';
-        switchBtn.style.cssText = 'background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;border-radius:8px;cursor:pointer;';
-        switchBtn.innerHTML = '<i class="fas fa-exchange-alt mr-1"></i>როლის შეცვლა';
-        switchBtn.onclick = window.switchRole;
-        if (badge && badge.parentNode) {
-          badge.parentNode.insertBefore(switchBtn, badge.nextSibling);
-        }
-      }
-      if (switchBtn) switchBtn.style.display = isAuthenticated ? 'inline-flex' : 'none';
 
       if (!isAdmin() && document.getElementById('finance')?.classList.contains('active')) {
         window.showTab('dashboard');
@@ -590,9 +576,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         isAuthenticated = true;
         currentUserRole = inputHash === ADMIN_PASSWORD_HASH ? 'admin' : 'staff';
         checkAuth();
-        loadMembers();
-        loadProducts();
-        loadTransactions();
+        if (!dataStreamsStarted) {
+          loadMembers();
+          loadProducts();
+          loadTransactions();
+          dataStreamsStarted = true;
+        } else {
+          updateAll();
+        }
         startExpiringNotificationsScheduler();
         showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
       } else {
@@ -600,52 +591,24 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     };
 
-    // როლის შეცვლა (ადმინიდან ოპერატორზე გამოსვლა)
-    window.switchRole = function() {
-      const modal = document.createElement('div');
-      modal.id = 'switchRoleModal';
-      modal.className = 'fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50';
-      modal.innerHTML = `
-        <div class="bg-slate-800 p-8 rounded-2xl border-2 border-indigo-500 max-w-sm w-full text-center">
-          <div class="text-4xl mb-4">🔄</div>
-          <h3 class="text-2xl font-bold text-indigo-400 mb-2">როლის შეცვლა</h3>
-          <p class="text-slate-300 mb-6 text-sm">შეიყვანეთ ახალი პაროლი ოპერატორისთვის ან ადმინისტრატორისთვის</p>
-          <input type="password" id="switchRolePassword" placeholder="პაროლი" class="form-input mb-4" autofocus>
-          <div class="flex gap-3 justify-center">
-            <button class="btn bg-indigo-600 hover:bg-indigo-700 px-6 py-3" onclick="window.confirmSwitchRole()">შესვლა</button>
-            <button class="btn bg-gray-600 hover:bg-gray-700 px-6 py-3" onclick="document.getElementById('switchRoleModal').remove()">გაუქმება</button>
-          </div>
-        </div>
-      `;
-      modal.querySelector('#switchRolePassword').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); window.confirmSwitchRole(); }
+    window.logout = function() {
+      isAuthenticated = false;
+      currentUserRole = null;
+      expandedSearchMemberId = null;
+      window.selectedSubscription = null;
+      document.getElementById('adminPassword').value = '';
+      document.querySelectorAll('.modal').forEach((modal) => {
+        modal.style.display = 'none';
       });
-      document.body.appendChild(modal);
-      setTimeout(() => modal.querySelector('#switchRolePassword').focus(), 100);
-    };
-
-    window.confirmSwitchRole = async function() {
-      const pass = document.getElementById('switchRolePassword')?.value || '';
-      const passHash = await sha256Hex(pass);
-      const modal = document.getElementById('switchRoleModal');
-      if (passHash === ADMIN_PASSWORD_HASH) {
-        currentUserRole = 'admin';
-        applyRoleVisibility();
-        modal?.remove();
-        showToast('ადმინისტრატორის რეჟიმი ჩართულია', 'success');
-      } else if (passHash === STAFF_PASSWORD_HASH) {
-        currentUserRole = 'staff';
-        applyRoleVisibility();
-        if (document.getElementById('finance')?.classList.contains('active')) {
-          window.showTab('dashboard');
-        }
-        modal?.remove();
-        showToast('ოპერატორის რეჟიმი ჩართულია', 'success');
-      } else {
-        showToast('პაროლი არასწორია!', 'error');
-        const inp = document.getElementById('switchRolePassword');
-        if (inp) { inp.value = ''; inp.focus(); }
-      }
+      document.querySelectorAll('.edit-form').forEach((form) => form.remove());
+      document.getElementById('checkinResult')?.replaceChildren();
+      document.getElementById('searchResults')?.replaceChildren();
+      if (document.getElementById('checkinSearch')) document.getElementById('checkinSearch').value = '';
+      if (document.getElementById('searchInput')) document.getElementById('searchInput').value = '';
+      if (document.getElementById('productSearchInput')) document.getElementById('productSearchInput').value = '';
+      window.showTab('dashboard');
+      checkAuth();
+      showToast('სესიიდან გამოხვედი');
     };
 
     // ფინანსების გასუფთავება (პაროლით დაცული)
@@ -718,7 +681,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
 
       try {
-        // ჯერ ყველა ტრანზაქცია ჩამოვტვირთოთ
         const allTransactions = await fetchCollectionViaRest('transactions');
         const now = new Date();
         let toDelete;
@@ -746,7 +708,6 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           }
         }
 
-        // ლოკალური cache განახლება
         if (scope === 'all') {
           window.transactions = [];
         } else {
@@ -1214,7 +1175,6 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       hydrateTransactionsFromRest();
       if (transactionsPollingStarted) return;
       transactionsPollingStarted = true;
-
       const q = query(collection(db, "transactions"));
       onSnapshot(q, (snapshot) => {
         window.transactions = snapshot.docs
@@ -1884,6 +1844,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div class="product-card-actions">
               <button class="btn btn-success" ${canSell ? '' : 'disabled'} onclick="window.openProductSaleModal('${product.id}')">
                 <i class="fas fa-cash-register"></i> გაყიდვა
+              </button>
+              <button class="btn bg-amber-600 hover:bg-amber-700" onclick="window.openProductRestockModal('${product.id}')">
+                <i class="fas fa-box-open"></i> მარაგის შევსება
               </button>
               ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.openProductForm('${product.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>` : ''}
               ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700" onclick="window.deleteProduct('${product.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
@@ -2629,6 +2592,81 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
     };
 
+    window.openProductRestockModal = function(productId) {
+      const product = window.products.find((item) => item.id === productId);
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      document.getElementById('restockProductId').value = product.id;
+      document.getElementById('restockProductName').textContent = product.name;
+      document.getElementById('restockProductCode').textContent = `კოდი: ${product.code}`;
+      document.getElementById('restockCurrentStock').textContent = `მიმდინარე მარაგი: ${Number(product.stock || 0)}`;
+      document.getElementById('restockQuantity').value = '1';
+      const restockBtn = document.getElementById('recordProductRestockBtn');
+      if (restockBtn) {
+        restockBtn.disabled = false;
+        restockBtn.innerHTML = '<i class="fas fa-box-open"></i> მარაგის შევსება';
+      }
+      document.getElementById('productRestockModal').style.display = 'flex';
+    };
+
+    window.closeProductRestockModal = function() {
+      document.getElementById('productRestockModal').style.display = 'none';
+      document.getElementById('restockProductId').value = '';
+      document.getElementById('restockQuantity').value = '1';
+      const restockBtn = document.getElementById('recordProductRestockBtn');
+      if (restockBtn) {
+        restockBtn.disabled = false;
+        restockBtn.innerHTML = '<i class="fas fa-box-open"></i> მარაგის შევსება';
+      }
+    };
+
+    window.recordProductRestock = async function() {
+      const restockBtn = document.getElementById('recordProductRestockBtn');
+      if (restockBtn?.disabled) return;
+      const productId = document.getElementById('restockProductId').value;
+      const product = window.products.find((item) => item.id === productId);
+      const quantity = parseInt(document.getElementById('restockQuantity').value || '0', 10);
+
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        showToast('შეიყვანე დასამატებელი რაოდენობა', 'error');
+        return;
+      }
+
+      if (restockBtn) {
+        restockBtn.disabled = true;
+        restockBtn.innerHTML = '<div class="spinner"></div>';
+      }
+
+      const nowIso = new Date().toISOString();
+      const nextStock = Number(product.stock || 0) + quantity;
+
+      try {
+        const saved = await saveProductRecord({
+          id: product.id,
+          stock: nextStock,
+          updatedAt: nowIso
+        }, { silent: true });
+        if (!saved.ok) {
+          throw new Error('product restock save failed');
+        }
+        showToast(`მარაგი განახლდა: ${product.name} (+${quantity})`);
+        window.closeProductRestockModal();
+      } catch (e) {
+        console.error('product restock failed', e);
+        showToast('მარაგის შევსება ვერ მოხერხდა', 'error');
+        if (restockBtn) {
+          restockBtn.disabled = false;
+          restockBtn.innerHTML = '<i class="fas fa-box-open"></i> მარაგის შევსება';
+        }
+      }
+    };
+
     window.updateProductSaleTotal = function() {
       const productId = document.getElementById('saleProductId').value;
       const product = window.products.find((item) => item.id === productId);
@@ -2685,35 +2723,26 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       };
 
       try {
-        // stock განახლება Firestore-ში (merge:true - სხვა ველები უცვლელია)
-        // local cache-ში სრული პროდუქტი ვინახავთ merge-ით (upsertLocalProduct)
-        const updatedProduct = { ...product, stock: nextStock, updatedAt: nowIso };
-
         const [stockResult, txResult] = await Promise.allSettled([
-          (async () => {
-            try {
-              await setDoc(doc(db, "products", product.id), { stock: nextStock, updatedAt: nowIso }, { merge: true });
-              upsertLocalProduct(updatedProduct);
-              return { ok: true };
-            } catch(e) {
-              console.error('stock update failed', e);
-              return { ok: false };
-            }
-          })(),
+          saveProductRecord({
+            id: product.id,
+            stock: nextStock,
+            updatedAt: nowIso
+          }, { silent: true }),
           recordTransaction(transactionPayload, { silent: true })
         ]);
-
         const stockSave = stockResult.status === 'fulfilled' ? stockResult.value : { ok: false };
         const txSaved = txResult.status === 'fulfilled' ? txResult.value : false;
-
         if (!txSaved) {
           if (stockSave.ok) {
-            await setDoc(doc(db, "products", product.id), { stock: product.stock, updatedAt: new Date().toISOString() }, { merge: true });
-            upsertLocalProduct({ ...product });
+            await saveProductRecord({
+              id: product.id,
+              stock: product.stock,
+              updatedAt: new Date().toISOString()
+            }, { silent: true });
           }
           throw new Error('transaction save failed');
         }
-
         if (!stockSave.ok) {
           showToast('გაყიდვა ჩაიწერა, მარაგი ვერ განახლდა', 'warning');
         }
@@ -3108,6 +3137,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
       document.getElementById('productSaleModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'productSaleModal') window.closeProductSaleModal();
+      });
+      document.getElementById('productRestockModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'productRestockModal') window.closeProductRestockModal();
       });
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
