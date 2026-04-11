@@ -40,6 +40,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.transactions = [];
     window.selectedSubscription = null;
     window.editingProductId = null;
+    window.productSaleCart = [];
+    window.productCartPaymentMethod = 'TBC';
+    window.isCartCheckoutRunning = false;
 
     // EmailJS ინიციალიზაცია
     (function() {
@@ -135,6 +138,39 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       } catch (e) {
         console.warn('background image resolution failed', e);
       }
+    }
+
+    function getCartItemQuantity(productId) {
+      return Number(window.productSaleCart.find((item) => item.productId === productId)?.quantity || 0);
+    }
+
+    function getDetailedCartItems() {
+      return window.productSaleCart
+        .map((item) => {
+          const product = window.products.find((entry) => entry.id === item.productId);
+          if (!product) return null;
+          const quantity = Math.max(1, Number(item.quantity || 1));
+          return {
+            ...item,
+            product,
+            quantity,
+            availableStock: Number(product.stock || 0),
+            lineTotal: Number(product.price || 0) * quantity
+          };
+        })
+        .filter(Boolean);
+    }
+
+    function syncProductCart() {
+      window.productSaleCart = getDetailedCartItems()
+        .map((item) => {
+          if (item.availableStock <= 0) return null;
+          return {
+            productId: item.productId,
+            quantity: Math.min(item.quantity, item.availableStock)
+          };
+        })
+        .filter(Boolean);
     }
 
     function normalizeProductCode(value) {
@@ -558,6 +594,108 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       `;
     }
 
+    function renderProductCart() {
+      const container = document.getElementById('productCartList');
+      if (!container) return;
+
+      syncProductCart();
+      const items = getDetailedCartItems();
+      const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
+      const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
+
+      const unitsEl = document.getElementById('productCartUnits');
+      const totalEl = document.getElementById('productCartTotal');
+      const checkoutBtn = document.getElementById('checkoutProductCartBtn');
+      if (unitsEl) unitsEl.textContent = String(totalUnits);
+      if (totalEl) totalEl.textContent = formatCurrency(totalAmount);
+      if (checkoutBtn) {
+        checkoutBtn.disabled = window.isCartCheckoutRunning || items.length === 0;
+        if (!window.isCartCheckoutRunning) {
+          checkoutBtn.innerHTML = '<i class="fas fa-bag-shopping"></i> გაყიდვა';
+        }
+      }
+
+      document.querySelectorAll('.product-payment-pill').forEach((pill) => {
+        pill.classList.toggle('active', pill.dataset.paymentMethod === window.productCartPaymentMethod);
+      });
+
+      if (items.length === 0) {
+        container.innerHTML = `
+          <div class="product-cart-empty">
+            <i class="fas fa-basket-shopping"></i>
+            <p>ჯერ არაფერი აგირჩევია. მარჯვნივ პროდუქტზე დაჭერით დაამატე კალათაში.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = items.map((item) => `
+        <div class="product-cart-item">
+          <div class="product-cart-item-main">
+            <div class="product-cart-item-name">${item.product.name}</div>
+            <div class="product-cart-item-code">კოდი: ${item.product.code}</div>
+          </div>
+          <div class="product-cart-item-price">${formatCurrency(item.product.price)}</div>
+          <div class="product-cart-item-qty">
+            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', -1)">−</button>
+            <span>${item.quantity}</span>
+            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', 1)">+</button>
+          </div>
+          <div class="product-cart-item-line-total">${formatCurrency(item.lineTotal)}</div>
+          <button type="button" class="cart-remove-btn" onclick="window.removeProductFromCart('${item.productId}')">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function renderDaySalesModal() {
+      const summary = getFinancialSummary();
+      const todaySales = summary.todayProductTransactions;
+      const cashAmount = todaySales
+        .filter((tx) => tx.paymentMethod === 'CASH')
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+      const tbcAmount = todaySales
+        .filter((tx) => tx.paymentMethod === 'TBC')
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+      const bogAmount = todaySales
+        .filter((tx) => tx.paymentMethod === 'BOG')
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+      const cardAmount = tbcAmount + bogAmount;
+
+      const setText = (id, value) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = value;
+      };
+
+      setText('daySalesCashAmount', formatCurrency(cashAmount));
+      setText('daySalesCardAmount', formatCurrency(cardAmount));
+      setText('daySalesTotalAmount', formatCurrency(summary.todayProducts));
+      setText('daySalesCount', String(summary.todayProductSalesCount));
+      setText('daySalesUnits', String(summary.todayProductUnits));
+      setText('daySalesTbcAmount', formatCurrency(tbcAmount));
+      setText('daySalesBogAmount', formatCurrency(bogAmount));
+
+      const recentList = document.getElementById('daySalesRecentList');
+      if (!recentList) return;
+      if (todaySales.length === 0) {
+        recentList.innerHTML = '<p class="empty-state">დღეს ჯერ გაყიდვები არ დაფიქსირებულა</p>';
+        return;
+      }
+      recentList.innerHTML = todaySales
+        .slice()
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .map((tx) => `
+          <div class="transaction-row">
+            <div>
+              <div class="transaction-title">${tx.productName}</div>
+              <div class="transaction-meta">${tx.quantity || 0} ცალი • ${getPaymentMethodLabel(tx.paymentMethod)} • ${formatDateTime(tx.createdAt)}</div>
+            </div>
+            <div class="transaction-amount">${formatCurrency(tx.amount)}</div>
+          </div>
+        `).join('');
+    }
+
     function checkAuth() {
       if (!isAuthenticated) {
         document.getElementById('loginScreen').style.display = 'flex';
@@ -596,6 +734,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       currentUserRole = null;
       expandedSearchMemberId = null;
       window.selectedSubscription = null;
+      window.productSaleCart = [];
       document.getElementById('adminPassword').value = '';
       document.querySelectorAll('.modal').forEach((modal) => {
         modal.style.display = 'none';
@@ -1824,12 +1963,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     function buildProductCardHTML(product) {
       const stock = Number(product.stock || 0);
       const canSell = stock > 0;
+      const cartQuantity = getCartItemQuantity(product.id);
       const imageHtml = product.imageUrl
         ? `<img src="${product.imageUrl}" alt="${product.name}" class="product-card-image" onerror="this.parentElement.innerHTML='<div class=&quot;product-photo-fallback&quot;><i class=&quot;fas fa-bottle-water&quot;></i></div>'">`
         : `<div class="product-photo-fallback"><i class="fas fa-bottle-water"></i></div>`;
 
       return `
         <div class="product-card ${canSell ? '' : 'product-card-empty'}">
+          ${cartQuantity > 0 ? `<div class="product-card-cart-badge">${cartQuantity}</div>` : ''}
           <div class="product-card-media">${imageHtml}</div>
           <div class="product-card-body">
             <div class="product-card-head">
@@ -1842,9 +1983,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             <div class="product-card-price">${formatCurrency(product.price)}</div>
             <div class="product-card-meta">მარაგი: ${stock}</div>
             <div class="product-card-actions">
-              <button class="btn btn-success" ${canSell ? '' : 'disabled'} onclick="window.openProductSaleModal('${product.id}')">
-                <i class="fas fa-cash-register"></i> გაყიდვა
+              <button class="btn btn-success product-card-select-btn" ${canSell ? '' : 'disabled'} onclick="window.addProductToCart('${product.id}')">
+                <i class="fas fa-plus"></i> ${cartQuantity > 0 ? 'კალათაში დამატება' : 'კალათაში'}
               </button>
+            </div>
+            <div class="product-card-actions product-card-manage">
               <button class="btn bg-amber-600 hover:bg-amber-700" onclick="window.openProductRestockModal('${product.id}')">
                 <i class="fas fa-box-open"></i> მარაგის შევსება
               </button>
@@ -1901,7 +2044,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         grid.innerHTML = filteredProducts.map(buildProductCardHTML).join('');
       }
 
+      renderProductCart();
       renderRecentProductSales('recentProductSales');
+      if (document.getElementById('daySalesModal')?.style.display === 'flex') {
+        renderDaySalesModal();
+      }
     }
 
     function renderFinanceBreakdown(summary) {
@@ -2578,6 +2725,65 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       window.updateProductSaleTotal();
     };
 
+    window.addProductToCart = function(productId) {
+      const product = window.products.find((item) => item.id === productId);
+      if (!product) {
+        showToast('პროდუქტი ვერ მოიძებნა', 'error');
+        return;
+      }
+      const currentQuantity = getCartItemQuantity(productId);
+      if (Number(product.stock || 0) <= currentQuantity) {
+        showToast('ამ პროდუქტზე მეტი მარაგში აღარ არის', 'error');
+        return;
+      }
+      if (currentQuantity > 0) {
+        window.productSaleCart = window.productSaleCart.map((item) =>
+          item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
+        );
+      } else {
+        window.productSaleCart = [...window.productSaleCart, { productId, quantity: 1 }];
+      }
+      renderProductCart();
+      updateProductsTab();
+    };
+
+    window.changeProductCartQuantity = function(productId, delta) {
+      const product = window.products.find((item) => item.id === productId);
+      if (!product) return;
+      window.productSaleCart = window.productSaleCart
+        .map((item) => {
+          if (item.productId !== productId) return item;
+          const nextQuantity = item.quantity + delta;
+          if (nextQuantity <= 0) return null;
+          return {
+            ...item,
+            quantity: Math.min(nextQuantity, Number(product.stock || 0))
+          };
+        })
+        .filter(Boolean);
+      renderProductCart();
+      updateProductsTab();
+    };
+
+    window.removeProductFromCart = function(productId) {
+      window.productSaleCart = window.productSaleCart.filter((item) => item.productId !== productId);
+      renderProductCart();
+      updateProductsTab();
+    };
+
+    window.clearProductCart = function() {
+      window.productSaleCart = [];
+      const noteInput = document.getElementById('productCartNote');
+      if (noteInput) noteInput.value = '';
+      renderProductCart();
+      updateProductsTab();
+    };
+
+    window.selectCartPaymentMethod = function(method) {
+      window.productCartPaymentMethod = method;
+      renderProductCart();
+    };
+
     window.closeProductSaleModal = function() {
       document.getElementById('productSaleModal').style.display = 'none';
       document.getElementById('saleProductId').value = '';
@@ -2675,6 +2881,52 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('saleTotalAmount').textContent = formatCurrency(total);
     };
 
+    async function commitProductSaleLine(product, quantity, paymentMethod, note, saleBatchId = null) {
+      const nowIso = new Date().toISOString();
+      const nextStock = Number(product.stock || 0) - quantity;
+      const totalAmount = Number(product.price || 0) * quantity;
+      const transactionPayload = {
+        type: 'product_sale',
+        category: 'product',
+        amount: totalAmount,
+        quantity,
+        unitPrice: Number(product.price || 0),
+        productId: product.id,
+        productCode: product.code,
+        productName: product.name,
+        description: `პროდუქტის გაყიდვა: ${product.name}`,
+        paymentMethod,
+        note,
+        saleBatchId,
+        createdAt: nowIso,
+        createdByRole: currentUserRole || 'system'
+      };
+
+      const [stockResult, txResult] = await Promise.allSettled([
+        saveProductRecord({
+          id: product.id,
+          stock: nextStock,
+          updatedAt: nowIso
+        }, { silent: true }),
+        recordTransaction(transactionPayload, { silent: true })
+      ]);
+      const stockSave = stockResult.status === 'fulfilled' ? stockResult.value : { ok: false };
+      const txSaved = txResult.status === 'fulfilled' ? txResult.value : false;
+
+      if (!txSaved) {
+        if (stockSave.ok) {
+          await saveProductRecord({
+            id: product.id,
+            stock: product.stock,
+            updatedAt: new Date().toISOString()
+          }, { silent: true });
+        }
+        return { ok: false };
+      }
+
+      return { ok: true, stockSaved: stockSave.ok };
+    }
+
     window.recordProductSale = async function() {
       const saleBtn = document.getElementById('recordProductSaleBtn');
       if (saleBtn?.disabled) return;
@@ -2703,47 +2955,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         saleBtn.innerHTML = '<div class="spinner"></div>';
       }
 
-      const nowIso = new Date().toISOString();
-      const nextStock = Number(product.stock || 0) - quantity;
-      const totalAmount = Number(product.price || 0) * quantity;
-      const transactionPayload = {
-        type: 'product_sale',
-        category: 'product',
-        amount: totalAmount,
-        quantity,
-        unitPrice: Number(product.price || 0),
-        productId: product.id,
-        productCode: product.code,
-        productName: product.name,
-        description: `პროდუქტის გაყიდვა: ${product.name}`,
-        paymentMethod,
-        note,
-        createdAt: nowIso,
-        createdByRole: currentUserRole || 'system'
-      };
-
       try {
-        const [stockResult, txResult] = await Promise.allSettled([
-          saveProductRecord({
-            id: product.id,
-            stock: nextStock,
-            updatedAt: nowIso
-          }, { silent: true }),
-          recordTransaction(transactionPayload, { silent: true })
-        ]);
-        const stockSave = stockResult.status === 'fulfilled' ? stockResult.value : { ok: false };
-        const txSaved = txResult.status === 'fulfilled' ? txResult.value : false;
-        if (!txSaved) {
-          if (stockSave.ok) {
-            await saveProductRecord({
-              id: product.id,
-              stock: product.stock,
-              updatedAt: new Date().toISOString()
-            }, { silent: true });
-          }
+        const result = await commitProductSaleLine(product, quantity, paymentMethod, note);
+        if (!result.ok) {
           throw new Error('transaction save failed');
         }
-        if (!stockSave.ok) {
+        if (!result.stockSaved) {
           showToast('გაყიდვა ჩაიწერა, მარაგი ვერ განახლდა', 'warning');
         }
 
@@ -2757,6 +2974,78 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           saleBtn.innerHTML = '<i class="fas fa-cash-register"></i> გაყიდვის დაფიქსირება';
         }
       }
+    };
+
+    window.checkoutProductCart = async function() {
+      const checkoutBtn = document.getElementById('checkoutProductCartBtn');
+      if (checkoutBtn?.disabled) return;
+
+      syncProductCart();
+      const items = getDetailedCartItems();
+      const paymentMethod = window.productCartPaymentMethod || 'TBC';
+      const note = document.getElementById('productCartNote')?.value.trim() || null;
+
+      if (items.length === 0) {
+        showToast('კალათა ცარიელია', 'error');
+        return;
+      }
+
+      checkoutBtn.disabled = true;
+      window.isCartCheckoutRunning = true;
+      checkoutBtn.innerHTML = '<div class="spinner"></div>';
+
+      const saleBatchId = `sale-batch-${Date.now()}`;
+      let successCount = 0;
+      let stockWarnings = 0;
+      const failedNames = [];
+
+      try {
+        for (const item of items) {
+          if (item.availableStock < item.quantity) {
+            failedNames.push(item.product.name);
+            continue;
+          }
+
+          const result = await commitProductSaleLine(item.product, item.quantity, paymentMethod, note, saleBatchId);
+          if (result.ok) {
+            successCount += 1;
+            if (!result.stockSaved) stockWarnings += 1;
+          } else {
+            failedNames.push(item.product.name);
+          }
+        }
+
+        if (successCount === 0) {
+          throw new Error('cart sale failed');
+        }
+
+        window.productSaleCart = [];
+        if (document.getElementById('productCartNote')) {
+          document.getElementById('productCartNote').value = '';
+        }
+        renderProductCart();
+        updateProductsTab();
+
+        const message = failedNames.length > 0
+          ? `გაიყიდა ${successCount}/${items.length}. ვერ დამუშავდა: ${failedNames.join(', ')}`
+          : `გაყიდვა დასრულდა: ${successCount} პოზიცია`;
+        showToast(message, failedNames.length > 0 || stockWarnings > 0 ? 'warning' : 'success');
+      } catch (e) {
+        console.error('cart checkout failed', e);
+        showToast('კალათის გაყიდვა ვერ მოხერხდა', 'error');
+      } finally {
+        window.isCartCheckoutRunning = false;
+        renderProductCart();
+      }
+    };
+
+    window.openDaySalesModal = function() {
+      renderDaySalesModal();
+      document.getElementById('daySalesModal').style.display = 'flex';
+    };
+
+    window.closeDaySalesModal = function() {
+      document.getElementById('daySalesModal').style.display = 'none';
     };
 
     window.exportToExcel = function() {
@@ -3140,6 +3429,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
       document.getElementById('productRestockModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'productRestockModal') window.closeProductRestockModal();
+      });
+      document.getElementById('daySalesModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'daySalesModal') window.closeDaySalesModal();
       });
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();

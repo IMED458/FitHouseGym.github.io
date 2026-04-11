@@ -170,12 +170,15 @@
         <div class="section-header">
           <div class="section-copy">
             <h2 class="section-title">პროდუქტები</h2>
-            <p class="section-subtitle">პროდუქციის აღრიცხვა, გაყიდვა და მარტივი მარაგის მართვა</p>
+            <p class="section-subtitle">აირჩიე რამდენიმე პროდუქტი, დაამატე კალათაში და გაყიდე ერთდროულად</p>
           </div>
           <div class="section-actions">
             <input type="text" id="productSearchInput" placeholder="სახელი ან კოდი..." class="search-input product-search-input">
             <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshFinancialData()">
               <i class="fas fa-rotate-right"></i> განახლება
+            </button>
+            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.openDaySalesModal()">
+              <i class="fas fa-chart-line"></i> დღის ნავაჭრი
             </button>
             <button class="btn bg-amber-600 hover:bg-amber-700" onclick="window.exportDailyClosurePdf()">
               <i class="fas fa-file-pdf"></i> დღის დახურვა
@@ -186,26 +189,72 @@
           </div>
         </div>
 
-        <div class="products-kpi-grid">
-          <div class="mini-stat-card">
-            <div class="mini-stat-value" id="productsCount">0</div>
-            <div class="mini-stat-label">სულ პროდუქტები</div>
-          </div>
-          <div class="mini-stat-card">
-            <div class="mini-stat-value" id="todayProductUnits">0</div>
-            <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
-          </div>
-        </div>
-
         <div class="admin-inline-note">
           ოპერატორს შეუძლია გაყიდვა, მარაგის შევსება და დღის დახურვის დაბეჭდვა. ადმინისტრატორს დამატებით შეუძლია პროდუქტის დამატება, რედაქტირება და წაშლა.
         </div>
 
-        <div id="productsGrid" class="products-grid"></div>
+        <div class="products-pos-layout">
+          <div class="section-panel product-cart-panel">
+            <div class="product-cart-header">
+              <div>
+                <h3 class="panel-title">დღევანდელი გაყიდვა</h3>
+                <p class="product-cart-subtitle">კალათაში შეგიძლია რამდენიმე პროდუქტი ერთად შეაგროვო</p>
+              </div>
+              <button class="btn bg-slate-700 hover:bg-slate-600 compact-btn" onclick="window.clearProductCart()">
+                <i class="fas fa-trash-can"></i> გასუფთავება
+              </button>
+            </div>
 
-        <div class="section-panel">
-          <h3 class="panel-title">ბოლო გაყიდვები</h3>
-          <div id="recentProductSales" class="transaction-list"></div>
+            <div id="productCartList" class="product-cart-list"></div>
+
+            <div class="product-cart-summary">
+              <div class="product-cart-total-row">
+                <span>სულ ერთეული</span>
+                <strong id="productCartUnits">0</strong>
+              </div>
+              <div class="product-cart-total-row product-cart-total-strong">
+                <span>სულ გადასახდელი</span>
+                <strong id="productCartTotal">0.00₾</strong>
+              </div>
+            </div>
+
+            <div class="product-cart-payment">
+              <span class="product-cart-label">გადახდის მეთოდი</span>
+              <div class="product-cart-payment-tabs">
+                <button type="button" class="product-payment-pill active" data-payment-method="TBC" onclick="window.selectCartPaymentMethod('TBC')">TBC</button>
+                <button type="button" class="product-payment-pill" data-payment-method="BOG" onclick="window.selectCartPaymentMethod('BOG')">BOG</button>
+              </div>
+            </div>
+
+            <div class="product-cart-note">
+              <label class="product-cart-label" for="productCartNote">შენიშვნა</label>
+              <input type="text" id="productCartNote" class="form-input" placeholder="მაგ: საერთო გადახდა">
+            </div>
+
+            <button class="btn btn-success product-cart-checkout-btn" id="checkoutProductCartBtn" onclick="window.checkoutProductCart()">
+              <i class="fas fa-bag-shopping"></i> გაყიდვა
+            </button>
+          </div>
+
+          <div class="product-catalog-panel">
+            <div class="products-kpi-grid products-kpi-grid-compact">
+              <div class="mini-stat-card">
+                <div class="mini-stat-value" id="productsCount">0</div>
+                <div class="mini-stat-label">სულ პროდუქტები</div>
+              </div>
+              <div class="mini-stat-card">
+                <div class="mini-stat-value" id="todayProductUnits">0</div>
+                <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
+              </div>
+            </div>
+
+            <div id="productsGrid" class="products-grid products-grid-catalog"></div>
+
+            <div class="section-panel recent-sales-panel">
+              <h3 class="panel-title">ბოლო გაყიდვები</h3>
+              <div id="recentProductSales" class="transaction-list"></div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -548,6 +597,54 @@
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeProductRestockModal()">
           გაუქმება
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="daySalesModal" class="modal">
+    <div class="modal-content day-sales-modal">
+      <div class="modal-header">
+        <h3>დღის ნავაჭრი</h3>
+        <button class="modal-close" onclick="window.closeDaySalesModal()">×</button>
+      </div>
+
+      <div class="day-sales-summary-grid">
+        <div class="day-sales-card">
+          <span class="day-sales-card-label">ნაღდი</span>
+          <strong class="day-sales-card-value" id="daySalesCashAmount">0.00₾</strong>
+        </div>
+        <div class="day-sales-card">
+          <span class="day-sales-card-label">ბარათით</span>
+          <strong class="day-sales-card-value" id="daySalesCardAmount">0.00₾</strong>
+        </div>
+        <div class="day-sales-card day-sales-card-total">
+          <span class="day-sales-card-label">სულ</span>
+          <strong class="day-sales-card-value" id="daySalesTotalAmount">0.00₾</strong>
+        </div>
+      </div>
+
+      <div class="day-sales-meta-grid">
+        <div class="day-sales-meta-item">
+          <span>გაყიდვები</span>
+          <strong id="daySalesCount">0</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>გაყიდული ერთეულები</span>
+          <strong id="daySalesUnits">0</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>TBC</span>
+          <strong id="daySalesTbcAmount">0.00₾</strong>
+        </div>
+        <div class="day-sales-meta-item">
+          <span>BOG</span>
+          <strong id="daySalesBogAmount">0.00₾</strong>
+        </div>
+      </div>
+
+      <div class="section-panel day-sales-list-panel">
+        <h4 class="panel-title">დღევანდელი გაყიდვები</h4>
+        <div id="daySalesRecentList" class="transaction-list"></div>
       </div>
     </div>
   </div>
