@@ -439,7 +439,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         .filter((tx) => !category || tx.category === category)
         .reduce((total, tx) => total + Number(tx.amount || 0), 0);
 
-      const monthlyProductUnits = monthTransactions
+      const monthProductUnits = monthTransactions
         .filter((tx) => tx.type === 'product_sale')
         .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
 
