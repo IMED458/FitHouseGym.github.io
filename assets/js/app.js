@@ -432,28 +432,32 @@
       const monthTransactions = transactions.filter((tx) => isSameCalendarMonth(tx.createdAt, now));
       const todayMembershipTransactions = todayTransactions.filter((tx) => tx.category === 'membership');
       const todayProductTransactions = todayTransactions.filter((tx) => tx.type === 'product_sale');
+      const monthProductTransactions = monthTransactions.filter((tx) => tx.type === 'product_sale');
 
       const sumAmount = (list, category) => list
         .filter((tx) => !category || tx.category === category)
         .reduce((total, tx) => total + Number(tx.amount || 0), 0);
 
-      const monthlyProductUnits = monthTransactions
-        .filter((tx) => tx.type === 'product_sale')
+      const sumAmountByType = (list, type) => list
+        .filter((tx) => tx.type === type)
+        .reduce((total, tx) => total + Number(tx.amount || 0), 0);
+
+      const monthlyProductUnits = monthProductTransactions
         .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
 
       return {
         todayMembership: sumAmount(todayTransactions, 'membership'),
-        todayProducts: sumAmount(todayTransactions, 'product'),
+        todayProducts: sumAmountByType(todayTransactions, 'product_sale'),
         todayTotal: sumAmount(todayTransactions),
         monthMembership: sumAmount(monthTransactions, 'membership'),
-        monthProducts: sumAmount(monthTransactions, 'product'),
+        monthProducts: sumAmountByType(monthTransactions, 'product_sale'),
         monthTotal: sumAmount(monthTransactions),
         todayRegistrationCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_registration').length,
         todayRenewalCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_renewal').length,
         todayProductSalesCount: todayProductTransactions.length,
         todayProductUnits: todayProductTransactions.reduce((total, tx) => total + Number(tx.quantity || 0), 0),
         monthMembershipCount: monthTransactions.filter((tx) => tx.category === 'membership').length,
-        monthProductSalesCount: monthTransactions.filter((tx) => tx.type === 'product_sale').length,
+        monthProductSalesCount: monthProductTransactions.length,
         monthProductUnits,
         todayMembershipTransactions,
         todayProductTransactions,
@@ -507,11 +511,12 @@
       return true;
     }
 
-    async function recordMembershipTransaction(actionType, member) {
+    async function recordMembershipTransaction(actionType, member, paymentMethod = 'CASH') {
       return recordTransaction({
         type: actionType,
         category: 'membership',
         amount: Number(member.subscriptionPrice || 0),
+        paymentMethod,
         memberId: member.id,
         memberName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
         personalId: member.personalId || '',
@@ -1837,6 +1842,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="finance-breakdown-row"><span>გაყიდული ერთეულები</span><strong>${summary.todayProductUnits}</strong></div>
           <div class="finance-breakdown-row"><span>TBC</span><strong>${formatCurrency(paymentTotals.TBC || 0)}</strong></div>
           <div class="finance-breakdown-row"><span>BOG</span><strong>${formatCurrency(paymentTotals.BOG || 0)}</strong></div>
+          <div class="finance-breakdown-row"><span>CASH</span><strong>${formatCurrency(paymentTotals.CASH || 0)}</strong></div>
         `;
       }
 
@@ -2173,17 +2179,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           return;
         }
 
-        const worker = html2pdfLib().set({
+        await html2pdfLib().set({
           margin: [10, 10, 10, 10],
           filename,
           image: { type: 'jpeg', quality: 0.98 },
           html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
           jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
           pagebreak: { mode: ['css', 'legacy'] }
-        }).from(reportElement);
-        await worker.toPdf();
-        const pdf = await worker.get('pdf');
-        pdf.save(filename);
+        }).from(reportElement).save();
         showToast('დღის დახურვის PDF ჩამოიტვირთა');
       } catch (e) {
         console.error('daily closure pdf failed', e);
