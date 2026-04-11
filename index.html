@@ -17,6 +17,7 @@
   
   <script type="module" src="assets/js/app.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   <link rel="stylesheet" href="assets/css/styles.css">
 </head>
 <body>
@@ -168,6 +169,12 @@
           </div>
           <div class="section-actions">
             <input type="text" id="productSearchInput" placeholder="სახელი ან კოდი..." class="search-input product-search-input">
+            <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshFinancialData()">
+              <i class="fas fa-rotate-right"></i> განახლება
+            </button>
+            <button class="btn bg-amber-600 hover:bg-amber-700" data-admin-only onclick="window.exportDailyClosurePdf()">
+              <i class="fas fa-file-pdf"></i> დღის დახურვა
+            </button>
             <button class="btn bg-emerald-600 hover:bg-emerald-700" data-admin-only onclick="window.openProductForm()">
               <i class="fas fa-plus"></i> პროდუქტის დამატება
             </button>
@@ -203,6 +210,14 @@
             <h2 class="section-title">ფინანსები</h2>
             <p class="section-subtitle">აბონემენტებისა და პროდუქტების სრული ფინანსური სურათი</p>
           </div>
+          <div class="section-actions">
+            <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshFinancialData()">
+              <i class="fas fa-rotate-right"></i> განახლება
+            </button>
+            <button class="btn bg-amber-600 hover:bg-amber-700" onclick="window.exportDailyClosurePdf()">
+              <i class="fas fa-file-pdf"></i> დღის დახურვა PDF
+            </button>
+          </div>
         </div>
 
         <div class="finance-summary-grid">
@@ -230,6 +245,22 @@
             <div class="finance-card-label">ამ თვეში სულ</div>
             <div class="finance-card-value" id="monthTotalRevenue">0.00₾</div>
           </div>
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს ახალი აბონემენტები</div>
+            <div class="finance-card-value" id="todayRegistrationsCount">0</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს განახლებები</div>
+            <div class="finance-card-value" id="todayRenewalsCount">0</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს პროდუქტის გაყიდვები</div>
+            <div class="finance-card-value" id="todayProductSalesCount">0</div>
+          </div>
+          <div class="finance-card">
+            <div class="finance-card-label">დღეს გაყიდული ერთეულები</div>
+            <div class="finance-card-value" id="todayProductUnitsFinance">0</div>
+          </div>
         </div>
 
         <div class="finance-layout">
@@ -240,6 +271,14 @@
           <div class="section-panel">
             <h3 class="panel-title">ამ თვის ჭრილი</h3>
             <div id="financeBreakdownList" class="finance-breakdown"></div>
+          </div>
+          <div class="section-panel">
+            <h3 class="panel-title">დღევანდელი ჭრილი</h3>
+            <div id="financeTodayBreakdownList" class="finance-breakdown"></div>
+          </div>
+          <div class="section-panel">
+            <h3 class="panel-title">ბოლო გაყიდვები</h3>
+            <div id="financeRecentSalesList" class="transaction-list"></div>
           </div>
         </div>
       </div>

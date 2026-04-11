@@ -32,6 +32,7 @@
     let financeReconcileTimer = null;
     let membersLoadedOnce = false;
     let transactionsLoadedOnce = false;
+    let transactionsRefreshTimer = null;
     window.members = [];
     window.products = [];
     window.transactions = [];
@@ -268,9 +269,14 @@
         .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ka'));
     }
 
+    async function fetchTransactionsViaRest() {
+      return (await fetchCollectionViaRest('transactions'))
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
     async function hydrateTransactionsFromRest() {
       try {
-        window.transactions = await fetchCollectionViaRest('transactions');
+        window.transactions = await fetchTransactionsViaRest();
         transactionsLoadedOnce = true;
         updateAll();
         queueTodayMembershipTransactionReconcile();
@@ -278,6 +284,22 @@
         console.warn('transactions rest hydrate failed', e);
       }
     }
+
+    function scheduleTransactionsRefresh(delay = 350) {
+      if (transactionsRefreshTimer) clearTimeout(transactionsRefreshTimer);
+      transactionsRefreshTimer = setTimeout(() => {
+        hydrateTransactionsFromRest();
+      }, delay);
+    }
+
+    window.refreshFinancialData = async function() {
+      await Promise.all([
+        hydrateMembersFromRest(),
+        hydrateProductsFromRest(),
+        hydrateTransactionsFromRest()
+      ]);
+      showToast('მონაცემები განახლდა');
+    };
 
     function startOfDay(date) {
       const d = new Date(date);
@@ -407,6 +429,8 @@
       const transactions = getSortedTransactions();
       const todayTransactions = transactions.filter((tx) => isSameCalendarDay(tx.createdAt, now));
       const monthTransactions = transactions.filter((tx) => isSameCalendarMonth(tx.createdAt, now));
+      const todayMembershipTransactions = todayTransactions.filter((tx) => tx.category === 'membership');
+      const todayProductTransactions = todayTransactions.filter((tx) => tx.type === 'product_sale');
 
       const sumAmount = (list, category) => list
         .filter((tx) => !category || tx.category === category)
@@ -423,11 +447,17 @@
         monthMembership: sumAmount(monthTransactions, 'membership'),
         monthProducts: sumAmount(monthTransactions, 'product'),
         monthTotal: sumAmount(monthTransactions),
+        todayRegistrationCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_registration').length,
+        todayRenewalCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_renewal').length,
+        todayProductSalesCount: todayProductTransactions.length,
+        todayProductUnits: todayProductTransactions.reduce((total, tx) => total + Number(tx.quantity || 0), 0),
         monthMembershipCount: monthTransactions.filter((tx) => tx.category === 'membership').length,
         monthProductSalesCount: monthTransactions.filter((tx) => tx.type === 'product_sale').length,
         monthProductUnits,
-        recentTransactions: transactions.slice(0, 20),
-        recentProductSales: transactions.filter((tx) => tx.type === 'product_sale').slice(0, 10)
+        todayMembershipTransactions,
+        todayProductTransactions,
+        recentTransactions: transactions.slice(0, 30),
+        recentProductSales: transactions.filter((tx) => tx.type === 'product_sale').slice(0, 12)
       };
     }
 
@@ -444,6 +474,24 @@
         docRef = await addDoc(collection(db, "transactions"), payload);
       } catch (e) {
         console.error('transaction write failed', e);
+        try {
+          const restTransactions = await fetchTransactionsViaRest();
+          const recoveredTransaction = restTransactions.find((item) =>
+            item.type === payload?.type &&
+            item.category === payload?.category &&
+            String(item.description || '') === String(payload?.description || '') &&
+            Number(item.amount || 0) === Number(payload?.amount || 0) &&
+            String(item.createdAt || '') === String(payload?.createdAt || '')
+          );
+          if (recoveredTransaction) {
+            window.transactions = restTransactions;
+            updateAll();
+            console.warn('transaction recovered from firestore after SDK error', recoveredTransaction.id);
+            return true;
+          }
+        } catch (recoveryError) {
+          console.error('transaction recovery failed', recoveryError);
+        }
         if (!options.silent) {
           showToast('ფინანსური ჩანაწერის შენახვა ვერ მოხერხდა', 'error');
         }
@@ -454,6 +502,7 @@
       } catch (e) {
         console.error('local transaction update failed', e);
       }
+      scheduleTransactionsRefresh();
       return true;
     }
 
@@ -1301,9 +1350,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         updateSearchMemberList();
       }
       if (tab === 'products') {
+        hydrateTransactionsFromRest();
+        hydrateProductsFromRest();
         updateProductsTab();
       }
       if (tab === 'finance') {
+        hydrateTransactionsFromRest();
+        hydrateMembersFromRest();
         updateFinanceTab();
       }
       if (tab === 'dashboard') {
@@ -1647,8 +1700,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       `;
     }
 
-    function renderRecentProductSales() {
-      const container = document.getElementById('recentProductSales');
+    function renderRecentProductSales(targetId = 'recentProductSales') {
+      const container = document.getElementById(targetId);
       if (!container) return;
       const sales = getFinancialSummary().recentProductSales;
       if (sales.length === 0) {
@@ -1692,7 +1745,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         grid.innerHTML = filteredProducts.map(buildProductCardHTML).join('');
       }
 
-      renderRecentProductSales();
+      renderRecentProductSales('recentProductSales');
     }
 
     function renderFinanceBreakdown(summary) {
@@ -1731,7 +1784,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     function updateFinanceTab() {
       const summary = getFinancialSummary();
-      const ids = {
+      const currencyIds = {
         todayMembershipRevenue: summary.todayMembership,
         todayProductRevenue: summary.todayProducts,
         todayTotalRevenue: summary.todayTotal,
@@ -1739,10 +1792,20 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         monthProductRevenue: summary.monthProducts,
         monthTotalRevenue: summary.monthTotal
       };
+      const countIds = {
+        todayRegistrationsCount: summary.todayRegistrationCount,
+        todayRenewalsCount: summary.todayRenewalCount,
+        todayProductSalesCount: summary.todayProductSalesCount,
+        todayProductUnitsFinance: summary.todayProductUnits
+      };
 
-      Object.entries(ids).forEach(([id, value]) => {
+      Object.entries(currencyIds).forEach(([id, value]) => {
         const el = document.getElementById(id);
         if (el) el.textContent = formatCurrency(value);
+      });
+      Object.entries(countIds).forEach(([id, value]) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(value);
       });
 
       const transactionsList = document.getElementById('financeTransactionsList');
@@ -1762,8 +1825,317 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         }
       }
 
+      const todayBreakdownList = document.getElementById('financeTodayBreakdownList');
+      if (todayBreakdownList) {
+        const paymentTotals = summary.todayProductTransactions.reduce((acc, tx) => {
+          const method = tx.paymentMethod || 'UNKNOWN';
+          acc[method] = (acc[method] || 0) + Number(tx.amount || 0);
+          return acc;
+        }, {});
+        todayBreakdownList.innerHTML = `
+          <div class="finance-breakdown-row"><span>ახალი აბონემენტები</span><strong>${summary.todayRegistrationCount}</strong></div>
+          <div class="finance-breakdown-row"><span>განახლებული აბონემენტები</span><strong>${summary.todayRenewalCount}</strong></div>
+          <div class="finance-breakdown-row"><span>პროდუქტის გაყიდვები</span><strong>${summary.todayProductSalesCount}</strong></div>
+          <div class="finance-breakdown-row"><span>გაყიდული ერთეულები</span><strong>${summary.todayProductUnits}</strong></div>
+          <div class="finance-breakdown-row"><span>TBC</span><strong>${formatCurrency(paymentTotals.TBC || 0)}</strong></div>
+          <div class="finance-breakdown-row"><span>BOG</span><strong>${formatCurrency(paymentTotals.BOG || 0)}</strong></div>
+        `;
+      }
+
       renderFinanceBreakdown(summary);
+      renderRecentProductSales('financeRecentSalesList');
     }
+
+    function buildDailyClosureData() {
+      const now = new Date();
+      const summary = getFinancialSummary();
+      const membershipTransactions = summary.todayMembershipTransactions;
+      const productTransactions = summary.todayProductTransactions;
+
+      const subscriptionMap = {};
+      membershipTransactions.forEach((tx) => {
+        const key = tx.subscriptionName || tx.subscriptionType || 'აბონემენტი';
+        if (!subscriptionMap[key]) {
+          subscriptionMap[key] = { name: key, count: 0, amount: 0 };
+        }
+        subscriptionMap[key].count += 1;
+        subscriptionMap[key].amount += Number(tx.amount || 0);
+      });
+
+      const productMap = {};
+      productTransactions.forEach((tx) => {
+        const key = tx.productId || tx.productCode || tx.productName;
+        if (!productMap[key]) {
+          productMap[key] = { name: tx.productName || 'პროდუქტი', quantity: 0, amount: 0 };
+        }
+        productMap[key].quantity += Number(tx.quantity || 0);
+        productMap[key].amount += Number(tx.amount || 0);
+      });
+
+      return {
+        generatedAt: now.toISOString(),
+        summary,
+        membershipTransactions,
+        productTransactions,
+        subscriptionRows: Object.values(subscriptionMap).sort((a, b) => b.amount - a.amount),
+        productRows: Object.values(productMap).sort((a, b) => b.amount - a.amount)
+      };
+    }
+
+    function buildDailyClosureReportElement(data) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'daily-closure-report';
+      wrapper.innerHTML = `
+        <style>
+          .daily-closure-report {
+            font-family: 'DejaVu Sans', 'Noto Sans Georgian', Arial, sans-serif;
+            color: #111827;
+            background: #ffffff;
+            padding: 28px;
+            width: 100%;
+          }
+          .daily-closure-title {
+            font-size: 28px;
+            font-weight: 800;
+            margin-bottom: 6px;
+            color: #1d4ed8;
+          }
+          .daily-closure-subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 20px;
+          }
+          .daily-closure-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 22px;
+          }
+          .daily-closure-card {
+            border: 1px solid #dbeafe;
+            border-radius: 14px;
+            padding: 14px;
+            background: #f8fbff;
+          }
+          .daily-closure-card-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-bottom: 6px;
+          }
+          .daily-closure-card-value {
+            font-size: 20px;
+            font-weight: 800;
+            color: #0f172a;
+          }
+          .daily-closure-section {
+            margin-top: 20px;
+          }
+          .daily-closure-section h3 {
+            font-size: 18px;
+            margin: 0 0 12px;
+            color: #0f172a;
+          }
+          .daily-closure-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+          }
+          .daily-closure-table th,
+          .daily-closure-table td {
+            border: 1px solid #e5e7eb;
+            padding: 8px 10px;
+            text-align: left;
+            font-size: 12px;
+            vertical-align: top;
+          }
+          .daily-closure-table th {
+            background: #eff6ff;
+            color: #1e3a8a;
+            font-weight: 800;
+          }
+          .daily-closure-empty {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 12px;
+          }
+        </style>
+        <div class="daily-closure-title">დღის დახურვის რეპორტი</div>
+        <div class="daily-closure-subtitle">
+          თარიღი: ${formatDate(data.generatedAt)} • დრო: ${formatDateTime(data.generatedAt)}
+        </div>
+        <div class="daily-closure-grid">
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">დღეს აბონემენტებიდან</div>
+            <div class="daily-closure-card-value">${formatCurrency(data.summary.todayMembership)}</div>
+          </div>
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">დღეს პროდუქტებიდან</div>
+            <div class="daily-closure-card-value">${formatCurrency(data.summary.todayProducts)}</div>
+          </div>
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">დღის ჯამური შემოსავალი</div>
+            <div class="daily-closure-card-value">${formatCurrency(data.summary.todayTotal)}</div>
+          </div>
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">ახალი აბონემენტები</div>
+            <div class="daily-closure-card-value">${data.summary.todayRegistrationCount}</div>
+          </div>
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">განახლებები</div>
+            <div class="daily-closure-card-value">${data.summary.todayRenewalCount}</div>
+          </div>
+          <div class="daily-closure-card">
+            <div class="daily-closure-card-label">გაყიდული ერთეულები</div>
+            <div class="daily-closure-card-value">${data.summary.todayProductUnits}</div>
+          </div>
+        </div>
+
+        <div class="daily-closure-section">
+          <h3>დღევანდელი აბონემენტები და განახლებები</h3>
+          ${data.membershipTransactions.length === 0 ? '<div class="daily-closure-empty">დღეს აბონემენტების ჩანაწერი არ არის.</div>' : `
+            <table class="daily-closure-table">
+              <thead>
+                <tr>
+                  <th>დრო</th>
+                  <th>მომხმარებელი</th>
+                  <th>ოპერაცია</th>
+                  <th>აბონემენტი</th>
+                  <th>თანხა</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.membershipTransactions.map((tx) => `
+                  <tr>
+                    <td>${formatDateTime(tx.createdAt)}</td>
+                    <td>${tx.memberName || '—'}</td>
+                    <td>${tx.type === 'membership_registration' ? 'რეგისტრაცია' : 'განახლება'}</td>
+                    <td>${tx.subscriptionName || getSubscriptionName(tx.subscriptionType)}</td>
+                    <td>${formatCurrency(tx.amount)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <div class="daily-closure-section">
+          <h3>აბონემენტების ჭრილი</h3>
+          ${data.subscriptionRows.length === 0 ? '<div class="daily-closure-empty">დღეს აბონემენტები არ გაყიდულა.</div>' : `
+            <table class="daily-closure-table">
+              <thead>
+                <tr>
+                  <th>აბონემენტი</th>
+                  <th>რაოდენობა</th>
+                  <th>შემოსავალი</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.subscriptionRows.map((row) => `
+                  <tr>
+                    <td>${row.name}</td>
+                    <td>${row.count}</td>
+                    <td>${formatCurrency(row.amount)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <div class="daily-closure-section">
+          <h3>დღევანდელი პროდუქტის გაყიდვები</h3>
+          ${data.productTransactions.length === 0 ? '<div class="daily-closure-empty">დღეს პროდუქტი არ გაყიდულა.</div>' : `
+            <table class="daily-closure-table">
+              <thead>
+                <tr>
+                  <th>დრო</th>
+                  <th>პროდუქტი</th>
+                  <th>რაოდენობა</th>
+                  <th>გადახდა</th>
+                  <th>თანხა</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.productTransactions.map((tx) => `
+                  <tr>
+                    <td>${formatDateTime(tx.createdAt)}</td>
+                    <td>${tx.productName || '—'}</td>
+                    <td>${tx.quantity || 0}</td>
+                    <td>${getPaymentMethodLabel(tx.paymentMethod)}</td>
+                    <td>${formatCurrency(tx.amount)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+
+        <div class="daily-closure-section">
+          <h3>პროდუქტების ჭრილი</h3>
+          ${data.productRows.length === 0 ? '<div class="daily-closure-empty">დღეს გაყიდული პროდუქტები არ არის.</div>' : `
+            <table class="daily-closure-table">
+              <thead>
+                <tr>
+                  <th>პროდუქტი</th>
+                  <th>ერთეული</th>
+                  <th>შემოსავალი</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data.productRows.map((row) => `
+                  <tr>
+                    <td>${row.name}</td>
+                    <td>${row.quantity}</td>
+                    <td>${formatCurrency(row.amount)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          `}
+        </div>
+      `;
+      return wrapper;
+    }
+
+    window.exportDailyClosurePdf = async function() {
+      if (!isAdmin()) {
+        showToast('დღის დახურვა მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
+        return;
+      }
+      if (!window.html2pdf) {
+        showToast('PDF ბიბლიოთეკა ვერ ჩაიტვირთა', 'error');
+        return;
+      }
+
+      await hydrateTransactionsFromRest();
+      await hydrateMembersFromRest();
+
+      const data = buildDailyClosureData();
+      const reportElement = buildDailyClosureReportElement(data);
+      reportElement.style.position = 'fixed';
+      reportElement.style.left = '-20000px';
+      reportElement.style.top = '0';
+      reportElement.style.width = '1024px';
+      document.body.appendChild(reportElement);
+
+      const filename = `FitHouse-DayClose-${toDateInputValue(data.generatedAt)}.pdf`;
+      try {
+        await window.html2pdf().set({
+          margin: [10, 10, 10, 10],
+          filename,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['css', 'legacy'] }
+        }).from(reportElement).save();
+        showToast('დღის დახურვის PDF ჩამოიტვირთა');
+      } catch (e) {
+        console.error('daily closure pdf failed', e);
+        showToast('PDF-ის შექმნა ვერ მოხერხდა', 'error');
+      } finally {
+        reportElement.remove();
+      }
+    };
 
     window.openProductForm = function(productId = '') {
       if (!isAdmin()) {
