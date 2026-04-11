@@ -161,6 +161,22 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         badge.textContent = isAuthenticated ? getRoleLabel() : '';
         badge.classList.toggle('admin-role', isAdmin());
       }
+
+      // გამოსვლის / როლის შეცვლის ღილაკი
+      let switchBtn = document.getElementById('switchRoleBtn');
+      if (!switchBtn && isAuthenticated) {
+        switchBtn = document.createElement('button');
+        switchBtn.id = 'switchRoleBtn';
+        switchBtn.className = 'btn text-xs px-3 py-1';
+        switchBtn.style.cssText = 'background:rgba(99,102,241,0.18);border:1px solid rgba(99,102,241,0.4);color:#a5b4fc;border-radius:8px;cursor:pointer;';
+        switchBtn.innerHTML = '<i class="fas fa-exchange-alt mr-1"></i>როლის შეცვლა';
+        switchBtn.onclick = window.switchRole;
+        if (badge && badge.parentNode) {
+          badge.parentNode.insertBefore(switchBtn, badge.nextSibling);
+        }
+      }
+      if (switchBtn) switchBtn.style.display = isAuthenticated ? 'inline-flex' : 'none';
+
       if (!isAdmin() && document.getElementById('finance')?.classList.contains('active')) {
         window.showTab('dashboard');
       }
@@ -581,6 +597,173 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
       } else {
         showToast("პაროლი არასწორია!", "error");
+      }
+    };
+
+    // როლის შეცვლა (ადმინიდან ოპერატორზე გამოსვლა)
+    window.switchRole = function() {
+      const modal = document.createElement('div');
+      modal.id = 'switchRoleModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-slate-800 p-8 rounded-2xl border-2 border-indigo-500 max-w-sm w-full text-center">
+          <div class="text-4xl mb-4">🔄</div>
+          <h3 class="text-2xl font-bold text-indigo-400 mb-2">როლის შეცვლა</h3>
+          <p class="text-slate-300 mb-6 text-sm">შეიყვანეთ ახალი პაროლი ოპერატორისთვის ან ადმინისტრატორისთვის</p>
+          <input type="password" id="switchRolePassword" placeholder="პაროლი" class="form-input mb-4" autofocus>
+          <div class="flex gap-3 justify-center">
+            <button class="btn bg-indigo-600 hover:bg-indigo-700 px-6 py-3" onclick="window.confirmSwitchRole()">შესვლა</button>
+            <button class="btn bg-gray-600 hover:bg-gray-700 px-6 py-3" onclick="document.getElementById('switchRoleModal').remove()">გაუქმება</button>
+          </div>
+        </div>
+      `;
+      modal.querySelector('#switchRolePassword').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); window.confirmSwitchRole(); }
+      });
+      document.body.appendChild(modal);
+      setTimeout(() => modal.querySelector('#switchRolePassword').focus(), 100);
+    };
+
+    window.confirmSwitchRole = async function() {
+      const pass = document.getElementById('switchRolePassword')?.value || '';
+      const passHash = await sha256Hex(pass);
+      const modal = document.getElementById('switchRoleModal');
+      if (passHash === ADMIN_PASSWORD_HASH) {
+        currentUserRole = 'admin';
+        applyRoleVisibility();
+        modal?.remove();
+        showToast('ადმინისტრატორის რეჟიმი ჩართულია', 'success');
+      } else if (passHash === STAFF_PASSWORD_HASH) {
+        currentUserRole = 'staff';
+        applyRoleVisibility();
+        if (document.getElementById('finance')?.classList.contains('active')) {
+          window.showTab('dashboard');
+        }
+        modal?.remove();
+        showToast('ოპერატორის რეჟიმი ჩართულია', 'success');
+      } else {
+        showToast('პაროლი არასწორია!', 'error');
+        const inp = document.getElementById('switchRolePassword');
+        if (inp) { inp.value = ''; inp.focus(); }
+      }
+    };
+
+    // ფინანსების გასუფთავება (პაროლით დაცული)
+    window.openClearFinancesModal = function() {
+      if (!isAdmin()) {
+        showToast('ეს ფუნქცია მხოლოდ ადმინისტრატორისთვისაა', 'error');
+        return;
+      }
+      const modal = document.createElement('div');
+      modal.id = 'clearFinancesModal';
+      modal.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50';
+      modal.innerHTML = `
+        <div class="bg-slate-800 p-8 rounded-2xl border-2 border-red-500 max-w-md w-full text-center">
+          <div class="text-5xl mb-4">🗑️</div>
+          <h3 class="text-2xl font-bold text-red-400 mb-2">ფინანსების გასუფთავება</h3>
+          <p class="text-slate-300 mb-2 text-sm">ეს ოპერაცია წაშლის ფინანსურ ჩანაწერებს Firebase-დან.</p>
+          <p class="text-yellow-400 mb-5 text-sm font-bold">⚠️ წაშლა შეუქცევადია!</p>
+          <div class="mb-4">
+            <label class="text-slate-300 text-sm block mb-2">რა გასუფთავდეს?</label>
+            <div class="flex gap-3 justify-center mb-4">
+              <label class="flex items-center gap-2 cursor-pointer bg-slate-700 px-4 py-2 rounded-lg border border-slate-600 hover:border-red-500">
+                <input type="radio" name="clearScope" value="month" checked class="accent-red-500">
+                <span class="text-sm">მიმდინარე თვე</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer bg-slate-700 px-4 py-2 rounded-lg border border-slate-600 hover:border-red-500">
+                <input type="radio" name="clearScope" value="all" class="accent-red-500">
+                <span class="text-sm">ყველა ჩანაწერი</span>
+              </label>
+            </div>
+          </div>
+          <div class="mb-5">
+            <label class="text-slate-300 text-sm block mb-2">ადმინის პაროლი დასადასტურებლად</label>
+            <input type="password" id="clearFinancesPassword" placeholder="შეიყვანეთ: admin1" class="form-input" autofocus>
+          </div>
+          <div class="flex gap-3 justify-center">
+            <button class="btn bg-red-600 hover:bg-red-700 px-6 py-3 font-bold" onclick="window.confirmClearFinances()">
+              <i class="fas fa-trash-alt mr-2"></i>გასუფთავება
+            </button>
+            <button class="btn bg-gray-600 hover:bg-gray-700 px-6 py-3" onclick="document.getElementById('clearFinancesModal').remove()">გაუქმება</button>
+          </div>
+          <div id="clearFinancesProgress" class="mt-4 text-sm text-slate-400 hidden"></div>
+        </div>
+      `;
+      modal.querySelector('#clearFinancesPassword').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); window.confirmClearFinances(); }
+      });
+      document.body.appendChild(modal);
+      setTimeout(() => modal.querySelector('#clearFinancesPassword').focus(), 100);
+    };
+
+    window.confirmClearFinances = async function() {
+      const pass = document.getElementById('clearFinancesPassword')?.value || '';
+      const passHash = await sha256Hex(pass);
+      if (passHash !== ADMIN_PASSWORD_HASH) {
+        showToast('ადმინის პაროლი არასწორია!', 'error');
+        const inp = document.getElementById('clearFinancesPassword');
+        if (inp) { inp.value = ''; inp.focus(); }
+        return;
+      }
+
+      const scope = document.querySelector('input[name="clearScope"]:checked')?.value || 'month';
+      const scopeLabel = scope === 'all' ? 'ყველა ჩანაწერი' : 'მიმდინარე თვის ჩანაწერები';
+      const confirmed = confirm(`დარწმუნებული ხართ?\n\nწაიშლება: ${scopeLabel}\n\nეს ოპერაცია შეუქცევადია!`);
+      if (!confirmed) return;
+
+      const progressEl = document.getElementById('clearFinancesProgress');
+      if (progressEl) {
+        progressEl.classList.remove('hidden');
+        progressEl.textContent = 'მიმდინარეობს წაშლა...';
+      }
+
+      try {
+        // ჯერ ყველა ტრანზაქცია ჩამოვტვირთოთ
+        const allTransactions = await fetchCollectionViaRest('transactions');
+        const now = new Date();
+        let toDelete;
+
+        if (scope === 'all') {
+          toDelete = allTransactions;
+        } else {
+          toDelete = allTransactions.filter(tx => isSameCalendarMonth(tx.createdAt, now));
+        }
+
+        if (toDelete.length === 0) {
+          showToast('წასაშლელი ჩანაწერები ვერ მოიძებნა', 'error');
+          document.getElementById('clearFinancesModal')?.remove();
+          return;
+        }
+
+        let deleted = 0;
+        for (const tx of toDelete) {
+          try {
+            await deleteDoc(doc(db, 'transactions', tx.id));
+            deleted++;
+            if (progressEl) progressEl.textContent = `წაიშალა ${deleted}/${toDelete.length}...`;
+          } catch (e) {
+            console.error('delete tx failed', tx.id, e);
+          }
+        }
+
+        // ლოკალური cache განახლება
+        if (scope === 'all') {
+          window.transactions = [];
+        } else {
+          window.transactions = window.transactions.filter(tx => !isSameCalendarMonth(tx.createdAt, now));
+        }
+
+        updateAll();
+        document.getElementById('clearFinancesModal')?.remove();
+        showToast(`✅ წაიშალა ${deleted} ჩანაწერი (${scopeLabel})`, 'success');
+
+        if (document.getElementById('finance')?.classList.contains('active')) {
+          updateFinanceTab();
+        }
+      } catch (e) {
+        console.error('clearFinances failed', e);
+        showToast('გასუფთავება ვერ მოხერხდა', 'error');
+        document.getElementById('clearFinancesModal')?.remove();
       }
     };
 
@@ -1854,6 +2037,22 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       renderFinanceBreakdown(summary);
       renderRecentProductSales('financeRecentSalesList');
+
+      // ფინანსების გასუფთავების ღილაკი (admin only)
+      const financeTab = document.getElementById('finance');
+      if (financeTab && isAdmin()) {
+        if (!document.getElementById('clearFinancesBtn')) {
+          const clearBtn = document.createElement('button');
+          clearBtn.id = 'clearFinancesBtn';
+          clearBtn.className = 'btn text-sm px-4 py-2';
+          clearBtn.style.cssText = 'background:rgba(239,68,68,0.12);border:1.5px solid rgba(239,68,68,0.4);color:#fca5a5;border-radius:10px;cursor:pointer;display:flex;align-items:center;gap:6px;margin-top:10px;';
+          clearBtn.innerHTML = '<i class="fas fa-trash-alt"></i> ფინანსების გასუფთავება';
+          clearBtn.onclick = window.openClearFinancesModal;
+          // ჩავსვათ finance tab-ის ბოლოში
+          const financeActions = financeTab.querySelector('.finance-actions') || financeTab;
+          financeActions.appendChild(clearBtn);
+        }
+      }
     }
 
     function buildDailyClosureData() {
@@ -2103,6 +2302,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             </table>
           `}
         </div>
+
+        <div class="daily-closure-summary-total">
+          🏆 დღის სულ შემოსავალი: ${formatCurrency(data.summary.todayTotal)} &nbsp;|&nbsp;
+          📋 აბონემენტი: ${data.summary.todayRegistrationCount + data.summary.todayRenewalCount} (${formatCurrency(data.summary.todayMembership)}) &nbsp;|&nbsp;
+          🛍️ პროდუქტი: ${data.summary.todayProductUnits} ც. (${formatCurrency(data.summary.todayProducts)})
+        </div>
       `;
       return wrapper;
     }
@@ -2144,7 +2349,33 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         document.body.appendChild(iframe);
         const doc = iframe.contentDocument || iframe.contentWindow.document;
         doc.open();
-        doc.write('<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>' + title + '</title><style>body{margin:0;padding:16px;font-family:Arial,sans-serif;}</style></head><body>' + reportElement.outerHTML + '</body></html>');
+        doc.write(`<!DOCTYPE html><html lang="ka">
+<head>
+<meta charset="UTF-8">
+<title>${title}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; font-family: Arial, sans-serif; background: #fff; color: #111; font-size: 13px; }
+  @media print { body { padding: 8px; } @page { margin: 10mm; } }
+  .daily-closure-report { font-family: Arial, sans-serif; color: #111827; background: #ffffff; padding: 20px; width: 100%; }
+  .daily-closure-title { font-size: 24px; font-weight: 800; margin-bottom: 4px; color: #1d4ed8; }
+  .daily-closure-subtitle { font-size: 12px; color: #6b7280; margin-bottom: 18px; }
+  .daily-closure-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px; }
+  .daily-closure-card { border: 1px solid #dbeafe; border-radius: 10px; padding: 12px; background: #f8fbff; }
+  .daily-closure-card-label { font-size: 11px; color: #6b7280; margin-bottom: 4px; }
+  .daily-closure-card-value { font-size: 18px; font-weight: 800; color: #0f172a; }
+  .daily-closure-section { margin-top: 18px; }
+  .daily-closure-section h3 { font-size: 15px; margin: 0 0 10px; color: #0f172a; border-bottom: 2px solid #dbeafe; padding-bottom: 4px; }
+  .daily-closure-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .daily-closure-table th, .daily-closure-table td { border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; font-size: 11px; vertical-align: top; }
+  .daily-closure-table th { background: #eff6ff; color: #1e3a8a; font-weight: 800; }
+  .daily-closure-table tr:nth-child(even) td { background: #f9fafb; }
+  .daily-closure-empty { font-size: 12px; color: #6b7280; margin-bottom: 10px; font-style: italic; }
+  .daily-closure-summary-total { background: #1d4ed8; color: #fff; padding: 12px 16px; border-radius: 8px; font-size: 16px; font-weight: 800; text-align: center; margin-top: 20px; }
+</style>
+</head>
+<body>${reportElement.outerHTML}</body>
+</html>`);
         doc.close();
         setTimeout(() => {
           try {
@@ -2155,8 +2386,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           }
           setTimeout(() => {
             try { iframe.remove(); } catch(e) {}
-          }, 4000);
-        }, 700);
+          }, 6000);
+        }, 900);
         return true;
       } catch(e) {
         console.error('print preview failed', e);
@@ -2165,10 +2396,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     }
 
     window.exportDailyClosurePdf = async function() {
-      if (!isAdmin()) {
-        showToast('დღის დახურვა მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
-        return;
-      }
+      // ოპერატორსაც შეუძლია დღის ანგარიშის ბეჭდვა
 
       showToast('მონაცემები იტვირთება...');
       await hydrateTransactionsFromRest();
@@ -2177,20 +2405,31 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       const data = buildDailyClosureData();
       const reportElement = buildDailyClosureReportElement(data);
       const filename = `FitHouse-DayClose-${toDateInputValue(data.generatedAt)}`;
+      const title = `Fit House — დღის დახურვა ${formatDate(data.generatedAt)}`;
 
-      // პირველი ცდა: html2pdf
-      if (window.html2pdf) {
+      // პირველი ცდა: iframe print (ყოველთვის მუშაობს, ინარჩუნებს ყველა მონაცემს)
+      const printOk = openDailyClosurePrintPreview(reportElement, title);
+      if (printOk) {
+        showToast('ანგარიში გაიხსნა ბეჭდვისთვის (PDF-ად შეინახეთ ბრაუზერიდან)');
+        return;
+      }
+
+      // fallback: html2pdf თუ ხელმისაწვდომია
+      const html2pdfLib = await ensureHtml2PdfLibrary();
+      if (html2pdfLib) {
         const clone = reportElement.cloneNode(true);
-        clone.style.cssText = 'position:fixed;left:-20000px;top:0;width:1024px;background:#fff;';
+        clone.style.cssText = 'position:absolute;left:0;top:0;width:800px;background:#fff;padding:20px;z-index:-9999;';
         document.body.appendChild(clone);
+        // დაველოდოთ render-ს
+        await new Promise(r => setTimeout(r, 500));
         try {
-          const worker = window.html2pdf().set({
-            margin: [10, 10, 10, 10],
+          const worker = html2pdfLib().set({
+            margin: [8, 8, 8, 8],
             filename: filename + '.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+            image: { type: 'jpeg', quality: 0.97 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
             jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-            pagebreak: { mode: ['css', 'legacy'] }
+            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
           }).from(clone);
           await worker.toPdf();
           const pdf = await worker.get('pdf');
@@ -2199,40 +2438,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           showToast('დღის დახურვის PDF ჩამოიტვირთა');
           return;
         } catch (e) {
-          console.error('html2pdf failed, falling back to print', e);
+          console.error('html2pdf failed', e);
           clone.remove();
         }
       }
 
-      // fallback: iframe print (popup blocker-ს გვერდს უვლის)
-      try {
-        const iframe = document.createElement('iframe');
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;';
-        document.body.appendChild(iframe);
-        const doc = iframe.contentDocument || iframe.contentWindow.document;
-        doc.open();
-        doc.write(`<!DOCTYPE html><html lang="ka"><head><meta charset="UTF-8"><title>${filename}</title>
-          <style>
-            @media print { body { margin: 0; } }
-            body { font-family: Arial, sans-serif; background: #fff; color: #111; }
-          </style>
-        </head><body>${reportElement.outerHTML}</body></html>`);
-        doc.close();
-        setTimeout(() => {
-          try {
-            iframe.contentWindow.focus();
-            iframe.contentWindow.print();
-          } catch(e) {
-            console.error('iframe print failed', e);
-            showToast('ბეჭდვა ვერ მოხერხდა', 'error');
-          }
-          setTimeout(() => { try { iframe.remove(); } catch(e) {} }, 5000);
-        }, 800);
-        showToast('PDF ბეჭდვის დიალოგი გაიხსნა');
-      } catch(e) {
-        console.error('print fallback failed', e);
-        showToast('PDF-ის გენერაცია ვერ მოხერხდა', 'error');
-      }
+      showToast('PDF-ის გენერაცია ვერ მოხერხდა — სცადეთ ბრაუზერის ბეჭდვა', 'error');
     };
 
     window.openProductForm = function(productId = '') {
