@@ -31,7 +31,7 @@
     
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
-    const ADMIN_PASSWORD = "1234";
+    const ADMIN_PASSWORD = "Bench120!";
     let isAuthenticated = false;
     window.members = [];
     window.selectedSubscription = null;
