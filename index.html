@@ -100,28 +100,40 @@
         <h2 class="text-3xl font-bold mb-8 text-center">დეშბორდი</h2>
         <div class="dashboard-stats">
           <div class="stat-card" id="todayVisitsCard" onclick="window.toggleTodayVisits()">
+            <div class="admin-stat-icon admin-stat-icon-blue"><i class="fas fa-door-open"></i></div>
+            <div class="admin-stat-label">დღევანდელი ვიზიტები</div>
             <div class="text-4xl font-bold" id="todayVisits">0</div>
-            <div class="text-lg mt-2">დღევანდელი ვიზიტები</div>
+            <div class="admin-stat-note">დღეს დაფიქსირებული შესვლები</div>
           </div>
           <div class="stat-card">
+            <div class="admin-stat-icon admin-stat-icon-cyan"><i class="fas fa-users"></i></div>
+            <div class="admin-stat-label">სულ: რეგისტრირებული</div>
             <div class="text-4xl font-bold" id="totalMembers">0</div>
-            <div class="text-lg mt-2">სულ: რეგისტრირებული</div>
+            <div class="admin-stat-note">სრული წევრთა ბაზა</div>
           </div>
           <div class="stat-card">
+            <div class="admin-stat-icon admin-stat-icon-green"><i class="fas fa-user-check"></i></div>
+            <div class="admin-stat-label">აქტიური წევრები</div>
             <div class="text-4xl font-bold" id="activeMembers">0</div>
-            <div class="text-lg mt-2">აქტიური წევრები</div>
+            <div class="admin-stat-note">აქტიური აბონემენტით</div>
           </div>
           <div class="stat-card">
+            <div class="admin-stat-icon admin-stat-icon-rose"><i class="fas fa-circle-xmark"></i></div>
+            <div class="admin-stat-label">ვადაგასული</div>
             <div class="text-4xl font-bold" id="expiredMembers">0</div>
-            <div class="text-lg mt-2">ვადაგასული</div>
+            <div class="admin-stat-note">განახლებას მომლოდინე</div>
           </div>
           <div class="stat-card" id="expiringMembersCard" onclick="toggleExpiringSoon()">
+            <div class="admin-stat-icon admin-stat-icon-amber"><i class="fas fa-hourglass-half"></i></div>
+            <div class="admin-stat-label">3 დღეში ვადაგასული</div>
             <div class="text-4xl font-bold" id="expiringMembers">0</div>
-            <div class="text-lg mt-2">3 დღეში ვადაგასული</div>
+            <div class="admin-stat-note">მოკლე ვადაში გასანახლებელი</div>
           </div>
           <div class="stat-card" style="background:linear-gradient(135deg,#ea580c,#f97316)">
+            <div class="admin-stat-icon admin-stat-icon-violet"><i class="fas fa-pause-circle"></i></div>
+            <div class="admin-stat-label">შეჩერებული</div>
             <div class="text-4xl font-bold" id="pausedMembers">0</div>
-            <div class="text-lg mt-2">შეჩერებული</div>
+            <div class="admin-stat-note">დროებით შეჩერებული წევრები</div>
           </div>
         </div>
         
@@ -383,50 +395,96 @@
       </div>
 
       <div id="stats" class="tab-content" data-admin-only>
-        <div class="section-header">
-          <div class="section-copy">
+        <div class="stats-hero">
+          <div class="stats-hero-copy">
             <h2 class="section-title">სტატისტიკა</h2>
-            <p class="section-subtitle">ოპერატორების, აბონემენტებისა და თვიური შედეგების ანალიტიკა</p>
+            <p class="section-subtitle">ოპერატორები, თვეები და გაყიდვების შედეგები ერთ ეკრანზე</p>
+          </div>
+          <div class="stats-hero-badges">
+            <span class="stats-hero-badge"><i class="fas fa-users"></i> ოპერატორები</span>
+            <span class="stats-hero-badge"><i class="fas fa-id-card"></i> აბონემენტები</span>
+            <span class="stats-hero-badge"><i class="fas fa-cubes"></i> პროდუქტები</span>
           </div>
         </div>
 
         <div class="stats-summary-grid">
           <div class="stats-summary-card">
+            <div class="stats-card-icon stats-card-icon-blue"><i class="fas fa-crown"></i></div>
             <div class="stats-summary-label">ამ თვის ლიდერი ოპერატორი</div>
             <div class="stats-summary-value" id="statsTopOperatorName">—</div>
             <div class="stats-summary-sub" id="statsTopOperatorMeta">—</div>
           </div>
           <div class="stats-summary-card">
+            <div class="stats-card-icon stats-card-icon-green"><i class="fas fa-id-card"></i></div>
             <div class="stats-summary-label">ამ თვის აბონემენტები</div>
             <div class="stats-summary-value" id="statsMonthMembershipCount">0</div>
             <div class="stats-summary-sub" id="statsMonthMembershipAmount">0.00₾</div>
           </div>
           <div class="stats-summary-card">
+            <div class="stats-card-icon stats-card-icon-amber"><i class="fas fa-basket-shopping"></i></div>
             <div class="stats-summary-label">ამ თვის პროდუქტები</div>
             <div class="stats-summary-value" id="statsMonthProductCount">0</div>
             <div class="stats-summary-sub" id="statsMonthProductAmount">0.00₾</div>
           </div>
           <div class="stats-summary-card">
+            <div class="stats-card-icon stats-card-icon-violet"><i class="fas fa-chart-line"></i></div>
             <div class="stats-summary-label">საუკეთესო თვე</div>
             <div class="stats-summary-value" id="statsBestMonthName">—</div>
             <div class="stats-summary-sub" id="statsBestMonthTotal">0.00₾</div>
           </div>
         </div>
 
-        <div class="finance-layout">
+        <div class="stats-insights-grid">
+          <div class="section-panel stats-chart-panel">
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">თვიური შესრულება</h3>
+                <p class="stats-panel-subtitle">ბოლო თვეების ჯამური მოძრაობა</p>
+              </div>
+              <div class="stats-panel-pill">Monthly</div>
+            </div>
+            <div id="statsRevenueBars" class="stats-bar-chart"></div>
+          </div>
+          <div class="section-panel stats-leader-panel">
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">ოპერატორების დაფა</h3>
+                <p class="stats-panel-subtitle">ვის აქვს ყველაზე ძლიერი ტემპი</p>
+              </div>
+            </div>
+            <div id="statsOperatorsBoard" class="stats-operator-board"></div>
+          </div>
+        </div>
+
+        <div class="stats-detail-grid">
           <div class="section-panel">
-            <h3 class="panel-title">თვიური ლიდერები</h3>
-            <div id="statsMonthlyLeadersTable" class="admin-table-wrap"></div>
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">თვიური ლიდერები</h3>
+                <p class="stats-panel-subtitle">თვეების მიხედვით წამყვანი ოპერატორები</p>
+              </div>
+            </div>
+            <div id="statsMonthlyLeadersTable"></div>
           </div>
           <div class="section-panel">
-            <h3 class="panel-title">ოპერატორების რანქი</h3>
-            <div id="statsOperatorsTable" class="admin-table-wrap"></div>
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">თვიური არქივი</h3>
+                <p class="stats-panel-subtitle">შემოსავალი და გაყიდვების ჭრილი</p>
+              </div>
+            </div>
+            <div id="statsMonthlyArchiveTable"></div>
           </div>
         </div>
 
         <div class="section-panel">
-          <h3 class="panel-title">თვიური სტატისტიკა</h3>
-          <div id="statsMonthlyArchiveTable" class="admin-table-wrap"></div>
+          <div class="stats-panel-head">
+            <div>
+              <h3 class="panel-title">ოპერატორების სრული რანქი</h3>
+              <p class="stats-panel-subtitle">ჯამური შედეგები ყველა პერიოდზე</p>
+            </div>
+          </div>
+          <div id="statsOperatorsTable"></div>
         </div>
       </div>
 

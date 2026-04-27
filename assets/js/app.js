@@ -1875,6 +1875,155 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       return { monthlyLeaders, operatorsAggregate };
     }
 
+    function getNameInitials(name) {
+      const words = String(name || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2);
+      if (!words.length) return '—';
+      return words.map((word) => word.charAt(0).toUpperCase()).join('');
+    }
+
+    function renderStatsRevenueBars(rows) {
+      if (!rows.length) {
+        return '<div class="empty-state">თვიური მონაცემები ჯერ არ არის</div>';
+      }
+      const chartRows = [...rows].slice(0, 6).reverse();
+      const maxTotal = Math.max(...chartRows.map((row) => Number(row.totalAmount || 0)), 1);
+      return `
+        <div class="stats-bars-grid">
+          ${chartRows.map((row) => {
+            const total = Number(row.totalAmount || 0);
+            const membershipAmount = Number(row.membershipAmount || 0);
+            const productAmount = Number(row.productAmount || 0);
+            const totalHeight = Math.max(18, Math.round((total / maxTotal) * 220));
+            const membershipHeight = total > 0 ? Math.max(10, Math.round((membershipAmount / total) * totalHeight)) : 0;
+            const productHeight = Math.max(6, totalHeight - membershipHeight);
+            return `
+              <div class="stats-bar-item">
+                <div class="stats-bar-value">${formatCurrency(total)}</div>
+                <div class="stats-bar-column">
+                  <div class="stats-bar-fill stats-bar-fill-product" style="height:${productHeight}px"></div>
+                  <div class="stats-bar-fill stats-bar-fill-membership" style="height:${membershipHeight}px"></div>
+                </div>
+                <div class="stats-bar-label">${formatMonthKey(row.monthKey)}</div>
+                <div class="stats-bar-meta">${row.membershipCount} აბო • ${row.productCount} გაყიდვა</div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderStatsOperatorBoard(items) {
+      if (!items.length) {
+        return '<div class="empty-state">ოპერატორების მონაცემები ჯერ არ არის</div>';
+      }
+      const boardItems = items.slice(0, 5);
+      const maxCount = Math.max(...boardItems.map((item) => Number(item.count || 0)), 1);
+      return `
+        <div class="stats-board-list">
+          ${boardItems.map((item, index) => {
+            const progress = Math.max(10, Math.round((Number(item.count || 0) / maxCount) * 100));
+            return `
+              <div class="stats-board-item">
+                <div class="stats-board-rank">#${index + 1}</div>
+                <div class="stats-board-avatar">${getNameInitials(item.actorName)}</div>
+                <div class="stats-board-main">
+                  <div class="stats-board-top">
+                    <strong>${item.actorName}</strong>
+                    <span>${formatCurrency(item.amount)}</span>
+                  </div>
+                  <div class="stats-board-meta">${item.count} აბონემენტი • ${item.renewals} განახლება</div>
+                  <div class="stats-board-progress">
+                    <span style="width:${progress}%"></span>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderStatsMonthlyLeaders(monthlyLeaders) {
+      if (!monthlyLeaders.length) {
+        return '<div class="empty-state">თვიური ლიდერები ჯერ არ არის</div>';
+      }
+      return `
+        <div class="stats-leader-list">
+          ${monthlyLeaders.slice(0, 6).map((item) => `
+            <div class="stats-leader-item">
+              <div class="stats-leader-month">${formatMonthKey(item.monthKey)}</div>
+              <div class="stats-leader-main">
+                <div class="stats-leader-name">${item.leader?.actorName || '—'}</div>
+                <div class="stats-leader-badges">
+                  <span class="stats-badge"><i class="fas fa-id-card"></i> ${item.leader?.count || 0}</span>
+                  <span class="stats-badge"><i class="fas fa-rotate"></i> ${item.leader?.renewals || 0}</span>
+                  <span class="stats-badge stats-badge-strong"><i class="fas fa-sack-dollar"></i> ${formatCurrency(item.leader?.amount || 0)}</span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function renderStatsArchiveCards(rows) {
+      if (!rows.length) {
+        return '<div class="empty-state">თვიური არქივი ჯერ არ არის</div>';
+      }
+      const maxTotal = Math.max(...rows.map((row) => Number(row.totalAmount || 0)), 1);
+      return `
+        <div class="stats-archive-grid">
+          ${rows.slice(0, 8).map((row) => {
+            const progress = Math.max(8, Math.round((Number(row.totalAmount || 0) / maxTotal) * 100));
+            return `
+              <div class="stats-archive-card">
+                <div class="stats-archive-head">
+                  <strong>${formatMonthKey(row.monthKey)}</strong>
+                  <span>${formatCurrency(row.totalAmount)}</span>
+                </div>
+                <div class="stats-archive-progress"><span style="width:${progress}%"></span></div>
+                <div class="stats-archive-meta">
+                  <div><span>აბონემენტი</span><strong>${formatCurrency(row.membershipAmount)} · ${row.membershipCount}</strong></div>
+                  <div><span>პროდუქტი</span><strong>${formatCurrency(row.productAmount)} · ${row.productUnits} ც</strong></div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+
+    function renderStatsOperatorRank(items) {
+      if (!items.length) {
+        return '<div class="empty-state">ოპერატორების სტატისტიკა ჯერ არ არის</div>';
+      }
+      return `
+        <div class="stats-rank-grid">
+          ${items.map((item, index) => `
+            <div class="stats-rank-card">
+              <div class="stats-rank-top">
+                <div class="stats-rank-badge">#${index + 1}</div>
+                <div class="stats-rank-avatar">${getNameInitials(item.actorName)}</div>
+                <div class="stats-rank-name-block">
+                  <div class="stats-rank-name">${item.actorName}</div>
+                  <div class="stats-rank-sub">${item.registrations} ახალი • ${item.renewals} განახლება</div>
+                </div>
+                <div class="stats-rank-amount">${formatCurrency(item.amount)}</div>
+              </div>
+              <div class="stats-rank-footer">
+                <span><i class="fas fa-id-card"></i> ${item.count} აბონემენტი</span>
+                <span><i class="fas fa-coins"></i> საშუალო ${formatCurrency(item.count ? item.amount / item.count : 0)}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
     function updateUsersTab() {
       const container = document.getElementById('usersTable');
       if (!container) return;
@@ -1937,7 +2086,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       document.getElementById('statsTopOperatorName').textContent = currentMonthLeader?.actorName || '—';
       document.getElementById('statsTopOperatorMeta').textContent = currentMonthLeader
-        ? `${currentMonthLeader.count} აბონემენტი • ${formatCurrency(currentMonthLeader.amount)}`
+        ? `${currentMonthLeader.count} აბონემენტი • ${currentMonthLeader.registrations} ახალი • ${currentMonthLeader.renewals} განახლება • ${formatCurrency(currentMonthLeader.amount)}`
         : 'მონაცემები ჯერ არ არის';
       document.getElementById('statsMonthMembershipCount').textContent = String(summary.monthMembershipCount);
       document.getElementById('statsMonthMembershipAmount').textContent = formatCurrency(summary.monthMembership);
@@ -1946,55 +2095,29 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('statsBestMonthName').textContent = bestMonth ? formatMonthKey(bestMonth.monthKey) : '—';
       document.getElementById('statsBestMonthTotal').textContent = bestMonth ? formatCurrency(bestMonth.totalAmount) : '0.00₾';
 
+      const statsRevenueBars = document.getElementById('statsRevenueBars');
+      if (statsRevenueBars) {
+        statsRevenueBars.innerHTML = renderStatsRevenueBars(archiveRows);
+      }
+
+      const statsOperatorsBoard = document.getElementById('statsOperatorsBoard');
+      if (statsOperatorsBoard) {
+        statsOperatorsBoard.innerHTML = renderStatsOperatorBoard(operatorsAggregate);
+      }
+
       const monthlyLeadersTable = document.getElementById('statsMonthlyLeadersTable');
       if (monthlyLeadersTable) {
-        monthlyLeadersTable.innerHTML = buildAdminTable(
-          ['თვე', 'ლიდერი ოპერატორი', 'აბონემენტები', 'განახლებები', 'თანხა'],
-          monthlyLeaders.map((item) => `
-            <tr>
-              <td>${formatMonthKey(item.monthKey)}</td>
-              <td>${item.leader?.actorName || '—'}</td>
-              <td>${item.leader?.count || 0}</td>
-              <td>${item.leader?.renewals || 0}</td>
-              <td>${formatCurrency(item.leader?.amount || 0)}</td>
-            </tr>
-          `),
-          'თვიური ლიდერები ჯერ არ არის'
-        );
+        monthlyLeadersTable.innerHTML = renderStatsMonthlyLeaders(monthlyLeaders);
       }
 
       const operatorsTable = document.getElementById('statsOperatorsTable');
       if (operatorsTable) {
-        operatorsTable.innerHTML = buildAdminTable(
-          ['ოპერატორი', 'აბონემენტები', 'ახალი', 'განახლებები', 'თანხა'],
-          operatorsAggregate.map((item) => `
-            <tr>
-              <td>${item.actorName}</td>
-              <td>${item.count}</td>
-              <td>${item.registrations}</td>
-              <td>${item.renewals}</td>
-              <td>${formatCurrency(item.amount)}</td>
-            </tr>
-          `),
-          'ოპერატორების სტატისტიკა ჯერ არ არის'
-        );
+        operatorsTable.innerHTML = renderStatsOperatorRank(operatorsAggregate);
       }
 
       const monthlyArchiveTable = document.getElementById('statsMonthlyArchiveTable');
       if (monthlyArchiveTable) {
-        monthlyArchiveTable.innerHTML = buildAdminTable(
-          ['თვე', 'აბონემენტი', 'პროდუქტი', 'პროდუქტის ერთეული', 'სულ'],
-          archiveRows.map((row) => `
-            <tr>
-              <td>${formatMonthKey(row.monthKey)}</td>
-              <td>${formatCurrency(row.membershipAmount)} (${row.membershipCount})</td>
-              <td>${formatCurrency(row.productAmount)} (${row.productCount})</td>
-              <td>${row.productUnits}</td>
-              <td>${formatCurrency(row.totalAmount)}</td>
-            </tr>
-          `),
-          'თვიური არქივი ჯერ არ არის'
-        );
+        monthlyArchiveTable.innerHTML = renderStatsArchiveCards(archiveRows);
       }
     }
 
