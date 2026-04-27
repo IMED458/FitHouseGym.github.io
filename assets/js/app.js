@@ -27,15 +27,19 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     const ADMIN_PASSWORD_HASH = "25f43b1486ad95a1398e3eeb3d83bc4010015fcc9bedb35b432e00298d5021f7";
     let isAuthenticated = false;
     let currentUserRole = null;
+    let currentUser = null;
     let notificationsSchedulerStarted = false;
     let expandedSearchMemberId = null;
     let financeReconcileTimer = null;
     let membersLoadedOnce = false;
+    let usersLoadedOnce = false;
     let transactionsLoadedOnce = false;
     let transactionsRefreshTimer = null;
     let transactionsPollingStarted = false;
+    let usersStreamStarted = false;
     let dataStreamsStarted = false;
     window.members = [];
+    window.users = [];
     window.products = [];
     window.transactions = [];
     window.selectedSubscription = null;
@@ -43,6 +47,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.productSaleCart = [];
     window.productCartPaymentMethod = 'TBC';
     window.isCartCheckoutRunning = false;
+    window.pendingMembershipPaymentContext = null;
 
     // EmailJS ინიციალიზაცია
     (function() {
@@ -74,7 +79,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       const map = {
         TBC: 'TBC',
         BOG: 'BOG',
-        CASH: 'CASH'
+        CASH: 'CASH',
+        TRANSFER: 'გადარიცხვა'
       };
       return map[method] || method || '—';
     }
@@ -181,15 +187,41 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return currentUserRole === 'admin';
     }
 
-    function isKnownPasswordHash(hash) {
-      return hash === STAFF_PASSWORD_HASH || hash === ADMIN_PASSWORD_HASH;
+    function getRoleLabel(role = currentUserRole) {
+      return role === 'admin' ? 'ადმინისტრატორი' : 'ოპერატორი';
     }
 
-    function getRoleLabel() {
-      return isAdmin() ? 'ადმინისტრატორი' : 'ოპერატორი';
+    function normalizeUsername(value) {
+      return String(value || '').trim().toLowerCase();
+    }
+
+    function getCurrentUserDisplayName(user = currentUser) {
+      if (!user) return '';
+      const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      return fullName || user.username || '';
+    }
+
+    function getActorMetadata() {
+      return {
+        actorUserId: currentUser?.id || null,
+        actorUsername: currentUser?.username || null,
+        actorFirstName: currentUser?.firstName || null,
+        actorLastName: currentUser?.lastName || null,
+        actorFullName: getCurrentUserDisplayName() || null,
+        actorRole: currentUserRole || currentUser?.role || 'system',
+        createdByRole: currentUserRole || currentUser?.role || 'system'
+      };
+    }
+
+    function verifyCurrentUserPasswordHash(hash) {
+      if (!currentUser?.passwordHash) {
+        return hash === STAFF_PASSWORD_HASH || hash === ADMIN_PASSWORD_HASH;
+      }
+      return hash === currentUser.passwordHash;
     }
 
     function applyRoleVisibility() {
+      document.body.classList.toggle('admin-mode', isAuthenticated && isAdmin());
       document.querySelectorAll('[data-admin-only]').forEach((el) => {
         el.classList.toggle('role-hidden', !isAdmin());
       });
@@ -198,8 +230,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         badge.textContent = isAuthenticated ? getRoleLabel() : '';
         badge.classList.toggle('admin-role', isAdmin());
       }
+      const currentUserDisplay = document.getElementById('currentUserDisplay');
+      if (currentUserDisplay) {
+        currentUserDisplay.textContent = isAuthenticated ? getCurrentUserDisplayName() : '';
+      }
 
       if (!isAdmin() && document.getElementById('finance')?.classList.contains('active')) {
+        window.showTab('dashboard');
+      }
+      if (!isAdmin() && (document.getElementById('stats')?.classList.contains('active') || document.getElementById('users')?.classList.contains('active'))) {
         window.showTab('dashboard');
       }
     }
@@ -326,6 +365,75 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     }
 
+    async function fetchUsersViaRest() {
+      return (await fetchCollectionViaRest('users'))
+        .sort((a, b) => String(a.firstName || a.username || '').localeCompare(String(b.firstName || b.username || ''), 'ka'));
+    }
+
+    async function hydrateUsersFromRest() {
+      try {
+        window.users = await fetchUsersViaRest();
+        usersLoadedOnce = true;
+        if (currentUser?.id) {
+          const refreshedCurrentUser = window.users.find((item) => item.id === currentUser.id);
+          if (refreshedCurrentUser) {
+            currentUser = refreshedCurrentUser;
+            currentUserRole = refreshedCurrentUser.role === 'admin' ? 'admin' : 'operator';
+          }
+        }
+        safeUiUpdate('users', updateUsersTab);
+        safeUiUpdate('settings', updateSettingsTab);
+        safeUiUpdate('stats', updateStatsTab);
+        applyRoleVisibility();
+      } catch (e) {
+        console.warn('users rest hydrate failed', e);
+      }
+    }
+
+    async function ensureDefaultUsers() {
+      const existingUsers = await fetchUsersViaRest();
+      if (existingUsers.length > 0) {
+        window.users = existingUsers;
+        usersLoadedOnce = true;
+        return existingUsers;
+      }
+
+      const nowIso = new Date().toISOString();
+      const defaults = [
+        {
+          firstName: 'მთავარი',
+          lastName: 'ადმინისტრატორი',
+          username: 'admin',
+          passwordHash: ADMIN_PASSWORD_HASH,
+          role: 'admin',
+          status: 'active',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          isSystemDefault: true
+        },
+        {
+          firstName: 'მთავარი',
+          lastName: 'ოპერატორი',
+          username: 'operator',
+          passwordHash: STAFF_PASSWORD_HASH,
+          role: 'operator',
+          status: 'active',
+          createdAt: nowIso,
+          updatedAt: nowIso,
+          isSystemDefault: true
+        }
+      ];
+
+      for (const item of defaults) {
+        await addDoc(collection(db, "users"), item);
+      }
+
+      const createdUsers = await fetchUsersViaRest();
+      window.users = createdUsers;
+      usersLoadedOnce = true;
+      return createdUsers;
+    }
+
     function scheduleTransactionsRefresh(delay = 350) {
       if (transactionsRefreshTimer) clearTimeout(transactionsRefreshTimer);
       transactionsRefreshTimer = setTimeout(() => {
@@ -335,6 +443,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     window.refreshFinancialData = async function() {
       await Promise.all([
+        hydrateUsersFromRest(),
         hydrateMembersFromRest(),
         hydrateProductsFromRest(),
         hydrateTransactionsFromRest()
@@ -480,31 +589,34 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       const monthTransactions = transactions.filter((tx) => isSameCalendarMonth(tx.createdAt, now));
       const todayMembershipTransactions = todayTransactions.filter((tx) => tx.category === 'membership');
       const todayProductTransactions = todayTransactions.filter((tx) => tx.type === 'product_sale');
+      const monthMembershipTransactions = monthTransactions.filter((tx) => tx.category === 'membership');
+      const monthProductTransactions = monthTransactions.filter((tx) => tx.type === 'product_sale');
 
-      const sumAmount = (list, category) => list
-        .filter((tx) => !category || tx.category === category)
+      const sumAmount = (list, filterFn = null) => list
+        .filter((tx) => !filterFn || filterFn(tx))
         .reduce((total, tx) => total + Number(tx.amount || 0), 0);
 
-      const monthProductUnits = monthTransactions
-        .filter((tx) => tx.type === 'product_sale')
+      const monthProductUnits = monthProductTransactions
         .reduce((total, tx) => total + Number(tx.quantity || 0), 0);
 
       return {
-        todayMembership: sumAmount(todayTransactions, 'membership'),
-        todayProducts: sumAmount(todayTransactions, 'product'),
+        todayMembership: sumAmount(todayMembershipTransactions),
+        todayProducts: sumAmount(todayProductTransactions),
         todayTotal: sumAmount(todayTransactions),
-        monthMembership: sumAmount(monthTransactions, 'membership'),
-        monthProducts: sumAmount(monthTransactions, 'product'),
+        monthMembership: sumAmount(monthMembershipTransactions),
+        monthProducts: sumAmount(monthProductTransactions),
         monthTotal: sumAmount(monthTransactions),
         todayRegistrationCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_registration').length,
         todayRenewalCount: todayMembershipTransactions.filter((tx) => tx.type === 'membership_renewal').length,
         todayProductSalesCount: todayProductTransactions.length,
         todayProductUnits: todayProductTransactions.reduce((total, tx) => total + Number(tx.quantity || 0), 0),
-        monthMembershipCount: monthTransactions.filter((tx) => tx.category === 'membership').length,
-        monthProductSalesCount: monthTransactions.filter((tx) => tx.type === 'product_sale').length,
+        monthMembershipCount: monthMembershipTransactions.length,
+        monthProductSalesCount: monthProductTransactions.length,
         monthProductUnits,
         todayMembershipTransactions,
         todayProductTransactions,
+        monthMembershipTransactions,
+        monthProductTransactions,
         recentTransactions: transactions.slice(0, 30),
         recentProductSales: transactions.filter((tx) => tx.type === 'product_sale').slice(0, 12)
       };
@@ -515,10 +627,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       let docRef = null;
       try {
         payload = {
+          ...getActorMetadata(),
           ...transaction,
           amount: Number(transaction.amount || 0),
           createdAt: transaction.createdAt || new Date().toISOString(),
-          createdByRole: transaction.createdByRole || currentUserRole || 'system'
+          createdByRole: transaction.createdByRole || currentUserRole || currentUser?.role || 'system'
         };
         docRef = await addDoc(collection(db, "transactions"), payload);
       } catch (e) {
@@ -555,7 +668,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return true;
     }
 
-    async function recordMembershipTransaction(actionType, member) {
+    async function recordMembershipTransaction(actionType, member, options = {}) {
       return recordTransaction({
         type: actionType,
         category: 'membership',
@@ -565,6 +678,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         personalId: member.personalId || '',
         subscriptionType: member.subscriptionType,
         subscriptionName: getSubscriptionName(member.subscriptionType),
+        paymentMethod: options.paymentMethod || member.lastMembershipPaymentMethod || 'CASH',
+        note: options.note || null,
+        actorUserId: options.actorUserId || member.lastMembershipHandledByUserId || member.createdByUserId || null,
+        actorUsername: options.actorUsername || member.lastMembershipHandledByUsername || member.createdByUsername || null,
+        actorFullName: options.actorFullName || member.lastMembershipHandledByFullName || member.createdByFullName || null,
+        actorRole: options.actorRole || member.lastMembershipHandledByRole || currentUserRole || currentUser?.role || 'system',
         description: actionType === 'membership_registration'
           ? `ახალი აბონემენტი: ${getSubscriptionName(member.subscriptionType)}`
           : `აბონემენტის განახლება: ${getSubscriptionName(member.subscriptionType)}`
@@ -735,6 +854,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       const bogAmount = allTransactions
         .filter((tx) => tx.paymentMethod === 'BOG')
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+      const transferAmount = allTransactions
+        .filter((tx) => tx.paymentMethod === 'TRANSFER')
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
       const cardAmount = tbcAmount + bogAmount;
 
       const setText = (id, value) => {
@@ -752,6 +874,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       setText('daySalesUnits', String(summary.todayProductUnits));
       setText('daySalesTbcAmount', formatCurrency(tbcAmount));
       setText('daySalesBogAmount', formatCurrency(bogAmount));
+      setText('daySalesTransferAmount', formatCurrency(transferAmount));
 
       const membershipList = document.getElementById('daySalesMembershipList');
       const recentList = document.getElementById('daySalesRecentList');
@@ -764,7 +887,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
           .map((tx) => buildTransactionRowHtml({
             title: tx.memberName || tx.subscriptionName || 'აბონემენტი',
-            meta: `${tx.type === 'membership_registration' ? 'ახალი აბონემენტი' : 'განახლება'} • ${tx.subscriptionName || tx.subscriptionType || 'აბონემენტი'} • ${formatDateTime(tx.createdAt)}`,
+            meta: `${tx.type === 'membership_registration' ? 'ახალი აბონემენტი' : 'განახლება'} • ${tx.subscriptionName || tx.subscriptionType || 'აბონემენტი'} • ${formatDateTime(tx.createdAt)}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
             amount: formatCurrency(tx.amount),
             tx
           })).join('');
@@ -778,7 +901,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
         .map((tx) => buildTransactionRowHtml({
           title: tx.productName,
-          meta: `${tx.quantity || 0} ცალი • ${getPaymentMethodLabel(tx.paymentMethod)} • ${formatDateTime(tx.createdAt)}`,
+          meta: `${tx.quantity || 0} ცალი • ${getPaymentMethodLabel(tx.paymentMethod)} • ${formatDateTime(tx.createdAt)}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
           amount: formatCurrency(tx.amount),
           tx
         })).join('');
@@ -795,34 +918,74 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       applyRoleVisibility();
     }
 
+    window.showForgotPasswordInfo = function() {
+      showToast('პაროლის აღდგენა ხდება ადმინისტრატორის პანელიდან', 'warning');
+    };
+
     window.login = async function() {
+      const username = normalizeUsername(document.getElementById('loginUsername')?.value);
       const input = document.getElementById('adminPassword').value;
-      const inputHash = await sha256Hex(input);
-      if (inputHash === ADMIN_PASSWORD_HASH || inputHash === STAFF_PASSWORD_HASH) {
-        isAuthenticated = true;
-        currentUserRole = inputHash === ADMIN_PASSWORD_HASH ? 'admin' : 'staff';
-        checkAuth();
-        if (!dataStreamsStarted) {
-          loadMembers();
-          loadProducts();
-          loadTransactions();
-          dataStreamsStarted = true;
-        } else {
-          updateAll();
-        }
-        startExpiringNotificationsScheduler();
-        showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
-      } else {
-        showToast("პაროლი არასწორია!", "error");
+      if (!username || !input) {
+        showToast('შეიყვანე იუზერი და პაროლი', 'error');
+        return;
       }
+
+      if (!usersLoadedOnce && window.users.length === 0) {
+        try {
+          await ensureDefaultUsers();
+        } catch (e) {
+          console.error('default users bootstrap failed', e);
+          if (String(e?.message || '').includes('403')) {
+            showToast('Firestore rules ბლოკავს users კოლექციას', 'error');
+          } else {
+            showToast('იუზერების ჩატვირთვა ვერ მოხერხდა', 'error');
+          }
+          return;
+        }
+      }
+
+      const inputHash = await sha256Hex(input);
+      const matchedUser = window.users.find((item) =>
+        normalizeUsername(item.username) === username &&
+        item.passwordHash === inputHash &&
+        (item.status || 'active') === 'active'
+      );
+
+      if (!matchedUser) {
+        showToast("იუზერი ან პაროლი არასწორია!", "error");
+        return;
+      }
+
+      isAuthenticated = true;
+      currentUser = matchedUser;
+      currentUserRole = matchedUser.role === 'admin' ? 'admin' : 'operator';
+      checkAuth();
+      if (!dataStreamsStarted) {
+        loadUsers();
+        loadMembers();
+        loadProducts();
+        loadTransactions();
+        dataStreamsStarted = true;
+      } else {
+        updateAll();
+        safeUiUpdate('users', updateUsersTab);
+        safeUiUpdate('settings', updateSettingsTab);
+        safeUiUpdate('stats', updateStatsTab);
+      }
+      startExpiringNotificationsScheduler();
+      showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
     };
 
     window.logout = function() {
       isAuthenticated = false;
       currentUserRole = null;
+      currentUser = null;
       expandedSearchMemberId = null;
       window.selectedSubscription = null;
       window.productSaleCart = [];
+      window.pendingMembershipPaymentContext = null;
+      window.productCartPaymentMethod = 'TBC';
+      document.getElementById('loginUsername').value = '';
       document.getElementById('adminPassword').value = '';
       document.querySelectorAll('.modal').forEach((modal) => {
         modal.style.display = 'none';
@@ -833,6 +996,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       if (document.getElementById('checkinSearch')) document.getElementById('checkinSearch').value = '';
       if (document.getElementById('searchInput')) document.getElementById('searchInput').value = '';
       if (document.getElementById('productSearchInput')) document.getElementById('productSearchInput').value = '';
+      if (document.getElementById('userSearchInput')) document.getElementById('userSearchInput').value = '';
       window.showTab('dashboard');
       checkAuth();
       showToast('სესიიდან გამოხვედი');
@@ -868,7 +1032,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           </div>
           <div class="mb-5">
             <label class="text-slate-300 text-sm block mb-2">ადმინის პაროლი დასადასტურებლად</label>
-            <input type="password" id="clearFinancesPassword" placeholder="შეიყვანეთ: admin1" class="form-input" autofocus>
+            <input type="password" id="clearFinancesPassword" placeholder="მიმდინარე პაროლი" class="form-input" autofocus>
           </div>
           <div class="flex gap-3 justify-center">
             <button class="btn bg-red-600 hover:bg-red-700 px-6 py-3 font-bold" onclick="window.confirmClearFinances()">
@@ -889,7 +1053,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.confirmClearFinances = async function() {
       const pass = document.getElementById('clearFinancesPassword')?.value || '';
       const passHash = await sha256Hex(pass);
-      if (passHash !== ADMIN_PASSWORD_HASH) {
+      if (!isAdmin() || !verifyCurrentUserPasswordHash(passHash)) {
         showToast('ადმინის პაროლი არასწორია!', 'error');
         const inp = document.getElementById('clearFinancesPassword');
         if (inp) { inp.value = ''; inp.focus(); }
@@ -1354,7 +1518,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     window.confirmDelete = async function(id, modal) {
       const pass = document.getElementById('deletePassword').value;
       const passHash = await sha256Hex(pass);
-      if (!isKnownPasswordHash(passHash)) {
+      if (!verifyCurrentUserPasswordHash(passHash)) {
         showToast("პაროლი არასწორია!", "error");
         return;
       }
@@ -1418,27 +1582,74 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
     }
 
-    async function createMember(m) {
+    function loadUsers() {
+      hydrateUsersFromRest();
+      if (usersStreamStarted) return;
+      usersStreamStarted = true;
+      const q = query(collection(db, "users"));
+      onSnapshot(q, (snapshot) => {
+        window.users = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => String(a.firstName || a.username || '').localeCompare(String(b.firstName || b.username || ''), 'ka'));
+        usersLoadedOnce = true;
+        if (currentUser?.id) {
+          const refreshedCurrentUser = window.users.find((item) => item.id === currentUser.id);
+          if (refreshedCurrentUser) {
+            currentUser = refreshedCurrentUser;
+            currentUserRole = refreshedCurrentUser.role === 'admin' ? 'admin' : 'operator';
+          }
+        }
+        safeUiUpdate('users', updateUsersTab);
+        safeUiUpdate('settings', updateSettingsTab);
+        safeUiUpdate('stats', updateStatsTab);
+        applyRoleVisibility();
+      }, (error) => {
+        console.warn('users snapshot failed, using rest fallback', error);
+        hydrateUsersFromRest();
+      });
+    }
+
+    async function createMember(m, options = {}) {
       try { 
-        const docRef = await addDoc(collection(db, "members"), m);
-        const memberWithId = { ...m, id: docRef.id };
-        await recordMembershipTransaction('membership_registration', memberWithId);
+        const memberPayload = {
+          ...m,
+          createdByUserId: m.createdByUserId || currentUser?.id || null,
+          createdByFullName: m.createdByFullName || getCurrentUserDisplayName() || null,
+          createdByUsername: m.createdByUsername || currentUser?.username || null,
+          createdByRole: m.createdByRole || currentUserRole || null,
+          lastMembershipPaymentMethod: options.paymentMethod || m.lastMembershipPaymentMethod || 'CASH',
+          lastMembershipPaymentNote: options.note || m.lastMembershipPaymentNote || null,
+          lastMembershipHandledByUserId: currentUser?.id || null,
+          lastMembershipHandledByUsername: currentUser?.username || null,
+          lastMembershipHandledByFullName: getCurrentUserDisplayName() || null,
+          lastMembershipHandledByRole: currentUserRole || null,
+          lastMembershipHandledAt: new Date().toISOString()
+        };
+        const docRef = await addDoc(collection(db, "members"), memberPayload);
+        const memberWithId = { ...memberPayload, id: docRef.id };
+        const membershipTransactionSaved = await recordMembershipTransaction('membership_registration', memberWithId, options);
         await logDateAudit(
           'create_member',
           memberWithId,
           { startDate: null, endDate: null },
-          { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
+          { startDate: memberPayload.subscriptionStartDate, endDate: memberPayload.subscriptionEndDate },
           { source: 'registration_form' }
         );
         showToast("დარეგისტრირდა!");
+        if (!membershipTransactionSaved) {
+          showToast('ფინანსური ჩანაწერი მოგვიანებით აღდგება', 'warning');
+        }
         
-        if (m.email) {
+        if (memberPayload.email) {
           // მხოლოდ ერთი წერილი: welcome + QR იმავე წერილში
           setTimeout(() => sendWelcomeEmail(memberWithId), 1000);
         }
+        return true;
       }
       catch (e) { 
+        console.error(e);
         showToast("შეცდომა", 'error'); 
+        return false;
       }
     }
 
@@ -1546,6 +1757,404 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         console.error('date audit write failed', e);
       }
     }
+
+    function getMonthKey(iso) {
+      if (!iso) return '';
+      const date = new Date(iso);
+      return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    function formatMonthKey(key) {
+      if (!key) return '—';
+      const [year, month] = String(key).split('-').map(Number);
+      return new Intl.DateTimeFormat('ka-GE', { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
+    }
+
+    function buildAdminTable(headers, rows, emptyText = 'მონაცემები არ არის') {
+      if (!rows.length) {
+        return `<div class="empty-state">${emptyText}</div>`;
+      }
+      return `
+        <table class="admin-table">
+          <thead>
+            <tr>${headers.map((header) => `<th>${header}</th>`).join('')}</tr>
+          </thead>
+          <tbody>
+            ${rows.join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function getFinanceArchiveRows() {
+      const grouped = {};
+      getSortedTransactions().forEach((tx) => {
+        const monthKey = getMonthKey(tx.createdAt);
+        if (!monthKey) return;
+        if (!grouped[monthKey]) {
+          grouped[monthKey] = {
+            monthKey,
+            membershipAmount: 0,
+            membershipCount: 0,
+            productAmount: 0,
+            productCount: 0,
+            productUnits: 0,
+            totalAmount: 0
+          };
+        }
+        const row = grouped[monthKey];
+        row.totalAmount += Number(tx.amount || 0);
+        if (tx.category === 'membership') {
+          row.membershipAmount += Number(tx.amount || 0);
+          row.membershipCount += 1;
+        }
+        if (tx.type === 'product_sale') {
+          row.productAmount += Number(tx.amount || 0);
+          row.productCount += 1;
+          row.productUnits += Number(tx.quantity || 0);
+        }
+      });
+
+      return Object.values(grouped).sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+    }
+
+    function getOperatorMonthlyStats() {
+      const membershipTransactions = getSortedTransactions().filter((tx) => tx.category === 'membership');
+      const months = {};
+      const operators = {};
+
+      membershipTransactions.forEach((tx) => {
+        const monthKey = getMonthKey(tx.createdAt);
+        const actorKey = tx.actorUserId || tx.actorUsername || tx.actorFullName || 'unknown';
+        const actorName = tx.actorFullName || tx.actorUsername || 'უცნობი';
+
+        if (!months[monthKey]) months[monthKey] = {};
+        if (!months[monthKey][actorKey]) {
+          months[monthKey][actorKey] = {
+            actorKey,
+            actorName,
+            count: 0,
+            renewals: 0,
+            registrations: 0,
+            amount: 0
+          };
+        }
+        if (!operators[actorKey]) {
+          operators[actorKey] = {
+            actorKey,
+            actorName,
+            count: 0,
+            renewals: 0,
+            registrations: 0,
+            amount: 0
+          };
+        }
+
+        const monthRow = months[monthKey][actorKey];
+        const operatorRow = operators[actorKey];
+        [monthRow, operatorRow].forEach((row) => {
+          row.count += 1;
+          row.amount += Number(tx.amount || 0);
+          if (tx.type === 'membership_renewal') row.renewals += 1;
+          if (tx.type === 'membership_registration') row.registrations += 1;
+        });
+      });
+
+      const monthlyLeaders = Object.entries(months)
+        .map(([monthKey, actorsMap]) => {
+          const actors = Object.values(actorsMap).sort((a, b) => (b.count - a.count) || (b.amount - a.amount));
+          return {
+            monthKey,
+            leader: actors[0] || null,
+            actors
+          };
+        })
+        .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+
+      const operatorsAggregate = Object.values(operators).sort((a, b) => (b.count - a.count) || (b.amount - a.amount));
+      return { monthlyLeaders, operatorsAggregate };
+    }
+
+    function updateUsersTab() {
+      const container = document.getElementById('usersTable');
+      if (!container) return;
+
+      const searchValue = normalizeUsername(document.getElementById('userSearchInput')?.value);
+      const users = window.users.filter((user) => {
+        if (!searchValue) return true;
+        return normalizeUsername(`${user.firstName || ''} ${user.lastName || ''}`).includes(searchValue) ||
+          normalizeUsername(user.username).includes(searchValue);
+      });
+
+      const rows = users.map((user) => `
+        <tr>
+          <td>${user.firstName || '—'} ${user.lastName || ''}</td>
+          <td>${user.username || '—'}</td>
+          <td><span class="status-badge ${user.role === 'admin' ? 'status-active' : 'status-paused'}">${getRoleLabel(user.role)}</span></td>
+          <td><span class="status-badge ${user.status === 'disabled' ? 'status-expired' : 'status-active'}">${user.status === 'disabled' ? 'გამორთული' : 'აქტიური'}</span></td>
+          <td>${formatDateTime(user.updatedAt || user.createdAt)}</td>
+          <td>
+            <div class="admin-action-row">
+              <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openUserForm('${user.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>
+              <button class="btn bg-amber-600 hover:bg-amber-700 compact-btn" onclick="window.openResetUserPasswordModal('${user.id}')"><i class="fas fa-key"></i> პაროლი</button>
+            </div>
+          </td>
+        </tr>
+      `);
+
+      container.innerHTML = buildAdminTable(
+        ['სახელი / გვარი', 'იუზერი', 'როლი', 'სტატუსი', 'განახლდა', 'ქმედება'],
+        rows,
+        'იუზერები ჯერ არ არის'
+      );
+    }
+
+    function updateSettingsTab() {
+      const profile = document.getElementById('settingsProfileCard');
+      if (!profile) return;
+      if (!currentUser) {
+        profile.innerHTML = '<div class="empty-state">ანგარიში არ არის არჩეული</div>';
+        return;
+      }
+      profile.innerHTML = `
+        <div class="settings-profile-name">${getCurrentUserDisplayName()}</div>
+        <div class="settings-profile-meta">იუზერი: ${currentUser.username || '—'}</div>
+        <div class="settings-profile-meta">როლი: ${getRoleLabel(currentUser.role)}</div>
+        <div class="settings-profile-meta">სტატუსი: ${(currentUser.status || 'active') === 'disabled' ? 'გამორთული' : 'აქტიური'}</div>
+      `;
+    }
+
+    function updateStatsTab() {
+      const topOperatorEl = document.getElementById('statsTopOperatorName');
+      if (!topOperatorEl) return;
+
+      const summary = getFinancialSummary();
+      const archiveRows = getFinanceArchiveRows();
+      const { monthlyLeaders, operatorsAggregate } = getOperatorMonthlyStats();
+      const currentMonthKey = getMonthKey(new Date().toISOString());
+      const currentMonthLeader = monthlyLeaders.find((item) => item.monthKey === currentMonthKey)?.leader || null;
+      const bestMonth = [...archiveRows].sort((a, b) => b.totalAmount - a.totalAmount)[0] || null;
+
+      document.getElementById('statsTopOperatorName').textContent = currentMonthLeader?.actorName || '—';
+      document.getElementById('statsTopOperatorMeta').textContent = currentMonthLeader
+        ? `${currentMonthLeader.count} აბონემენტი • ${formatCurrency(currentMonthLeader.amount)}`
+        : 'მონაცემები ჯერ არ არის';
+      document.getElementById('statsMonthMembershipCount').textContent = String(summary.monthMembershipCount);
+      document.getElementById('statsMonthMembershipAmount').textContent = formatCurrency(summary.monthMembership);
+      document.getElementById('statsMonthProductCount').textContent = String(summary.monthProductSalesCount);
+      document.getElementById('statsMonthProductAmount').textContent = formatCurrency(summary.monthProducts);
+      document.getElementById('statsBestMonthName').textContent = bestMonth ? formatMonthKey(bestMonth.monthKey) : '—';
+      document.getElementById('statsBestMonthTotal').textContent = bestMonth ? formatCurrency(bestMonth.totalAmount) : '0.00₾';
+
+      const monthlyLeadersTable = document.getElementById('statsMonthlyLeadersTable');
+      if (monthlyLeadersTable) {
+        monthlyLeadersTable.innerHTML = buildAdminTable(
+          ['თვე', 'ლიდერი ოპერატორი', 'აბონემენტები', 'განახლებები', 'თანხა'],
+          monthlyLeaders.map((item) => `
+            <tr>
+              <td>${formatMonthKey(item.monthKey)}</td>
+              <td>${item.leader?.actorName || '—'}</td>
+              <td>${item.leader?.count || 0}</td>
+              <td>${item.leader?.renewals || 0}</td>
+              <td>${formatCurrency(item.leader?.amount || 0)}</td>
+            </tr>
+          `),
+          'თვიური ლიდერები ჯერ არ არის'
+        );
+      }
+
+      const operatorsTable = document.getElementById('statsOperatorsTable');
+      if (operatorsTable) {
+        operatorsTable.innerHTML = buildAdminTable(
+          ['ოპერატორი', 'აბონემენტები', 'ახალი', 'განახლებები', 'თანხა'],
+          operatorsAggregate.map((item) => `
+            <tr>
+              <td>${item.actorName}</td>
+              <td>${item.count}</td>
+              <td>${item.registrations}</td>
+              <td>${item.renewals}</td>
+              <td>${formatCurrency(item.amount)}</td>
+            </tr>
+          `),
+          'ოპერატორების სტატისტიკა ჯერ არ არის'
+        );
+      }
+
+      const monthlyArchiveTable = document.getElementById('statsMonthlyArchiveTable');
+      if (monthlyArchiveTable) {
+        monthlyArchiveTable.innerHTML = buildAdminTable(
+          ['თვე', 'აბონემენტი', 'პროდუქტი', 'პროდუქტის ერთეული', 'სულ'],
+          archiveRows.map((row) => `
+            <tr>
+              <td>${formatMonthKey(row.monthKey)}</td>
+              <td>${formatCurrency(row.membershipAmount)} (${row.membershipCount})</td>
+              <td>${formatCurrency(row.productAmount)} (${row.productCount})</td>
+              <td>${row.productUnits}</td>
+              <td>${formatCurrency(row.totalAmount)}</td>
+            </tr>
+          `),
+          'თვიური არქივი ჯერ არ არის'
+        );
+      }
+    }
+
+    async function saveUserRecord(user) {
+      try {
+        const { id, ...payload } = user;
+        if (id) {
+          await setDoc(doc(db, "users", id), payload, { merge: true });
+          return { ok: true, id, user: { id, ...payload } };
+        }
+        const docRef = await addDoc(collection(db, "users"), payload);
+        return { ok: true, id: docRef.id, user: { id: docRef.id, ...payload } };
+      } catch (e) {
+        console.error('user save failed', e);
+        showToast('იუზერის შენახვა ვერ მოხერხდა', 'error');
+        return { ok: false, id: null, user: null };
+      }
+    }
+
+    window.openUserForm = function(userId = '') {
+      const user = userId ? window.users.find((item) => item.id === userId) : null;
+      document.getElementById('userFormTitle').textContent = user ? 'იუზერის რედაქტირება' : 'იუზერის დამატება';
+      document.getElementById('userFormId').value = user?.id || '';
+      document.getElementById('userFirstName').value = user?.firstName || '';
+      document.getElementById('userLastName').value = user?.lastName || '';
+      document.getElementById('userUsername').value = user?.username || '';
+      document.getElementById('userRole').value = user?.role || 'operator';
+      document.getElementById('userPassword').value = '';
+      document.getElementById('userStatus').value = user?.status || 'active';
+      document.getElementById('userFormModal').style.display = 'flex';
+    };
+
+    window.closeUserForm = function() {
+      document.getElementById('userFormModal').style.display = 'none';
+      document.getElementById('userFormId').value = '';
+      document.getElementById('userFirstName').value = '';
+      document.getElementById('userLastName').value = '';
+      document.getElementById('userUsername').value = '';
+      document.getElementById('userPassword').value = '';
+      document.getElementById('userRole').value = 'operator';
+      document.getElementById('userStatus').value = 'active';
+    };
+
+    window.saveUser = async function() {
+      const id = document.getElementById('userFormId').value;
+      const firstName = document.getElementById('userFirstName').value.trim();
+      const lastName = document.getElementById('userLastName').value.trim();
+      const username = normalizeUsername(document.getElementById('userUsername').value);
+      const password = document.getElementById('userPassword').value;
+      const role = document.getElementById('userRole').value === 'admin' ? 'admin' : 'operator';
+      const status = document.getElementById('userStatus').value === 'disabled' ? 'disabled' : 'active';
+
+      if (!firstName || !lastName || !username) {
+        showToast('სახელი, გვარი და იუზერი სავალდებულოა', 'error');
+        return;
+      }
+      if (!id && !password) {
+        showToast('ახალ იუზერზე პაროლი სავალდებულოა', 'error');
+        return;
+      }
+
+      const usernameTaken = window.users.some((item) =>
+        normalizeUsername(item.username) === username &&
+        item.id !== id
+      );
+      if (usernameTaken) {
+        showToast('ეს იუზერი უკვე არსებობს', 'error');
+        return;
+      }
+
+      const existingUser = id ? window.users.find((item) => item.id === id) : null;
+      const nowIso = new Date().toISOString();
+      const passwordHash = password ? await sha256Hex(password) : existingUser?.passwordHash || null;
+      const payload = {
+        firstName,
+        lastName,
+        username,
+        passwordHash,
+        role,
+        status,
+        updatedAt: nowIso,
+        createdAt: existingUser?.createdAt || nowIso
+      };
+      if (existingUser?.isSystemDefault) payload.isSystemDefault = true;
+      if (id) payload.id = id;
+
+      const saved = await saveUserRecord(payload);
+      if (!saved.ok) return;
+
+      showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
+      window.closeUserForm();
+      hydrateUsersFromRest();
+    };
+
+    window.openResetUserPasswordModal = function(userId) {
+      const user = window.users.find((item) => item.id === userId);
+      if (!user) return;
+      document.getElementById('resetUserId').value = user.id;
+      document.getElementById('resetUserName').textContent = `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      document.getElementById('resetUserUsername').textContent = `იუზერი: ${user.username || '—'}`;
+      document.getElementById('resetUserPassword').value = '';
+      document.getElementById('resetUserPasswordModal').style.display = 'flex';
+    };
+
+    window.closeResetUserPasswordModal = function() {
+      document.getElementById('resetUserPasswordModal').style.display = 'none';
+      document.getElementById('resetUserId').value = '';
+      document.getElementById('resetUserPassword').value = '';
+    };
+
+    window.resetUserPassword = async function() {
+      const id = document.getElementById('resetUserId').value;
+      const password = document.getElementById('resetUserPassword').value;
+      if (!id || !password) {
+        showToast('ახალი პაროლი სავალდებულოა', 'error');
+        return;
+      }
+      const passwordHash = await sha256Hex(password);
+      const saved = await saveUserRecord({
+        id,
+        passwordHash,
+        updatedAt: new Date().toISOString()
+      });
+      if (!saved.ok) return;
+      showToast('პაროლი განახლდა');
+      window.closeResetUserPasswordModal();
+      hydrateUsersFromRest();
+    };
+
+    window.changeCurrentUserPassword = async function() {
+      if (!currentUser) return;
+      const currentPassword = document.getElementById('currentPassword').value;
+      const newPassword = document.getElementById('newPassword').value;
+      const confirmPassword = document.getElementById('confirmPassword').value;
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        showToast('ყველა ველი სავალდებულოა', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToast('ახალი პაროლები არ ემთხვევა', 'error');
+        return;
+      }
+      const currentHash = await sha256Hex(currentPassword);
+      if (currentHash !== currentUser.passwordHash) {
+        showToast('მიმდინარე პაროლი არასწორია', 'error');
+        return;
+      }
+
+      const saved = await saveUserRecord({
+        id: currentUser.id,
+        passwordHash: await sha256Hex(newPassword),
+        updatedAt: new Date().toISOString()
+      });
+      if (!saved.ok) return;
+      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword) };
+      document.getElementById('passwordChangeForm')?.reset();
+      showToast('პაროლი განახლდა');
+      hydrateUsersFromRest();
+    };
 
     // ======= QR კოდის ფუნქციები =======
 
@@ -1720,8 +2329,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     function checkUrlQrParam() {}
 
     window.showTab = function(tab) {
-      if (tab === 'finance' && !isAdmin()) {
-        showToast('ფინანსები მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
+      if ((tab === 'finance' || tab === 'stats' || tab === 'users') && !isAdmin()) {
+        showToast('ეს სექცია მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
         tab = 'dashboard';
       }
       document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
@@ -1742,6 +2351,18 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         hydrateTransactionsFromRest();
         hydrateMembersFromRest();
         updateFinanceTab();
+      }
+      if (tab === 'stats') {
+        hydrateTransactionsFromRest();
+        hydrateUsersFromRest();
+        updateStatsTab();
+      }
+      if (tab === 'users') {
+        hydrateUsersFromRest();
+        updateUsersTab();
+      }
+      if (tab === 'settings') {
+        updateSettingsTab();
       }
       if (tab === 'dashboard') {
         document.getElementById('expiringSoonSection').style.display = 'none';
@@ -1852,46 +2473,136 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </div>`;
     };
 
-    window.renewMembership = async function(id) {
-      const m = window.members.find(x => x.id === id);
-      if (!m) return;
+    function buildMembershipRenewalPayload(member, paymentMethod, note) {
       const start = new Date();
       let end = setToEndOfDay(addMonthsPreserveDay(start, 1));
       let visits = null;
-      if (m.subscriptionType === '12visits') { 
-        visits = 12; 
-      }
-      else if (m.subscriptionType === 'single_visit') {
+      if (member.subscriptionType === '12visits') {
+        visits = 12;
+      } else if (member.subscriptionType === 'single_visit') {
         end = setToEndOfDay(start);
         visits = 1;
       }
-      
-      const updated = { 
-        ...m, 
+
+      return {
+        ...member,
         subscriptionStartDate: start.toISOString(),
-        subscriptionEndDate: end.toISOString(), 
-        remainingVisits: visits, 
+        subscriptionEndDate: end.toISOString(),
+        remainingVisits: visits,
         status: 'active',
-        expiringEmailSent: false
+        expiringEmailSent: false,
+        lastMembershipPaymentMethod: paymentMethod,
+        lastMembershipPaymentNote: note || null,
+        lastMembershipHandledByUserId: currentUser?.id || null,
+        lastMembershipHandledByUsername: currentUser?.username || null,
+        lastMembershipHandledByFullName: getCurrentUserDisplayName() || null,
+        lastMembershipHandledByRole: currentUserRole || null,
+        lastMembershipHandledAt: new Date().toISOString()
       };
-      
-      const saved = await updateMember(updated);
-      if (!saved) return;
-      await recordMembershipTransaction('membership_renewal', updated);
-      await logDateAudit(
-        'renew_membership',
-        updated,
-        { startDate: m.subscriptionStartDate, endDate: m.subscriptionEndDate },
-        { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate },
-        { source: 'renew_button' }
-      );
-      showToast("განახლდა!");
-      
-      if (updated.email) {
-        setTimeout(() => {
-          sendRenewalEmail(updated);
-        }, 1000);
+    }
+
+    window.openMembershipPaymentModal = function(context) {
+      window.pendingMembershipPaymentContext = context;
+      document.getElementById('membershipPaymentTitle').textContent =
+        context.mode === 'renew' ? 'აბონემენტის განახლება' : 'აბონემენტის გააქტიურება';
+      document.getElementById('membershipPaymentName').textContent = context.memberName;
+      document.getElementById('membershipPaymentMeta').textContent = context.meta;
+      document.getElementById('membershipPaymentAmount').textContent = `თანხა: ${formatCurrency(context.amount)}`;
+      document.getElementById('membershipPaymentMethod').value = 'CASH';
+      document.getElementById('membershipPaymentNote').value = '';
+      const btn = document.getElementById('confirmMembershipPaymentBtn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check"></i> დადასტურება';
       }
+      document.getElementById('membershipPaymentModal').style.display = 'flex';
+    };
+
+    window.closeMembershipPaymentModal = function() {
+      document.getElementById('membershipPaymentModal').style.display = 'none';
+      document.getElementById('membershipPaymentMethod').value = 'CASH';
+      document.getElementById('membershipPaymentNote').value = '';
+      const btn = document.getElementById('confirmMembershipPaymentBtn');
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check"></i> დადასტურება';
+      }
+      window.pendingMembershipPaymentContext = null;
+    };
+
+    window.confirmMembershipPayment = async function() {
+      const context = window.pendingMembershipPaymentContext;
+      if (!context) return;
+
+      const paymentMethod = document.getElementById('membershipPaymentMethod').value;
+      const note = document.getElementById('membershipPaymentNote').value.trim() || null;
+      const btn = document.getElementById('confirmMembershipPaymentBtn');
+      if (btn?.disabled) return;
+      if (!paymentMethod) {
+        showToast('აირჩიე გადახდის მეთოდი', 'error');
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div>';
+      }
+
+      try {
+        if (context.mode === 'register') {
+          const saved = await createMember(context.member, { paymentMethod, note });
+          if (!saved) throw new Error('membership registration failed');
+          document.getElementById('registrationForm')?.reset();
+          window.selectedSubscription = null;
+          document.querySelectorAll('.subscription-card').forEach((card) => card.classList.remove('selected'));
+          document.getElementById('customSubscriptionFields').style.display = 'none';
+          showToast("რეგისტრაცია წარმატებით დასრულდა!");
+        } else if (context.mode === 'renew') {
+          const existingMember = window.members.find((item) => item.id === context.memberId);
+          if (!existingMember) throw new Error('member not found');
+          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note);
+          const saved = await updateMember(updated);
+          if (!saved) throw new Error('membership renewal failed');
+          const membershipTransactionSaved = await recordMembershipTransaction('membership_renewal', updated, { paymentMethod, note });
+          await logDateAudit(
+            'renew_membership',
+            updated,
+            { startDate: existingMember.subscriptionStartDate, endDate: existingMember.subscriptionEndDate },
+            { startDate: updated.subscriptionStartDate, endDate: updated.subscriptionEndDate },
+            { source: 'renew_button' }
+          );
+          showToast("განახლდა!");
+          if (!membershipTransactionSaved) {
+            showToast('ფინანსური ჩანაწერი მოგვიანებით აღდგება', 'warning');
+          }
+          if (updated.email) {
+            setTimeout(() => {
+              sendRenewalEmail(updated);
+            }, 1000);
+          }
+        }
+
+        window.closeMembershipPaymentModal();
+      } catch (e) {
+        console.error('membership payment confirm failed', e);
+        showToast('ოპერაცია ვერ დასრულდა', 'error');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-check"></i> დადასტურება';
+        }
+      }
+    };
+
+    window.renewMembership = async function(id) {
+      const m = window.members.find(x => x.id === id);
+      if (!m) return;
+      window.openMembershipPaymentModal({
+        mode: 'renew',
+        memberId: m.id,
+        memberName: `${m.firstName} ${m.lastName}`,
+        meta: `${getSubscriptionName(m.subscriptionType)} • ${formatDate(m.subscriptionEndDate)}`,
+        amount: Number(m.subscriptionPrice || 0)
+      });
     };
 
     window.showEditForm = function(e, id) {
@@ -2101,7 +2812,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
       container.innerHTML = sales.map((sale) => buildTransactionRowHtml({
         title: sale.productName,
-        meta: `${sale.quantity} ცალი • ${getPaymentMethodLabel(sale.paymentMethod)} • ${formatDateTime(sale.createdAt)}`,
+        meta: `${sale.quantity} ცალი • ${getPaymentMethodLabel(sale.paymentMethod)} • ${formatDateTime(sale.createdAt)}${sale.actorFullName ? ` • ${sale.actorFullName}` : ''}`,
         amount: isAdmin() ? formatCurrency(sale.amount) : `${sale.quantity} ცალი`,
         tx: sale
       })).join('');
@@ -2208,7 +2919,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         } else {
           transactionsList.innerHTML = summary.recentTransactions.map((tx) => buildTransactionRowHtml({
             title: tx.description || (tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'),
-            meta: `${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}${tx.paymentMethod ? ` • ${getPaymentMethodLabel(tx.paymentMethod)}` : ''}`,
+            meta: `${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}${tx.paymentMethod ? ` • ${getPaymentMethodLabel(tx.paymentMethod)}` : ''}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
             amount: formatCurrency(tx.amount),
             tx
           })).join('');
@@ -2217,8 +2928,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       const todayBreakdownList = document.getElementById('financeTodayBreakdownList');
       if (todayBreakdownList) {
-        const paymentTotals = summary.todayProductTransactions.reduce((acc, tx) => {
-          const method = tx.paymentMethod || 'UNKNOWN';
+        const paymentTotals = [...summary.todayMembershipTransactions, ...summary.todayProductTransactions].reduce((acc, tx) => {
+          const method = tx.paymentMethod || 'CASH';
           acc[method] = (acc[method] || 0) + Number(tx.amount || 0);
           return acc;
         }, {});
@@ -2229,11 +2940,29 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           <div class="finance-breakdown-row"><span>გაყიდული ერთეულები</span><strong>${summary.todayProductUnits}</strong></div>
           <div class="finance-breakdown-row"><span>TBC</span><strong>${formatCurrency(paymentTotals.TBC || 0)}</strong></div>
           <div class="finance-breakdown-row"><span>BOG</span><strong>${formatCurrency(paymentTotals.BOG || 0)}</strong></div>
+          <div class="finance-breakdown-row"><span>CASH</span><strong>${formatCurrency(paymentTotals.CASH || 0)}</strong></div>
+          <div class="finance-breakdown-row"><span>გადარიცხვა</span><strong>${formatCurrency(paymentTotals.TRANSFER || 0)}</strong></div>
         `;
       }
 
       renderFinanceBreakdown(summary);
       renderRecentProductSales('financeRecentSalesList');
+      const archiveTable = document.getElementById('financeArchiveTable');
+      if (archiveTable) {
+        archiveTable.innerHTML = buildAdminTable(
+          ['თვე', 'აბონემენტი', 'პროდუქტი', 'ერთეული', 'სულ'],
+          getFinanceArchiveRows().map((row) => `
+            <tr>
+              <td>${formatMonthKey(row.monthKey)}</td>
+              <td>${formatCurrency(row.membershipAmount)} (${row.membershipCount})</td>
+              <td>${formatCurrency(row.productAmount)} (${row.productCount})</td>
+              <td>${row.productUnits}</td>
+              <td>${formatCurrency(row.totalAmount)}</td>
+            </tr>
+          `),
+          'ფინანსური არქივი ჯერ არ არის'
+        );
+      }
 
       // ფინანსების გასუფთავების ღილაკი (admin only)
       const financeTab = document.getElementById('finance');
@@ -2280,6 +3009,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       return {
         generatedAt: now.toISOString(),
+        printedByFullName: getCurrentUserDisplayName() || 'უცნობი იუზერი',
         summary,
         membershipTransactions,
         productTransactions,
@@ -2406,6 +3136,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
                   <th>მომხმარებელი</th>
                   <th>ოპერაცია</th>
                   <th>აბონემენტი</th>
+                  <th>ოპერატორი</th>
+                  <th>გადახდა</th>
                   <th>თანხა</th>
                 </tr>
               </thead>
@@ -2416,6 +3148,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
                     <td>${tx.memberName || '—'}</td>
                     <td>${tx.type === 'membership_registration' ? 'რეგისტრაცია' : 'განახლება'}</td>
                     <td>${tx.subscriptionName || getSubscriptionName(tx.subscriptionType)}</td>
+                    <td>${tx.actorFullName || '—'}</td>
+                    <td>${getPaymentMethodLabel(tx.paymentMethod)}</td>
                     <td>${formatCurrency(tx.amount)}</td>
                   </tr>
                 `).join('')}
@@ -2457,6 +3191,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
                   <th>დრო</th>
                   <th>პროდუქტი</th>
                   <th>რაოდენობა</th>
+                  <th>ოპერატორი</th>
                   <th>გადახდა</th>
                   <th>თანხა</th>
                 </tr>
@@ -2467,6 +3202,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
                     <td>${formatDateTime(tx.createdAt)}</td>
                     <td>${tx.productName || '—'}</td>
                     <td>${tx.quantity || 0}</td>
+                    <td>${tx.actorFullName || '—'}</td>
                     <td>${getPaymentMethodLabel(tx.paymentMethod)}</td>
                     <td>${formatCurrency(tx.amount)}</td>
                   </tr>
@@ -2504,6 +3240,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           🏆 დღის სულ შემოსავალი: ${formatCurrency(data.summary.todayTotal)} &nbsp;|&nbsp;
           📋 აბონემენტი: ${data.summary.todayRegistrationCount + data.summary.todayRenewalCount} (${formatCurrency(data.summary.todayMembership)}) &nbsp;|&nbsp;
           🛍️ პროდუქტი: ${data.summary.todayProductUnits} ც. (${formatCurrency(data.summary.todayProducts)})
+        </div>
+        <div style="margin-top:18px;font-size:12px;color:#475569;text-align:right;">
+          დაბეჭდა: <strong>${data.printedByFullName}</strong> • ${formatDateTime(data.generatedAt)}
         </div>
       `;
       return wrapper;
@@ -3355,6 +4094,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           "ტიპი": tx.type,
           "აღწერა": tx.description || '',
           "გადახდა": getPaymentMethodLabel(tx.paymentMethod),
+          "ოპერატორი": tx.actorFullName || tx.actorUsername || '',
           "თანხა": formatCurrency(tx.amount),
           "რაოდენობა": tx.quantity || '',
           "პროდუქტი": tx.productName || '',
@@ -3389,6 +4129,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       safeUiUpdate('todayVisits', showTodayVisits);
       safeUiUpdate('products', updateProductsTab);
       safeUiUpdate('finance', updateFinanceTab);
+      safeUiUpdate('stats', updateStatsTab);
+      safeUiUpdate('users', updateUsersTab);
+      safeUiUpdate('settings', updateSettingsTab);
     }
 
     function updateDashboard() {
@@ -3597,6 +4340,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     document.addEventListener('DOMContentLoaded', () => {
       checkAuth();
       applyRoleVisibility();
+      document.getElementById('loginUsername')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          window.login();
+        }
+      });
       document.getElementById('adminPassword')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();
@@ -3659,7 +4408,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             type = desc;
           }
           
-          await createMember({
+          const draftMember = {
             firstName: document.getElementById('firstName').value.trim(),
             lastName: document.getElementById('lastName').value.trim(),
             email: document.getElementById('email').value.trim() || null,
@@ -3677,13 +4426,15 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
             lastVisit: null,
             createdAt: new Date().toISOString(),
             expiringEmailSent: false
+          };
+
+          window.openMembershipPaymentModal({
+            mode: 'register',
+            member: draftMember,
+            memberName: `${draftMember.firstName} ${draftMember.lastName}`,
+            meta: `${getSubscriptionName(draftMember.subscriptionType)} • ვადა ${formatDate(draftMember.subscriptionEndDate)}`,
+            amount: Number(draftMember.subscriptionPrice || 0)
           });
-          
-          e.target.reset();
-          window.selectedSubscription = null;
-          document.querySelectorAll('.subscription-card').forEach(c => c.classList.remove('selected'));
-          document.getElementById('customSubscriptionFields').style.display = 'none';
-          showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } finally {
           btn.disabled = false; 
           btn.innerHTML = 'რეგისტრაცია';
@@ -3692,7 +4443,12 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       
       document.getElementById('searchInput')?.addEventListener('input', updateSearchMemberList);
       document.getElementById('productSearchInput')?.addEventListener('input', updateProductsTab);
+      document.getElementById('userSearchInput')?.addEventListener('input', updateUsersTab);
       document.getElementById('saleQuantity')?.addEventListener('input', window.updateProductSaleTotal);
+      document.getElementById('passwordChangeForm')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await window.changeCurrentUserPassword();
+      });
       document.getElementById('productFormModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'productFormModal') window.closeProductForm();
       });
@@ -3708,6 +4464,15 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('inventoryRestockSearch')?.addEventListener('input', renderInventoryRestockList);
       document.getElementById('daySalesModal')?.addEventListener('click', (e) => {
         if (e.target.id === 'daySalesModal') window.closeDaySalesModal();
+      });
+      document.getElementById('membershipPaymentModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'membershipPaymentModal') window.closeMembershipPaymentModal();
+      });
+      document.getElementById('userFormModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'userFormModal') window.closeUserForm();
+      });
+      document.getElementById('resetUserPasswordModal')?.addEventListener('click', (e) => {
+        if (e.target.id === 'resetUserPasswordModal') window.closeResetUserPasswordModal();
       });
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
