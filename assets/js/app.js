@@ -34,14 +34,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let membersLoadedOnce = false;
     let usersLoadedOnce = false;
     let transactionsLoadedOnce = false;
+    let activityLogsLoadedOnce = false;
     let transactionsRefreshTimer = null;
     let transactionsPollingStarted = false;
     let usersStreamStarted = false;
+    let activityLogsStreamStarted = false;
     let dataStreamsStarted = false;
     window.members = [];
     window.users = [];
     window.products = [];
     window.transactions = [];
+    window.activityLogs = [];
     window.selectedSubscription = null;
     window.editingProductId = null;
     window.productSaleCart = [];
@@ -261,6 +264,25 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return [...window.transactions].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
 
+    function getSortedActivityLogs() {
+      return [...window.activityLogs].sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
+    function formatTimeAgo(iso) {
+      if (!iso) return '—';
+      const diffMs = Date.now() - new Date(iso).getTime();
+      const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+      if (diffMinutes < 1) return 'ახლახან';
+      if (diffMinutes < 60) return `${diffMinutes} წუთის წინ`;
+      const diffHours = Math.floor(diffMinutes / 60);
+      if (diffHours < 24) return `${diffHours} საათის წინ`;
+      const diffDays = Math.floor(diffHours / 24);
+      if (diffDays < 30) return `${diffDays} დღის წინ`;
+      const diffMonths = Math.floor(diffDays / 30);
+      if (diffMonths < 12) return `${diffMonths} თვის წინ`;
+      return `${Math.floor(diffMonths / 12)} წლის წინ`;
+    }
+
     function safeUiUpdate(label, fn) {
       try {
         fn();
@@ -370,6 +392,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         .sort((a, b) => String(a.firstName || a.username || '').localeCompare(String(b.firstName || b.username || ''), 'ka'));
     }
 
+    async function fetchActivityLogsViaRest() {
+      return (await fetchCollectionViaRest('activity_logs'))
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    }
+
     async function hydrateUsersFromRest() {
       try {
         window.users = await fetchUsersViaRest();
@@ -387,6 +414,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         applyRoleVisibility();
       } catch (e) {
         console.warn('users rest hydrate failed', e);
+      }
+    }
+
+    async function hydrateActivityLogsFromRest() {
+      try {
+        window.activityLogs = await fetchActivityLogsViaRest();
+        activityLogsLoadedOnce = true;
+        safeUiUpdate('dashboard', updateDashboard);
+        safeUiUpdate('stats', updateStatsTab);
+      } catch (e) {
+        console.warn('activity logs rest hydrate failed', e);
       }
     }
 
@@ -965,6 +1003,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         loadMembers();
         loadProducts();
         loadTransactions();
+        loadActivityLogs();
         dataStreamsStarted = true;
       } else {
         updateAll();
@@ -972,6 +1011,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         safeUiUpdate('settings', updateSettingsTab);
         safeUiUpdate('stats', updateStatsTab);
       }
+      recordUserActivity('login', matchedUser);
       startExpiringNotificationsScheduler();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
     };
@@ -1609,6 +1649,50 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       });
     }
 
+    function loadActivityLogs() {
+      hydrateActivityLogsFromRest();
+      if (activityLogsStreamStarted) return;
+      activityLogsStreamStarted = true;
+      const q = query(collection(db, "activity_logs"));
+      onSnapshot(q, (snapshot) => {
+        window.activityLogs = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        activityLogsLoadedOnce = true;
+        safeUiUpdate('dashboard', updateDashboard);
+        safeUiUpdate('stats', updateStatsTab);
+      }, (error) => {
+        console.warn('activity logs snapshot failed, using rest fallback', error);
+        hydrateActivityLogsFromRest();
+      });
+    }
+
+    async function recordUserActivity(type, user, meta = {}) {
+      if (!user) return false;
+      const payload = {
+        type,
+        actorUserId: user.id || null,
+        actorUsername: user.username || null,
+        actorFirstName: user.firstName || null,
+        actorLastName: user.lastName || null,
+        actorFullName: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.username || 'უცნობი',
+        actorRole: user.role || 'operator',
+        description: type === 'login' ? 'პროგრამაში შევიდა' : 'აქტივობა',
+        createdAt: new Date().toISOString(),
+        ...meta
+      };
+      try {
+        const docRef = await addDoc(collection(db, "activity_logs"), payload);
+        window.activityLogs = [{ id: docRef.id, ...payload }, ...window.activityLogs].slice(0, 50);
+        safeUiUpdate('dashboard', updateDashboard);
+        safeUiUpdate('stats', updateStatsTab);
+        return true;
+      } catch (e) {
+        console.warn('activity log write failed', e);
+        return false;
+      }
+    }
+
     async function createMember(m, options = {}) {
       try { 
         const memberPayload = {
@@ -2025,9 +2109,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     }
 
     function getRecentSignups(limit = 5) {
-      return [...window.members]
-        .filter((member) => member.createdAt)
-        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      return getSortedActivityLogs()
+        .filter((item) => item.type === 'login')
         .slice(0, limit);
     }
 
@@ -2037,19 +2120,19 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       const signups = getRecentSignups(limit);
       if (!signups.length) {
-        container.innerHTML = '<div class="empty-state">ახალი რეგისტრაციები ჯერ არ არის</div>';
+        container.innerHTML = '<div class="empty-state">ავტორიზაციის ლოგები ჯერ არ არის</div>';
         return;
       }
 
-      container.innerHTML = signups.map((member) => `
+      container.innerHTML = signups.map((log) => `
         <div class="dashboard-signup-item">
-          <div class="dashboard-signup-avatar">${getNameInitials(`${member.firstName || ''} ${member.lastName || ''}`)}</div>
+          <div class="dashboard-signup-avatar">${getNameInitials(log.actorFullName)}</div>
           <div class="dashboard-signup-main">
             <div class="dashboard-signup-top">
-              <strong>${member.firstName || ''} ${member.lastName || ''}</strong>
-              <span>${formatDateTime(member.createdAt)}</span>
+              <strong>${log.actorFullName || log.actorUsername || 'უცნობი'}</strong>
+              <span>${formatTimeAgo(log.createdAt)}</span>
             </div>
-            <div class="dashboard-signup-meta">${getSubscriptionName(member.subscriptionType)} • ${member.email || '—'}</div>
+            <div class="dashboard-signup-meta">${getRoleLabel(log.actorRole)} • ${log.description || 'პროგრამაში შევიდა'} • ${formatDateTime(log.createdAt)}</div>
           </div>
         </div>
       `).join('');
