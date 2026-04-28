@@ -80,20 +80,20 @@
       </div>
       
       <div class="nav-tabs">
-        <button class="nav-tab active" onclick="showTab('dashboard')">დეშბორდი</button>
-        <button class="nav-tab" onclick="showTab('register')">რეგისტრაცია</button>
-        <button class="nav-tab" onclick="showTab('search')">ძიება</button>
-        <button class="nav-tab" onclick="showTab('checkin')">შესვლა</button>
-        <button class="nav-tab" onclick="showTab('expired')">ვადაგასული</button>
-        <button class="nav-tab" onclick="showTab('products')">პროდუქტები</button>
-        <button class="nav-tab" data-admin-only onclick="showTab('finance')">ფინანსები</button>
-        <button class="nav-tab" data-admin-only onclick="showTab('stats')">სტატისტიკა</button>
-        <button class="nav-tab" data-admin-only onclick="showTab('users')">იუზერები</button>
-        <button class="nav-tab" onclick="showTab('settings')">პარამეტრები</button>
+        <button class="nav-tab active" onclick="showTab('dashboard')"><span class="nav-tab-icon"><i class="fas fa-chart-pie"></i></span><span class="nav-tab-text">დეშბორდი</span></button>
+        <button class="nav-tab" onclick="showTab('register')"><span class="nav-tab-icon"><i class="fas fa-user-plus"></i></span><span class="nav-tab-text">რეგისტრაცია</span></button>
+        <button class="nav-tab" onclick="showTab('search')"><span class="nav-tab-icon"><i class="fas fa-magnifying-glass"></i></span><span class="nav-tab-text">ძიება</span></button>
+        <button class="nav-tab" onclick="showTab('checkin')"><span class="nav-tab-icon"><i class="fas fa-right-to-bracket"></i></span><span class="nav-tab-text">შესვლა</span></button>
+        <button class="nav-tab" onclick="showTab('expired')"><span class="nav-tab-icon"><i class="fas fa-clock-rotate-left"></i></span><span class="nav-tab-text">ვადაგასული</span></button>
+        <button class="nav-tab" onclick="showTab('products')"><span class="nav-tab-icon"><i class="fas fa-box-open"></i></span><span class="nav-tab-text">პროდუქტები</span></button>
+        <button class="nav-tab" data-admin-only onclick="showTab('finance')"><span class="nav-tab-icon"><i class="fas fa-wallet"></i></span><span class="nav-tab-text">ფინანსები</span></button>
+        <button class="nav-tab" data-admin-only onclick="showTab('stats')"><span class="nav-tab-icon"><i class="fas fa-chart-line"></i></span><span class="nav-tab-text">სტატისტიკა</span></button>
+        <button class="nav-tab" data-admin-only onclick="showTab('users')"><span class="nav-tab-icon"><i class="fas fa-user-shield"></i></span><span class="nav-tab-text">იუზერები</span></button>
+        <button class="nav-tab" onclick="showTab('settings')"><span class="nav-tab-icon"><i class="fas fa-gear"></i></span><span class="nav-tab-text">პარამეტრები</span></button>
         <button class="nav-tab utility-nav-tab utility-nav-tab-message bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
-          <i class="fas fa-envelope"></i> შეტყობინება
+          <span class="nav-tab-icon"><i class="fas fa-envelope"></i></span><span class="nav-tab-text">შეტყობინება</span>
         </button>
-        <button class="nav-tab utility-nav-tab utility-nav-tab-excel bg-green-600 hover:bg-green-700" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+        <button class="nav-tab utility-nav-tab utility-nav-tab-excel bg-green-600 hover:bg-green-700" onclick="exportToExcel()"><span class="nav-tab-icon"><i class="fas fa-file-excel"></i></span><span class="nav-tab-text">Excel</span></button>
       </div>
       
       <div id="dashboard" class="tab-content active">
@@ -153,8 +153,8 @@
             <div class="section-panel dashboard-signups-panel">
               <div class="stats-panel-head">
                 <div>
-                  <h3 class="panel-title">ლოგები</h3>
-                  <p class="stats-panel-subtitle">ბოლო შესვლები</p>
+                  <h3 class="panel-title">ბოლო შესვლები</h3>
+                  <p class="stats-panel-subtitle">ვინ გახსნა პროგრამა ბოლოს</p>
                 </div>
               </div>
               <div id="dashboardRecentSignups" class="dashboard-signups-list"></div>
@@ -501,6 +501,15 @@
             </div>
             <div id="statsMonthlyLeadersTable"></div>
           </div>
+          <div class="section-panel stats-log-panel">
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">ბოლო შესვლები</h3>
+                <p class="stats-panel-subtitle">ვინ გახსნა პროგრამა ბოლოს</p>
+              </div>
+            </div>
+            <div id="statsRecentSignupsList" class="dashboard-signups-list"></div>
+          </div>
           <div class="section-panel">
             <div class="stats-panel-head">
               <div>
@@ -509,15 +518,6 @@
               </div>
             </div>
             <div id="statsMonthlyArchiveTable"></div>
-          </div>
-          <div class="section-panel stats-log-panel">
-            <div class="stats-panel-head">
-              <div>
-                <h3 class="panel-title">ლოგები</h3>
-                <p class="stats-panel-subtitle">ბოლო შესვლები</p>
-              </div>
-            </div>
-            <div id="statsRecentSignupsList" class="dashboard-signups-list"></div>
           </div>
         </div>
 

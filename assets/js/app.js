@@ -2108,13 +2108,13 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       `;
     }
 
-    function getRecentSignups(limit = 5) {
+    function getRecentSignups(limit = 4) {
       return getSortedActivityLogs()
         .filter((item) => item.type === 'login')
         .slice(0, limit);
     }
 
-    function renderRecentSignupsList(targetId = 'dashboardRecentSignups', limit = 5) {
+    function renderRecentSignupsList(targetId = 'dashboardRecentSignups', limit = 4) {
       const container = document.getElementById(targetId);
       if (!container) return;
 
@@ -2284,7 +2284,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         monthlyArchiveTable.innerHTML = renderStatsArchiveCards(archiveRows);
       }
 
-      renderRecentSignupsList('statsRecentSignupsList', 6);
+      renderRecentSignupsList('statsRecentSignupsList', 4);
     }
 
     async function saveUserRecord(user) {
@@ -4448,7 +4448,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('pausedMembers').textContent = paused;
       if (isAdmin()) {
         renderDashboardRecentTransactions();
-        renderRecentSignupsList('dashboardRecentSignups', 5);
+        renderRecentSignupsList('dashboardRecentSignups', 4);
         renderDashboardQuickBreakdown();
       }
     }
