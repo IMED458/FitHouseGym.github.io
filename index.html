@@ -90,10 +90,10 @@
         <button class="nav-tab" data-admin-only onclick="showTab('stats')">სტატისტიკა</button>
         <button class="nav-tab" data-admin-only onclick="showTab('users')">იუზერები</button>
         <button class="nav-tab" onclick="showTab('settings')">პარამეტრები</button>
-        <button class="nav-tab bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
+        <button class="nav-tab utility-nav-tab utility-nav-tab-message bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
           <i class="fas fa-envelope"></i> შეტყობინება
         </button>
-        <button class="nav-tab bg-green-600 hover:bg-green-700" onclick="exportToExcel()">Excel</button>
+        <button class="nav-tab utility-nav-tab utility-nav-tab-excel bg-green-600 hover:bg-green-700" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> Excel</button>
       </div>
       
       <div id="dashboard" class="tab-content active">
@@ -136,6 +136,41 @@
             <div class="admin-stat-note">დროებით შეჩერებული წევრები</div>
           </div>
         </div>
+
+        <div class="admin-dashboard-grid" data-admin-only>
+          <div class="section-panel dashboard-activity-panel">
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">ბოლო ტრანზაქციები</h3>
+                <p class="stats-panel-subtitle">დღის უახლესი ფინანსური მოძრაობა</p>
+              </div>
+              <div class="stats-panel-pill">Last 5</div>
+            </div>
+            <div id="dashboardRecentTransactions" class="transaction-list"></div>
+          </div>
+
+          <div class="dashboard-side-stack">
+            <div class="section-panel dashboard-signups-panel">
+              <div class="stats-panel-head">
+                <div>
+                  <h3 class="panel-title">ლოგები</h3>
+                  <p class="stats-panel-subtitle">Recent Signups</p>
+                </div>
+              </div>
+              <div id="dashboardRecentSignups" class="dashboard-signups-list"></div>
+            </div>
+
+            <div class="section-panel dashboard-actions-panel">
+              <div class="stats-panel-head">
+                <div>
+                  <h3 class="panel-title">სწრაფი ჭრილი</h3>
+                  <p class="stats-panel-subtitle">დღეს და ამ თვეში ძირითადი მაჩვენებლები</p>
+                </div>
+              </div>
+              <div id="dashboardQuickBreakdown" class="dashboard-quick-grid"></div>
+            </div>
+          </div>
+        </div>
         
         <div id="expiringSoonSection">
           <h2 class="text-2xl font-bold text-center mb-6">3 დღეში ვადაგასული</h2>
@@ -154,7 +189,7 @@
           <div class="form-grid">
             <input type="text" id="firstName" placeholder="სახელი" class="form-input" required>
             <input type="text" id="lastName" placeholder="გვარი" class="form-input" required>
-            <input type="email" id="email" placeholder="Email" class="form-input">
+            <input type="email" id="email" placeholder="Email" class="form-input" required>
             <input type="tel" id="phone" placeholder="ტელეფონი" class="form-input">
             <input type="date" id="birthDate" class="form-input">
             <input type="text" id="personalId" placeholder="პირადი ნომერი" class="form-input" required>
@@ -474,6 +509,15 @@
               </div>
             </div>
             <div id="statsMonthlyArchiveTable"></div>
+          </div>
+          <div class="section-panel stats-log-panel">
+            <div class="stats-panel-head">
+              <div>
+                <h3 class="panel-title">ლოგები</h3>
+                <p class="stats-panel-subtitle">Recent Signups</p>
+              </div>
+            </div>
+            <div id="statsRecentSignupsList" class="dashboard-signups-list"></div>
           </div>
         </div>
 

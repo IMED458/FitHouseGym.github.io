@@ -2024,6 +2024,87 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       `;
     }
 
+    function getRecentSignups(limit = 5) {
+      return [...window.members]
+        .filter((member) => member.createdAt)
+        .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+        .slice(0, limit);
+    }
+
+    function renderRecentSignupsList(targetId = 'dashboardRecentSignups', limit = 5) {
+      const container = document.getElementById(targetId);
+      if (!container) return;
+
+      const signups = getRecentSignups(limit);
+      if (!signups.length) {
+        container.innerHTML = '<div class="empty-state">ახალი რეგისტრაციები ჯერ არ არის</div>';
+        return;
+      }
+
+      container.innerHTML = signups.map((member) => `
+        <div class="dashboard-signup-item">
+          <div class="dashboard-signup-avatar">${getNameInitials(`${member.firstName || ''} ${member.lastName || ''}`)}</div>
+          <div class="dashboard-signup-main">
+            <div class="dashboard-signup-top">
+              <strong>${member.firstName || ''} ${member.lastName || ''}</strong>
+              <span>${formatDateTime(member.createdAt)}</span>
+            </div>
+            <div class="dashboard-signup-meta">${getSubscriptionName(member.subscriptionType)} • ${member.email || '—'}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderDashboardRecentTransactions() {
+      const container = document.getElementById('dashboardRecentTransactions');
+      if (!container) return;
+
+      const recentTransactions = getSortedTransactions().slice(0, 5);
+      if (!recentTransactions.length) {
+        container.innerHTML = '<div class="empty-state">ტრანზაქციები ჯერ არ არის</div>';
+        return;
+      }
+
+      container.innerHTML = recentTransactions.map((tx) => buildTransactionRowHtml({
+        title: tx.description || (tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'),
+        meta: `${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}${tx.paymentMethod ? ` • ${getPaymentMethodLabel(tx.paymentMethod)}` : ''}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
+        amount: formatCurrency(tx.amount),
+        tx
+      })).join('');
+    }
+
+    function renderDashboardQuickBreakdown() {
+      const container = document.getElementById('dashboardQuickBreakdown');
+      if (!container) return;
+
+      const summary = getFinancialSummary();
+      const archiveRows = getFinanceArchiveRows();
+      const bestMonth = [...archiveRows].sort((a, b) => b.totalAmount - a.totalAmount)[0] || null;
+
+      container.innerHTML = `
+        <div class="dashboard-quick-card">
+          <span>დღეს აბონემენტები</span>
+          <strong>${summary.todayRegistrationCount + summary.todayRenewalCount}</strong>
+          <small>${formatCurrency(summary.todayMembership)}</small>
+        </div>
+        <div class="dashboard-quick-card">
+          <span>დღეს პროდუქტები</span>
+          <strong>${summary.todayProductSalesCount}</strong>
+          <small>${formatCurrency(summary.todayProducts)}</small>
+        </div>
+        <div class="dashboard-quick-card">
+          <span>ამ თვეში სულ</span>
+          <strong>${formatCurrency(summary.monthTotal)}</strong>
+          <small>${summary.monthMembershipCount} აბონემენტი • ${summary.monthProductUnits} ცალი</small>
+        </div>
+        <div class="dashboard-quick-card">
+          <span>საუკეთესო თვე</span>
+          <strong>${bestMonth ? formatMonthKey(bestMonth.monthKey) : '—'}</strong>
+          <small>${bestMonth ? formatCurrency(bestMonth.totalAmount) : '0.00₾'}</small>
+        </div>
+      `;
+    }
+
     function updateUsersTab() {
       const container = document.getElementById('usersTable');
       if (!container) return;
@@ -2119,6 +2200,8 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       if (monthlyArchiveTable) {
         monthlyArchiveTable.innerHTML = renderStatsArchiveCards(archiveRows);
       }
+
+      renderRecentSignupsList('statsRecentSignupsList', 6);
     }
 
     async function saveUserRecord(user) {
@@ -3037,10 +3120,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
       const transactionsList = document.getElementById('financeTransactionsList');
       if (transactionsList) {
-        if (summary.recentTransactions.length === 0) {
+        const recentTransactions = summary.recentTransactions.slice(0, 5);
+        if (recentTransactions.length === 0) {
           transactionsList.innerHTML = '<p class="empty-state">ტრანზაქციები ჯერ არ არის</p>';
         } else {
-          transactionsList.innerHTML = summary.recentTransactions.map((tx) => buildTransactionRowHtml({
+          transactionsList.innerHTML = recentTransactions.map((tx) => buildTransactionRowHtml({
             title: tx.description || (tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'),
             meta: `${formatDateTime(tx.createdAt)} • ${tx.category === 'membership' ? 'აბონემენტი' : 'პროდუქტი'}${tx.paymentMethod ? ` • ${getPaymentMethodLabel(tx.paymentMethod)}` : ''}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
             amount: formatCurrency(tx.amount),
@@ -4279,6 +4363,11 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('expiredMembers').textContent = expired;
       document.getElementById('expiringMembers').textContent = expiring;
       document.getElementById('pausedMembers').textContent = paused;
+      if (isAdmin()) {
+        renderDashboardRecentTransactions();
+        renderRecentSignupsList('dashboardRecentSignups', 5);
+        renderDashboardQuickBreakdown();
+      }
     }
 
     function updateExpiredList() {
@@ -4493,9 +4582,14 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         e.preventDefault();
         const btn = document.getElementById('registerBtn');
         if (btn.disabled) return;
+        const email = document.getElementById('email').value.trim();
         if (!window.selectedSubscription) { 
           showToast("აირჩიეთ აბონემენტი", 'error'); 
           return; 
+        }
+        if (!email) {
+          showToast("Email სავალდებულოა", 'error');
+          return;
         }
         btn.disabled = true; 
         btn.innerHTML = '<div class="spinner"></div>';
@@ -4534,7 +4628,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
           const draftMember = {
             firstName: document.getElementById('firstName').value.trim(),
             lastName: document.getElementById('lastName').value.trim(),
-            email: document.getElementById('email').value.trim() || null,
+            email,
             phone: document.getElementById('phone').value.trim(),
             birthDate: document.getElementById('birthDate').value,
             personalId: document.getElementById('personalId').value.trim(),
