@@ -2942,6 +2942,26 @@ body.admin-mode .utility-nav-tab.utility-nav-tab-excel {
   background: linear-gradient(135deg, #059669 0%, #10b981 100%);
 }
 
+body.admin-mode .admin-table-wrap,
+body.admin-mode .admin-table-wrap table {
+  background: #0d1016;
+}
+
+body.admin-mode .admin-table-wrap th {
+  background: #111722;
+  color: #97a6be;
+  border-color: #222836;
+}
+
+body.admin-mode .admin-table-wrap td {
+  color: #eef2ff;
+  border-color: #1d2330;
+}
+
+body.admin-mode .admin-table-wrap tr:hover td {
+  background: #141a25;
+}
+
 body.admin-mode #dashboard.tab-content,
 body.admin-mode #stats.tab-content {
   background: transparent;
@@ -3134,4 +3154,172 @@ body.admin-mode #stats .stats-badge-strong {
     width: 34px;
     height: 34px;
   }
+}
+
+body.admin-mode.light-mode {
+  background:
+    radial-gradient(circle at top right, rgba(79, 140, 248, 0.12), transparent 26%),
+    radial-gradient(circle at left center, rgba(118, 156, 255, 0.08), transparent 22%),
+    linear-gradient(180deg, #f7f9fd 0%, #eef4fb 100%);
+  color: #17263f;
+}
+
+body.admin-mode.light-mode .header,
+body.admin-mode.light-mode .nav-tabs {
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(247,250,255,0.96));
+  border-color: #e2eaf4;
+  box-shadow: 0 24px 46px rgba(15, 23, 42, 0.08);
+}
+
+body.admin-mode.light-mode .theme-toggle,
+body.admin-mode.light-mode .current-user-display,
+body.admin-mode.light-mode .role-badge,
+body.admin-mode.light-mode .header-logout-btn {
+  background: #f6f9fe;
+  border-color: #dbe6f3;
+  color: #51627f;
+}
+
+body.admin-mode.light-mode .header-logout-btn:hover {
+  background: #ebf1f9;
+  color: #17263f;
+}
+
+body.admin-mode.light-mode .gym-title {
+  background: linear-gradient(135deg, #1f3f75, #517fda);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+body.admin-mode.light-mode .nav-tab {
+  color: #64748b;
+}
+
+body.admin-mode.light-mode .nav-tab-icon {
+  background: #edf3fd;
+  color: #5c6d87;
+}
+
+body.admin-mode.light-mode .nav-tab:hover,
+body.admin-mode.light-mode .nav-tab.active {
+  background: linear-gradient(135deg, #4f8cf8 0%, #2e72db 100%);
+  border-color: #4f8cf8;
+  color: #ffffff;
+}
+
+body.admin-mode.light-mode .nav-tab:hover .nav-tab-icon,
+body.admin-mode.light-mode .nav-tab.active .nav-tab-icon {
+  background: rgba(255,255,255,0.15);
+  color: #ffffff;
+}
+
+body.admin-mode.light-mode #dashboard .stat-card,
+body.admin-mode.light-mode #dashboard .section-panel,
+body.admin-mode.light-mode #stats .section-panel,
+body.admin-mode.light-mode #stats .stats-summary-card {
+  background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244,248,255,0.98));
+  border-color: #e2eaf4;
+  box-shadow: 0 22px 44px rgba(15, 23, 42, 0.08);
+  color: #17263f;
+}
+
+body.admin-mode.light-mode #dashboard .stat-card::after,
+body.admin-mode.light-mode #stats .stats-summary-card::after {
+  background: rgba(79, 140, 248, 0.06);
+}
+
+body.admin-mode.light-mode #dashboard .admin-stat-icon,
+body.admin-mode.light-mode #stats .stats-card-icon {
+  background: linear-gradient(135deg, rgba(79, 140, 248, 0.12), rgba(79, 140, 248, 0.2));
+}
+
+body.admin-mode.light-mode #dashboard .admin-stat-label,
+body.admin-mode.light-mode #stats .stats-summary-label,
+body.admin-mode.light-mode #dashboard .admin-stat-note,
+body.admin-mode.light-mode #stats .stats-summary-sub,
+body.admin-mode.light-mode #dashboard .stats-panel-subtitle,
+body.admin-mode.light-mode #stats .stats-panel-subtitle,
+body.admin-mode.light-mode #dashboard .dashboard-signup-top span,
+body.admin-mode.light-mode #dashboard .dashboard-signup-meta,
+body.admin-mode.light-mode #stats .dashboard-signup-top span,
+body.admin-mode.light-mode #stats .dashboard-signup-meta,
+body.admin-mode.light-mode #dashboard .transaction-meta,
+body.admin-mode.light-mode #stats .transaction-meta,
+body.admin-mode.light-mode #stats .stats-bar-meta,
+body.admin-mode.light-mode #stats .stats-archive-meta span,
+body.admin-mode.light-mode #stats .stats-rank-sub {
+  color: #70809a;
+}
+
+body.admin-mode.light-mode #dashboard .stat-card .text-4xl,
+body.admin-mode.light-mode #stats .stats-summary-value,
+body.admin-mode.light-mode #dashboard .transaction-title,
+body.admin-mode.light-mode #stats .transaction-title,
+body.admin-mode.light-mode #dashboard .dashboard-signup-top strong,
+body.admin-mode.light-mode #stats .dashboard-signup-top strong,
+body.admin-mode.light-mode #stats .panel-title,
+body.admin-mode.light-mode #stats .stats-rank-name,
+body.admin-mode.light-mode #stats .stats-leader-name,
+body.admin-mode.light-mode #stats .stats-archive-head strong {
+  color: #17263f;
+}
+
+body.admin-mode.light-mode #dashboard .transaction-row,
+body.admin-mode.light-mode #stats .transaction-row,
+body.admin-mode.light-mode #dashboard .dashboard-signup-item,
+body.admin-mode.light-mode #stats .dashboard-signup-item,
+body.admin-mode.light-mode #stats .stats-board-item,
+body.admin-mode.light-mode #stats .stats-leader-item,
+body.admin-mode.light-mode #stats .stats-rank-card,
+body.admin-mode.light-mode #stats .stats-archive-card {
+  background: #f8fbff;
+  border-color: #e4edf8;
+}
+
+body.admin-mode.light-mode #dashboard .transaction-amount,
+body.admin-mode.light-mode #stats .transaction-amount {
+  color: #2055b6;
+}
+
+body.admin-mode.light-mode #stats .stats-hero-badge,
+body.admin-mode.light-mode #stats .stats-panel-pill,
+body.admin-mode.light-mode #stats .stats-badge,
+body.admin-mode.light-mode #stats .stats-rank-footer span {
+  background: #f1f6fd;
+  border-color: #dce7f4;
+  color: #5d6f89;
+}
+
+body.admin-mode.light-mode #stats .stats-badge-strong {
+  background: rgba(79, 140, 248, 0.12);
+  color: #2e72db;
+}
+
+body.admin-mode.light-mode #stats .stats-bar-column {
+  background: linear-gradient(180deg, #f4f8ff, #edf4ff);
+}
+
+body.admin-mode.light-mode #stats .stats-board-progress,
+body.admin-mode.light-mode #stats .stats-archive-progress {
+  background: #edf2f9;
+}
+
+body.admin-mode.light-mode .admin-table-wrap,
+body.admin-mode.light-mode .admin-table-wrap table {
+  background: #ffffff;
+}
+
+body.admin-mode.light-mode .admin-table-wrap th {
+  background: #f8fbff;
+  color: #6e7d96;
+  border-color: #edf2f8;
+}
+
+body.admin-mode.light-mode .admin-table-wrap td {
+  color: #17263f;
+  border-color: #edf2f8;
+}
+
+body.admin-mode.light-mode .admin-table-wrap tr:hover td {
+  background: #f9fbff;
 }
