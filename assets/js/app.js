@@ -2762,22 +2762,121 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         </div>`;
     };
 
-    function buildMembershipRenewalPayload(member, paymentMethod, note) {
+    function isStandardMembershipType(type) {
+      return ['12visits', 'morning', 'unlimited', 'single_visit'].includes(type);
+    }
+
+    function getMembershipDurationDays(startDateIso, endDateIso) {
+      const start = new Date(startDateIso || new Date());
+      const end = new Date(endDateIso || new Date());
+      start.setHours(0, 0, 0, 0);
+      end.setHours(0, 0, 0, 0);
+      return Math.max(1, Math.round((end - start) / 86400000));
+    }
+
+    function getMembershipPaymentSelection() {
+      const typeEl = document.getElementById('membershipPaymentSubscriptionType');
+      if (!typeEl) return null;
+
+      const selectedType = typeEl.value;
       const start = new Date();
+      let resolvedType = selectedType;
+      let displayName = getSubscriptionName(selectedType);
+      let price = 0;
       let end = setToEndOfDay(addMonthsPreserveDay(start, 1));
       let visits = null;
-      if (member.subscriptionType === '12visits') {
+
+      if (selectedType === '12visits') {
+        price = 70;
         visits = 12;
-      } else if (member.subscriptionType === 'single_visit') {
-        end = setToEndOfDay(start);
+      } else if (selectedType === 'morning') {
+        price = 90;
+      } else if (selectedType === 'unlimited') {
+        price = 110;
+      } else if (selectedType === 'single_visit') {
+        price = 15;
         visits = 1;
+        end = setToEndOfDay(start);
+      } else if (selectedType === 'other') {
+        const description = document.getElementById('membershipPaymentCustomDescription').value.trim();
+        const customPrice = Number(document.getElementById('membershipPaymentCustomPrice').value || 0);
+        const customDuration = Number(document.getElementById('membershipPaymentCustomDuration').value || 0);
+        const visitsValue = document.getElementById('membershipPaymentCustomVisits').value;
+
+        if (!description || !customPrice || !customDuration) {
+          return {
+            valid: false,
+            reason: 'შეავსე აღწერა, ფასი და ვადა'
+          };
+        }
+
+        resolvedType = description;
+        displayName = description;
+        price = customPrice;
+        end = new Date(start);
+        end.setDate(end.getDate() + customDuration);
+        end = setToEndOfDay(end);
+        visits = visitsValue === '' ? null : parseInt(visitsValue, 10);
       }
 
       return {
-        ...member,
+        valid: true,
+        selectedType,
+        subscriptionType: resolvedType,
+        subscriptionPrice: price,
         subscriptionStartDate: start.toISOString(),
         subscriptionEndDate: end.toISOString(),
-        remainingVisits: visits,
+        remainingVisits: Number.isNaN(visits) ? null : visits,
+        displayName
+      };
+    }
+
+    function resetMembershipPaymentSelectionFields() {
+      document.getElementById('membershipPaymentSubscriptionType').value = '12visits';
+      document.getElementById('membershipPaymentCustomDescription').value = '';
+      document.getElementById('membershipPaymentCustomPrice').value = '';
+      document.getElementById('membershipPaymentCustomDuration').value = '';
+      document.getElementById('membershipPaymentCustomVisits').value = '';
+      document.getElementById('membershipPaymentSubscriptionTypeField').style.display = 'none';
+      document.getElementById('membershipPaymentCustomFields').style.display = 'none';
+    }
+
+    window.updateMembershipPaymentSelection = function() {
+      const context = window.pendingMembershipPaymentContext;
+      const isRenew = context?.mode === 'renew';
+      const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
+      const customFields = document.getElementById('membershipPaymentCustomFields');
+
+      if (!isRenew) {
+        if (subscriptionField) subscriptionField.style.display = 'none';
+        if (customFields) customFields.style.display = 'none';
+        return;
+      }
+
+      const selectedType = document.getElementById('membershipPaymentSubscriptionType').value;
+      customFields.style.display = selectedType === 'other' ? 'block' : 'none';
+
+      const selection = getMembershipPaymentSelection();
+      if (!selection?.valid) {
+        document.getElementById('membershipPaymentMeta').textContent = selection?.reason || context.meta || '';
+        document.getElementById('membershipPaymentAmount').textContent = 'თანხა: —';
+        return;
+      }
+
+      document.getElementById('membershipPaymentMeta').textContent =
+        `${selection.displayName} • ვადა ${formatDate(selection.subscriptionEndDate)}`;
+      document.getElementById('membershipPaymentAmount').textContent =
+        `თანხა: ${formatCurrency(selection.subscriptionPrice)}`;
+    };
+
+    function buildMembershipRenewalPayload(member, paymentMethod, note, selection) {
+      return {
+        ...member,
+        subscriptionType: selection.subscriptionType,
+        subscriptionPrice: selection.subscriptionPrice,
+        subscriptionStartDate: selection.subscriptionStartDate,
+        subscriptionEndDate: selection.subscriptionEndDate,
+        remainingVisits: selection.remainingVisits,
         status: 'active',
         expiringEmailSent: false,
         lastMembershipPaymentMethod: paymentMethod,
@@ -2792,13 +2891,35 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     window.openMembershipPaymentModal = function(context) {
       window.pendingMembershipPaymentContext = context;
+      const isRenew = context.mode === 'renew';
+      const member = isRenew ? window.members.find((item) => item.id === context.memberId) : null;
       document.getElementById('membershipPaymentTitle').textContent =
-        context.mode === 'renew' ? 'აბონემენტის განახლება' : 'აბონემენტის გააქტიურება';
+        isRenew ? 'აბონემენტის განახლება' : 'აბონემენტის გააქტიურება';
       document.getElementById('membershipPaymentName').textContent = context.memberName;
       document.getElementById('membershipPaymentMeta').textContent = context.meta;
       document.getElementById('membershipPaymentAmount').textContent = `თანხა: ${formatCurrency(context.amount)}`;
       document.getElementById('membershipPaymentMethod').value = 'CASH';
       document.getElementById('membershipPaymentNote').value = '';
+      resetMembershipPaymentSelectionFields();
+
+      if (isRenew) {
+        const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
+        subscriptionField.style.display = 'block';
+        if (member) {
+          const isStandardType = isStandardMembershipType(member.subscriptionType);
+          document.getElementById('membershipPaymentSubscriptionType').value = isStandardType ? member.subscriptionType : 'other';
+          if (!isStandardType) {
+            document.getElementById('membershipPaymentCustomDescription').value = member.subscriptionType || '';
+            document.getElementById('membershipPaymentCustomPrice').value = Number(member.subscriptionPrice || 0) || '';
+            document.getElementById('membershipPaymentCustomDuration').value =
+              getMembershipDurationDays(member.subscriptionStartDate, member.subscriptionEndDate);
+            document.getElementById('membershipPaymentCustomVisits').value =
+              member.remainingVisits == null ? '' : member.remainingVisits;
+          }
+        }
+        window.updateMembershipPaymentSelection();
+      }
+
       const btn = document.getElementById('confirmMembershipPaymentBtn');
       if (btn) {
         btn.disabled = false;
@@ -2811,6 +2932,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       document.getElementById('membershipPaymentModal').style.display = 'none';
       document.getElementById('membershipPaymentMethod').value = 'CASH';
       document.getElementById('membershipPaymentNote').value = '';
+      resetMembershipPaymentSelectionFields();
       const btn = document.getElementById('confirmMembershipPaymentBtn');
       if (btn) {
         btn.disabled = false;
@@ -2849,7 +2971,16 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
         } else if (context.mode === 'renew') {
           const existingMember = window.members.find((item) => item.id === context.memberId);
           if (!existingMember) throw new Error('member not found');
-          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note);
+          const selection = getMembershipPaymentSelection();
+          if (!selection?.valid) {
+            showToast(selection?.reason || 'შეავსე აბონემენტის მონაცემები', 'error');
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = '<i class="fas fa-check"></i> დადასტურება';
+            }
+            return;
+          }
+          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note, selection);
           const saved = await updateMember(updated);
           if (!saved) throw new Error('membership renewal failed');
           const membershipTransactionSaved = await recordMembershipTransaction('membership_renewal', updated, { paymentMethod, note });
