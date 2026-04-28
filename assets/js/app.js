@@ -2832,13 +2832,15 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     }
 
     function resetMembershipPaymentSelectionFields() {
-      document.getElementById('membershipPaymentSubscriptionType').value = '12visits';
-      document.getElementById('membershipPaymentCustomDescription').value = '';
-      document.getElementById('membershipPaymentCustomPrice').value = '';
-      document.getElementById('membershipPaymentCustomDuration').value = '';
-      document.getElementById('membershipPaymentCustomVisits').value = '';
-      document.getElementById('membershipPaymentSubscriptionTypeField').style.display = 'none';
-      document.getElementById('membershipPaymentCustomFields').style.display = 'none';
+      document.getElementById('membershipPaymentSubscriptionType')?.value && (document.getElementById('membershipPaymentSubscriptionType').value = '12visits');
+      document.getElementById('membershipPaymentCustomDescription')?.value !== undefined && (document.getElementById('membershipPaymentCustomDescription').value = '');
+      document.getElementById('membershipPaymentCustomPrice')?.value !== undefined && (document.getElementById('membershipPaymentCustomPrice').value = '');
+      document.getElementById('membershipPaymentCustomDuration')?.value !== undefined && (document.getElementById('membershipPaymentCustomDuration').value = '');
+      document.getElementById('membershipPaymentCustomVisits')?.value !== undefined && (document.getElementById('membershipPaymentCustomVisits').value = '');
+      const subscriptionTypeField = document.getElementById('membershipPaymentSubscriptionTypeField');
+      const customFields = document.getElementById('membershipPaymentCustomFields');
+      if (subscriptionTypeField) subscriptionTypeField.style.display = 'none';
+      if (customFields) customFields.style.display = 'none';
     }
 
     window.updateMembershipPaymentSelection = function() {
