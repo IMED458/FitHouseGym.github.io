@@ -602,8 +602,12 @@ function startQrScanner() {
 }
 
 function stopQrScanner() {
-  if (qrScanner && qrScannerRunning) {
-    qrScanner.stop().catch(() => {});
+  if (qrScanner) {
+    const sc = qrScanner;
+    qrScanner = null;
+    qrScannerRunning = false;
+    sc.stop().then(() => sc.clear().catch(()=>{})).catch(() => { try { sc.clear(); } catch(_){} });
+  } else {
     qrScannerRunning = false;
   }
 }
