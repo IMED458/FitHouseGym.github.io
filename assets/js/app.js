@@ -52,6 +52,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.isCartCheckoutRunning = false;
     window.pendingMembershipPaymentContext = null;
 
+    // ── QR Check-in globals ─────────────────────────────────────────────────
+    let gymQrToken = null;
+    let gymQrDocId = 'gym_qr_config';
+    let checkInListenerUnsubscribe = null;
+    let lastSeenCheckInId = null;
+    const QR_CHECKIN_COLLECTION = 'check_ins';
+    const GYM_SETTINGS_COLLECTION = 'gym_settings';
+    const PUBLIC_CHECKIN_OVERLAY_ID = 'publicCheckinOverlay';
+    // Rate-limit: track last scan time per user session
+    const publicCheckinRateMap = {};
+    const PUBLIC_CHECKIN_RATE_LIMIT_MS = 30000; // 30s between attempts
+
     // EmailJS ინიციალიზაცია
     (function() {
       emailjs.init(EMAILJS_PUBLIC_KEY);
@@ -1013,6 +1025,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
       recordUserActivity('login', matchedUser);
       startExpiringNotificationsScheduler();
+      startCheckInListenerPolling();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
     };
 
@@ -1037,6 +1050,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       if (document.getElementById('searchInput')) document.getElementById('searchInput').value = '';
       if (document.getElementById('productSearchInput')) document.getElementById('productSearchInput').value = '';
       if (document.getElementById('userSearchInput')) document.getElementById('userSearchInput').value = '';
+      if (checkInPollingInterval) { clearInterval(checkInPollingInterval); checkInPollingInterval = null; }
+      document.getElementById('checkinPopup').style.display = 'none';
       window.showTab('dashboard');
       checkAuth();
       showToast('სესიიდან გამოხვედი');
@@ -2617,8 +2632,487 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
 
     function checkUrlQrParam() {}
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // QR CODE — ADMIN MANAGEMENT
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function isMainAdmin() {
+      return isAdmin();
+    }
+
+    function generateUUID() {
+      return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+        (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+    }
+
+    async function loadGymQrToken() {
+      try {
+        const { getDoc, doc: firestoreDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+        const snap = await getDoc(firestoreDoc(db, GYM_SETTINGS_COLLECTION, gymQrDocId));
+        if (snap.exists()) {
+          gymQrToken = snap.data().token || null;
+        }
+      } catch (e) {
+        // try REST fallback
+        try {
+          const pid = firebaseConfig.projectId;
+          const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${GYM_SETTINGS_COLLECTION}/${gymQrDocId}`;
+          const r = await fetch(url);
+          if (r.ok) {
+            const d = await r.json();
+            gymQrToken = d.fields?.token?.stringValue || null;
+          }
+        } catch (_) {}
+      }
+    }
+
+    async function saveGymQrToken(token, meta) {
+      const payload = {
+        token,
+        generatedAt: new Date().toISOString(),
+        generatedByUserId: currentUser?.id || null,
+        generatedByName: getCurrentUserDisplayName(),
+        isActive: true,
+        ...meta
+      };
+      try {
+        const { setDoc, doc: firestoreDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+        await setDoc(firestoreDoc(db, GYM_SETTINGS_COLLECTION, gymQrDocId), payload);
+      } catch (e) {
+        console.error('saveGymQrToken error', e);
+        throw e;
+      }
+    }
+
+    window.generateGymQr = async function() {
+      if (!isMainAdmin()) {
+        showToast('QR კოდის გენერირება მხოლოდ ადმინისტრატორისთვის!', 'error');
+        return;
+      }
+      const btn = document.getElementById('generateQrBtn');
+      if (btn) { btn.disabled = true; btn.textContent = 'გენერირება...'; }
+      try {
+        const newToken = generateUUID();
+        await saveGymQrToken(newToken, {});
+        gymQrToken = newToken;
+        showToast('QR კოდი წარმატებით დაგენერირდა!', 'success');
+        updateQrTab();
+      } catch (e) {
+        showToast('შეცდომა QR-ის გენერირებისას', 'error');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'ხელახლა გენერირება'; }
+      }
+    };
+
+    function getCheckinQrUrl() {
+      const base = window.location.origin + window.location.pathname;
+      return `${base}?checkin=${gymQrToken}`;
+    }
+
+    function updateQrTab() {
+      const el = document.getElementById('qrManageContent');
+      if (!el) return;
+
+      const qrUrl = gymQrToken ? getCheckinQrUrl() : null;
+      const qrImgUrl = qrUrl
+        ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=12&data=${encodeURIComponent(qrUrl)}`
+        : null;
+
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px;" class="qr-manage-grid">
+
+          <div class="section-panel">
+            <h3 class="panel-title">საერთო QR კოდი</h3>
+            ${gymQrToken ? `
+              <div style="text-align:center;padding:16px;">
+                <img src="${qrImgUrl}" alt="QR" style="border-radius:12px;max-width:100%;margin-bottom:12px;" onerror="this.src='https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=error'">
+                <div style="font-size:0.75rem;color:#94a3b8;word-break:break-all;margin-bottom:16px;">${qrUrl}</div>
+                <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+                  <button id="generateQrBtn" class="btn bg-amber-600 hover:bg-amber-700" onclick="window.generateGymQr()">
+                    <i class="fas fa-redo"></i> ხელახლა გენერირება
+                  </button>
+                  <a href="${qrImgUrl}" download="fithousegym-qr.png" class="btn bg-slate-600 hover:bg-slate-700">
+                    <i class="fas fa-download"></i> გადმოწერა
+                  </a>
+                </div>
+                <p style="color:#64748b;font-size:0.8rem;margin-top:12px;">⚠️ ხელახლა გენერირება ძველ QR-ს გააუქმებს</p>
+              </div>
+            ` : `
+              <div style="text-align:center;padding:32px;">
+                <i class="fas fa-qrcode" style="font-size:4rem;color:#475569;margin-bottom:16px;display:block;"></i>
+                <p style="color:#94a3b8;margin-bottom:20px;">QR კოდი ჯერ არ არის დაგენერირებული</p>
+                <button id="generateQrBtn" class="btn btn-success" onclick="window.generateGymQr()">
+                  <i class="fas fa-qrcode"></i> QR კოდის გენერირება
+                </button>
+              </div>
+            `}
+          </div>
+
+          <div class="section-panel">
+            <h3 class="panel-title">გამოყენების ინსტრუქცია</h3>
+            <ul style="color:#94a3b8;font-size:0.9rem;line-height:2;padding-left:16px;">
+              <li>დაბეჭდეთ QR კოდი და განათავსეთ შესასვლელთან</li>
+              <li>წევრი სკანირებს QR კოდს ტელეფონით</li>
+              <li>სისტემა ამოწმებს აბონემენტის სტატუსს</li>
+              <li>შედეგი გამოჩნდება ეკრანზე</li>
+              <li>ადმინი/ოპერატორი იღებს real-time შეტყობინებას</li>
+            </ul>
+            <div style="margin-top:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:0.8rem;color:#64748b;">
+              <strong>შენიშვნა:</strong> QR კოდი არ შეიცავს პირად მონაცემებს. წევრის იდენტიფიკაცია ხდება პირადი ნომრით ან ტელეფონით.
+            </div>
+          </div>
+
+        </div>
+
+        <div class="section-panel">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 class="panel-title" style="margin:0;">Check-in ისტორია</h3>
+            <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshCheckInHistory()">
+              <i class="fas fa-sync"></i> განახლება
+            </button>
+          </div>
+          <div id="checkInHistoryTable"></div>
+        </div>
+      `;
+
+      loadCheckInHistory();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CHECK-IN HISTORY
+    // ═══════════════════════════════════════════════════════════════════════
+
+    async function loadCheckInHistory() {
+      const el = document.getElementById('checkInHistoryTable');
+      if (!el) return;
+      el.innerHTML = '<div style="color:#94a3b8;padding:16px;text-align:center;">იტვირთება...</div>';
+      try {
+        const pid = firebaseConfig.projectId;
+        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=50`;
+        const r = await fetch(url);
+        if (!r.ok) { el.innerHTML = '<div style="color:#94a3b8;padding:16px;">ისტორია ვერ ჩაიტვირთა</div>'; return; }
+        const data = await r.json();
+        const docs = (data.documents || []).map(d => {
+          const f = d.fields || {};
+          return {
+            id: d.name?.split('/').pop(),
+            memberId: f.memberId?.stringValue || '',
+            memberName: f.memberName?.stringValue || '—',
+            phone: f.phone?.stringValue || '—',
+            personalId: f.personalId?.stringValue || '—',
+            subscriptionStatus: f.subscriptionStatus?.stringValue || '—',
+            result: f.result?.stringValue || '—',
+            reason: f.reason?.stringValue || '',
+            checkInTime: f.checkInTime?.stringValue || '',
+            qrToken: f.qrToken?.stringValue || ''
+          };
+        });
+        if (docs.length === 0) {
+          el.innerHTML = '<div style="color:#94a3b8;padding:24px;text-align:center;">სკანირების ისტორია ცარიელია</div>';
+          return;
+        }
+        el.innerHTML = `
+          <div style="overflow-x:auto;">
+            <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+              <thead>
+                <tr style="border-bottom:1px solid #334155;">
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">წევრი</th>
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">პირადი</th>
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">ტელეფონი</th>
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">აბონემენტი</th>
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">შედეგი</th>
+                  <th style="padding:10px;text-align:left;color:#94a3b8;">თარიღი</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${docs.map(d => `
+                  <tr style="border-bottom:1px solid #1e293b;">
+                    <td style="padding:10px;color:#e2e8f0;">${d.memberName}</td>
+                    <td style="padding:10px;color:#94a3b8;">${d.personalId}</td>
+                    <td style="padding:10px;color:#94a3b8;">${d.phone}</td>
+                    <td style="padding:10px;color:#94a3b8;">${d.subscriptionStatus}</td>
+                    <td style="padding:10px;">
+                      ${d.result === 'approved'
+                        ? '<span style="color:#4ade80;font-weight:700;">✅ დადასტურდა</span>'
+                        : `<span style="color:#f87171;font-weight:700;">❌ უარყოფილია</span>${d.reason ? `<br><span style="font-size:0.75rem;color:#64748b;">${d.reason}</span>` : ''}`
+                      }
+                    </td>
+                    <td style="padding:10px;color:#64748b;font-size:0.8rem;">${formatDateTime(d.checkInTime)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+      } catch (e) {
+        el.innerHTML = '<div style="color:#f87171;padding:16px;">შეცდომა ისტორიის ჩატვირთვისას</div>';
+      }
+    }
+
+    window.refreshCheckInHistory = function() {
+      loadCheckInHistory();
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // REAL-TIME CHECK-IN POPUP (for admin/operator)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function startCheckInListener() {
+      if (checkInListenerUnsubscribe) return;
+      try {
+        const { collection: col, query: fsQuery, orderBy, limit, onSnapshot: fsOnSnapshot, where } = window._fsSDK || {};
+        if (!col) { startCheckInListenerPolling(); return; }
+        const q = fsQuery(col(db, QR_CHECKIN_COLLECTION), orderBy('checkInTime', 'desc'), limit(1));
+        checkInListenerUnsubscribe = fsOnSnapshot(q, snapshot => {
+          snapshot.docChanges().forEach(change => {
+            if (change.type === 'added') {
+              const d = change.doc.data();
+              if (lastSeenCheckInId !== change.doc.id) {
+                lastSeenCheckInId = change.doc.id;
+                showCheckInPopup(d);
+                if (document.getElementById('qrmanage')?.classList.contains('active')) {
+                  loadCheckInHistory();
+                }
+              }
+            }
+          });
+        }, () => { startCheckInListenerPolling(); });
+      } catch (e) {
+        startCheckInListenerPolling();
+      }
+    }
+
+    let checkInPollingInterval = null;
+    let checkInPollingLastTime = null;
+
+    function startCheckInListenerPolling() {
+      if (checkInPollingInterval) return;
+      checkInPollingInterval = setInterval(async () => {
+        if (!isAuthenticated) return;
+        try {
+          const pid = firebaseConfig.projectId;
+          const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=1`;
+          const r = await fetch(url);
+          if (!r.ok) return;
+          const data = await r.json();
+          const docs = data.documents || [];
+          if (docs.length === 0) return;
+          const latest = docs[0];
+          const id = latest.name?.split('/').pop();
+          if (id && id !== lastSeenCheckInId) {
+            const f = latest.fields || {};
+            lastSeenCheckInId = id;
+            showCheckInPopup({
+              memberName: f.memberName?.stringValue || '—',
+              personalId: f.personalId?.stringValue || '—',
+              phone: f.phone?.stringValue || '—',
+              subscriptionStatus: f.subscriptionStatus?.stringValue || '—',
+              result: f.result?.stringValue || '—',
+              reason: f.reason?.stringValue || '',
+              checkInTime: f.checkInTime?.stringValue || ''
+            });
+            if (document.getElementById('qrmanage')?.classList.contains('active')) {
+              loadCheckInHistory();
+            }
+          }
+        } catch (_) {}
+      }, 4000);
+    }
+
+    function showCheckInPopup(data) {
+      const popup = document.getElementById('checkinPopup');
+      const body = document.getElementById('checkinPopupBody');
+      if (!popup || !body) return;
+      const approved = data.result === 'approved';
+      body.innerHTML = `
+        <div style="text-align:center;margin-bottom:12px;">
+          <div style="font-size:2rem;font-weight:900;color:${approved ? '#4ade80' : '#f87171'};">
+            ${approved ? 'დადასტურებულია ✅' : 'უარყოფილია ❌'}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:0.82rem;margin-bottom:8px;">
+          <div><span style="color:#64748b;">წევრი:</span><br><strong style="color:#e2e8f0;">${data.memberName}</strong></div>
+          <div><span style="color:#64748b;">პირადი:</span><br><strong style="color:#e2e8f0;">${data.personalId}</strong></div>
+          <div><span style="color:#64748b;">ტელეფონი:</span><br><strong style="color:#e2e8f0;">${data.phone}</strong></div>
+          <div><span style="color:#64748b;">აბონემენტი:</span><br><strong style="color:#e2e8f0;">${data.subscriptionStatus}</strong></div>
+        </div>
+        ${!approved && data.reason ? `<div style="color:#f87171;font-size:0.8rem;margin-bottom:8px;">მიზეზი: ${data.reason}</div>` : ''}
+        <div style="color:#475569;font-size:0.75rem;">${formatDateTime(data.checkInTime)}</div>
+      `;
+      popup.style.display = 'block';
+      if (popup._autoHide) clearTimeout(popup._autoHide);
+      popup._autoHide = setTimeout(() => { popup.style.display = 'none'; }, 15000);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PUBLIC MEMBER CHECK-IN (via QR scan URL ?checkin=TOKEN)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function checkPublicCheckinParam() {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('checkin');
+      if (!token) return;
+      // Show public overlay, hide main app
+      document.getElementById('loginScreen').style.display = 'none';
+      document.getElementById('mainApp').style.display = 'none';
+      const overlay = document.getElementById(PUBLIC_CHECKIN_OVERLAY_ID);
+      if (overlay) {
+        overlay.style.display = 'block';
+        overlay.dataset.token = token;
+      }
+    }
+
+    window.submitPublicCheckIn = async function() {
+      const overlay = document.getElementById(PUBLIC_CHECKIN_OVERLAY_ID);
+      const token = overlay?.dataset.token;
+      if (!token) { showPublicCheckinResult('denied', 'invalid_qr', null); return; }
+
+      const input = document.getElementById('publicCheckinId')?.value?.trim();
+      if (!input) {
+        document.getElementById('publicCheckinResult').innerHTML =
+          '<div style="color:#f87171;text-align:center;padding:8px;">შეიყვანეთ პირადი ნომერი ან ტელეფონი</div>';
+        return;
+      }
+
+      // Rate limit by input value
+      const now = Date.now();
+      if (publicCheckinRateMap[input] && (now - publicCheckinRateMap[input]) < PUBLIC_CHECKIN_RATE_LIMIT_MS) {
+        const remaining = Math.ceil((PUBLIC_CHECKIN_RATE_LIMIT_MS - (now - publicCheckinRateMap[input])) / 1000);
+        document.getElementById('publicCheckinResult').innerHTML =
+          `<div style="color:#f59e0b;text-align:center;padding:8px;">გთხოვთ დაიცადოთ ${remaining} წამი</div>`;
+        return;
+      }
+      publicCheckinRateMap[input] = now;
+
+      const btn = overlay.querySelector('button');
+      if (btn) { btn.disabled = true; btn.textContent = 'მოწმდება...'; }
+
+      try {
+        // Validate QR token against Firestore
+        await loadGymQrToken();
+        if (!gymQrToken || gymQrToken !== token) {
+          await logPublicCheckIn(null, null, token, 'denied', 'invalid_qr');
+          showPublicCheckinResult('denied', 'invalid_qr', null);
+          return;
+        }
+
+        // Find member by personalId or phone
+        await hydrateMembersFromRest();
+        const member = window.members.find(m =>
+          (m.personalId && m.personalId.trim() === input) ||
+          (m.phone && m.phone.trim() === input) ||
+          (m.phone && m.phone.replace(/\s/g,'') === input.replace(/\s/g,''))
+        );
+
+        if (!member) {
+          await logPublicCheckIn(null, { personalId: input, phone: input }, token, 'denied', 'no_subscription');
+          showPublicCheckinResult('denied', 'no_subscription', null);
+          return;
+        }
+
+        const effectiveStatus = getEffectiveStatus(member);
+        let result = 'denied';
+        let reason = '';
+
+        if (effectiveStatus === 'active') {
+          const hour = new Date().getHours();
+          if (member.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) {
+            reason = 'inactive_subscription';
+          } else {
+            result = 'approved';
+          }
+        } else if (effectiveStatus === 'expired') {
+          const hasEnd = member.subscriptionEndDate && isExpired(member.subscriptionEndDate);
+          const noVisits = member.remainingVisits !== null && member.remainingVisits <= 0;
+          reason = (hasEnd || noVisits) ? 'expired_subscription' : 'inactive_subscription';
+        } else {
+          reason = 'inactive_subscription';
+        }
+
+        if (result === 'approved') {
+          // Update member visit count (same as handleQrScan)
+          const checkNow = new Date().toISOString();
+          const updated = { ...member, lastVisit: checkNow, totalVisits: (member.totalVisits || 0) + 1 };
+          if (member.remainingVisits !== null) {
+            updated.remainingVisits = member.remainingVisits - 1;
+            if (updated.remainingVisits <= 0) updated.status = 'expired';
+          }
+          await updateMember(updated);
+        }
+
+        const checkInDoc = await logPublicCheckIn(member.id, member, token, result, reason);
+        showPublicCheckinResult(result, reason, member);
+
+      } catch (e) {
+        console.error('publicCheckIn error', e);
+        document.getElementById('publicCheckinResult').innerHTML =
+          '<div style="color:#f87171;text-align:center;padding:8px;">შეცდომა. სცადეთ ხელახლა.</div>';
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'შესვლის დადასტურება'; }
+      }
+    };
+
+    async function logPublicCheckIn(memberId, member, qrToken, result, reason) {
+      const doc = {
+        memberId: memberId || '',
+        memberName: member ? `${member.firstName || ''} ${member.lastName || ''}`.trim() : '—',
+        phone: member?.phone || '—',
+        personalId: member?.personalId || (member?.phone || '—'),
+        subscriptionStatus: member ? getEffectiveStatus(member) : 'unknown',
+        subscriptionType: member?.subscriptionType || '—',
+        result,
+        reason: reason || '',
+        qrToken: qrToken || '',
+        checkInTime: new Date().toISOString()
+      };
+      try {
+        const { collection: col, addDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+        await addDoc(col(db, QR_CHECKIN_COLLECTION), doc);
+      } catch (e) {
+        // REST fallback
+        try {
+          const pid = firebaseConfig.projectId;
+          const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}`;
+          const body = { fields: Object.fromEntries(Object.entries(doc).map(([k,v]) => [k, {stringValue: String(v)}])) };
+          await fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        } catch (_) {}
+      }
+      return doc;
+    }
+
+    function showPublicCheckinResult(result, reason, member) {
+      const resEl = document.getElementById('publicCheckinResult');
+      const formEl = document.getElementById('publicCheckinForm');
+      if (!resEl) return;
+      if (formEl) formEl.style.display = 'none';
+
+      const approved = result === 'approved';
+      const reasonTexts = {
+        expired_subscription: 'აბონემენტი ვადაგასულია',
+        no_subscription: 'აბონემენტი ვერ მოიძებნა',
+        inactive_subscription: 'აბონემენტი არ არის აქტიური',
+        invalid_qr: 'QR კოდი არასწორია',
+        unauthenticated_user: 'ავტორიზაცია საჭიროა'
+      };
+
+      resEl.innerHTML = `
+        <div style="text-align:center;padding:32px;background:var(--surface,#1e293b);border-radius:16px;border:2px solid ${approved ? '#4ade80' : '#f87171'};">
+          <div style="font-size:3rem;font-weight:900;color:${approved ? '#4ade80' : '#f87171'};margin-bottom:8px;">
+            ${approved ? 'დადასტურებულია ✅' : 'უარყოფილია ❌'}
+          </div>
+          ${member ? `<div style="color:#e2e8f0;font-size:1.1rem;margin-bottom:4px;">${member.firstName} ${member.lastName}</div>` : ''}
+          ${!approved && reason ? `<div style="color:#f87171;font-size:0.9rem;margin-top:8px;">${reasonTexts[reason] || reason}</div>` : ''}
+          <button class="btn bg-slate-600 hover:bg-slate-700" style="margin-top:20px;" onclick="
+            document.getElementById('publicCheckinForm').style.display='';
+            document.getElementById('publicCheckinResult').innerHTML='';
+            document.getElementById('publicCheckinId').value='';
+          ">ხელახლა</button>
+        </div>
+      `;
+    }
+
     window.showTab = function(tab) {
-      if ((tab === 'finance' || tab === 'stats' || tab === 'users') && !isAdmin()) {
+      if ((tab === 'finance' || tab === 'stats' || tab === 'users' || tab === 'qrmanage') && !isAdmin()) {
         showToast('ეს სექცია მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
         tab = 'dashboard';
       }
@@ -2652,6 +3146,9 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
       }
       if (tab === 'settings') {
         updateSettingsTab();
+      }
+      if (tab === 'qrmanage') {
+        loadGymQrToken().then(() => updateQrTab());
       }
       if (tab === 'dashboard') {
         document.getElementById('expiringSoonSection').style.display = 'none';
@@ -4766,6 +5263,7 @@ ${member.remainingVisits != null ? `🔢 ვიზიტების რაო�
     };
 
     document.addEventListener('DOMContentLoaded', () => {
+      checkPublicCheckinParam();
       checkAuth();
       applyRoleVisibility();
       document.getElementById('loginUsername')?.addEventListener('keydown', (e) => {

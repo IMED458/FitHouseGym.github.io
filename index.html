@@ -89,6 +89,7 @@
         <button class="nav-tab" data-admin-only onclick="showTab('finance')"><span class="nav-tab-icon"><i class="fas fa-wallet"></i></span><span class="nav-tab-text">ფინანსები</span></button>
         <button class="nav-tab" data-admin-only onclick="showTab('stats')"><span class="nav-tab-icon"><i class="fas fa-chart-line"></i></span><span class="nav-tab-text">სტატისტიკა</span></button>
         <button class="nav-tab" data-admin-only onclick="showTab('users')"><span class="nav-tab-icon"><i class="fas fa-user-shield"></i></span><span class="nav-tab-text">იუზერები</span></button>
+        <button class="nav-tab" data-admin-only onclick="showTab('qrmanage')"><span class="nav-tab-icon"><i class="fas fa-qrcode"></i></span><span class="nav-tab-text">QR კოდი</span></button>
         <button class="nav-tab" onclick="showTab('settings')"><span class="nav-tab-icon"><i class="fas fa-gear"></i></span><span class="nav-tab-text">პარამეტრები</span></button>
         <button class="nav-tab utility-nav-tab utility-nav-tab-message bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
           <span class="nav-tab-icon"><i class="fas fa-envelope"></i></span><span class="nav-tab-text">შეტყობინება</span>
@@ -548,6 +549,16 @@
         <div id="usersTable" class="admin-table-wrap"></div>
       </div>
 
+      <div id="qrmanage" class="tab-content" data-admin-only>
+        <div class="section-header">
+          <div class="section-copy">
+            <h2 class="section-title">QR კოდი — შესვლის სისტემა</h2>
+            <p class="section-subtitle">საერთო QR კოდის მართვა და check-in ისტორია</p>
+          </div>
+        </div>
+        <div id="qrManageContent"></div>
+      </div>
+
       <div id="settings" class="tab-content">
         <div class="section-header">
           <div class="section-copy">
@@ -588,6 +599,33 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- Public member check-in overlay (shown via URL ?checkin=TOKEN) -->
+  <div id="publicCheckinOverlay" style="display:none;position:fixed;inset:0;background:var(--bg,#0f172a);z-index:9999;overflow-y:auto;">
+    <div style="max-width:440px;margin:60px auto;padding:24px;">
+      <div style="text-align:center;margin-bottom:28px;">
+        <img src="fithause logo.png" alt="FitHouse" style="height:60px;margin-bottom:12px;" onerror="this.style.display='none'">
+        <h2 style="color:var(--text,#f1f5f9);font-size:1.4rem;font-weight:700;">FitHouse Gym — შესვლა</h2>
+      </div>
+      <div id="publicCheckinForm" style="background:var(--surface,#1e293b);border-radius:16px;padding:24px;">
+        <p style="color:var(--text-muted,#94a3b8);margin-bottom:16px;font-size:0.95rem;">შეიყვანეთ თქვენი პირადი ნომერი ან ტელეფონი:</p>
+        <input type="text" id="publicCheckinId" placeholder="პირადი ნომერი ან ტელეფონი" class="form-input" style="margin-bottom:12px;">
+        <button class="btn btn-success" style="width:100%;" onclick="window.submitPublicCheckIn()">
+          <i class="fas fa-sign-in-alt"></i> შესვლის დადასტურება
+        </button>
+      </div>
+      <div id="publicCheckinResult" style="margin-top:20px;"></div>
+    </div>
+  </div>
+
+  <!-- Admin/Operator real-time check-in popup -->
+  <div id="checkinPopup" style="display:none;position:fixed;bottom:24px;right:24px;z-index:8888;min-width:320px;max-width:400px;border-radius:16px;padding:20px;box-shadow:0 8px 32px rgba(0,0,0,0.4);background:var(--surface,#1e293b);border:2px solid #334155;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <strong style="color:var(--text,#f1f5f9);font-size:1rem;">📡 QR სკანირება</strong>
+      <button onclick="document.getElementById('checkinPopup').style.display='none'" style="background:none;border:none;color:#94a3b8;font-size:1.2rem;cursor:pointer;">×</button>
+    </div>
+    <div id="checkinPopupBody"></div>
   </div>
 
   <div id="bulkMessageModal" class="modal">
