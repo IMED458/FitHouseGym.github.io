@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="ka" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FitHouse — პირადი კაბინეტი</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { extend: { colors: { slate: { 950: '#020617' } } } }
+    };
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #020617; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    .tab-btn { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 12px; font-weight: 700; font-size: 0.875rem; cursor: pointer; transition: all 0.15s; width: 100%; text-align: left; border: none; background: transparent; color: #94a3b8; }
+    .tab-btn:hover { background: #1e293b; color: #e2e8f0; }
+    .tab-btn.active { background: #1e293b; color: #ef4444; }
+    .tab-btn.active i { color: #ef4444; }
+    .card { background: #0f172a; border: 1px solid #1e293b; border-radius: 16px; }
+    .badge-active { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-expired { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .badge-paused { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+    .btn-primary { background: linear-gradient(135deg, #dc2626, #e11d48); color: white; border: none; border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: opacity 0.15s; width: 100%; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .form-input { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 12px 12px 12px 42px; color: #f1f5f9; font-size: 0.9rem; width: 100%; outline: none; transition: border-color 0.15s; }
+    .form-input:focus { border-color: rgba(239,68,68,0.5); }
+    #qr-reader { border-radius: 12px; overflow: hidden; }
+    #qr-reader video { border-radius: 12px; }
+    .visit-card-approved { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: 12px; padding: 14px 16px; }
+    .visit-card-rejected { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 14px 16px; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .anim-in { animation: slideIn 0.2s ease; }
+    .checkin-result-approved { background: rgba(16,185,129,0.1); border: 2px solid #10b981; border-radius: 20px; padding: 32px 24px; text-align: center; }
+    .checkin-result-rejected { background: rgba(239,68,68,0.1); border: 2px solid #ef4444; border-radius: 20px; padding: 32px 24px; text-align: center; }
+    ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100">
+
+<!-- Header -->
+<header class="sticky top-0 z-50 border-b border-slate-900" style="background: rgba(2,6,23,0.9); backdrop-filter: blur(12px);">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3 cursor-pointer" onclick="window.location.href='/member'">
+      <div style="width:40px;height:40px;background:linear-gradient(135deg,#dc2626,#e11d48);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:0.95rem;color:white;letter-spacing:1px;">FH</div>
+      <div>
+        <div style="font-weight:900;color:white;line-height:1.1;font-size:0.95rem;">FIT HOUSE</div>
+        <div style="font-size:0.6rem;color:#ef4444;font-weight:800;letter-spacing:0.2em;">GYM & FITNESS</div>
+      </div>
+    </div>
+    <div id="header-user" class="flex items-center gap-3"></div>
+  </div>
+</header>
+
+<main id="app" class="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]"></main>
+
+<footer class="py-4 border-t border-slate-900 text-center text-xs text-slate-700">
+  &copy; <span id="fyear"></span> Fit House Gym &bull; ყველა უფლება დაცულია
+</footer>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+import { initializeFirestore, collection, query, where, getDocs, doc, getDoc, setDoc, addDoc, onSnapshot, updateDoc, orderBy, limit } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+
+document.getElementById('fyear').textContent = new Date().getFullYear();
+
+// ── Firebase ──────────────────────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: 'AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8',
+  authDomain: 'fit-house-gym-d3595.firebaseapp.com',
+  projectId: 'fit-house-gym-d3595',
+  storageBucket: 'fit-house-gym-d3595.firebasestorage.app',
+  messagingSenderId: '548276737406',
+  appId: '1:548276737406:web:12286429916b8c751fcf2f'
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = initializeFirestore(fbApp, { experimentalForceLongPolling: true, useFetchStreams: false });
+
+// ── State ─────────────────────────────────────────────────────────────────
+let session = null;
+try { session = JSON.parse(localStorage.getItem('fh_member_session') || 'null'); } catch(_) {}
+let member = null;
+let activeTab = 'overview';
+let visits = [];
+let payments = [];
+let subHistory = [];
+let memberUnsub = null;
+let visitsUnsub = null;
+let qrScanner = null;
+let qrScannerRunning = false;
+let pendingCheckinToken = null;
+
+const SUB_NAMES = {
+  '12visits': '12 ვარჯიში', single_visit: '1 ვიზიტი',
+  morning: 'დილის (09-16)', unlimited: 'ულიმიტო', other: 'სხვა'
+};
+function subName(t) { return SUB_NAMES[t] || t || '—'; }
+
+function formatD(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+}
+function formatDT(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return `${formatD(iso)} — ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function remainingDays(endIso) {
+  if (!endIso) return 0;
+  const diff = new Date(endIso) - new Date();
+  return diff > 0 ? Math.ceil(diff / 86400000) : 0;
+}
+function isExpiredSub(m) {
+  if (!m) return true;
+  if (m.status !== 'active') return true;
+  if (m.remainingVisits !== null && m.remainingVisits <= 0) return true;
+  if (m.subscriptionEndDate && new Date() > new Date(m.subscriptionEndDate)) return true;
+  return false;
+}
+function effectiveStatus(m) {
+  if (!m) return 'expired';
+  if (m.status === 'active') {
+    if ((m.remainingVisits !== null && m.remainingVisits <= 0) || (m.subscriptionEndDate && new Date() > new Date(m.subscriptionEndDate))) return 'expired';
+  }
+  return m.status || 'expired';
+}
+
+// ── URL helpers ───────────────────────────────────────────────────────────
+function getUrlParam(name) {
+  return new URLSearchParams(window.location.search).get(name);
+}
+
+// ── Render entry ──────────────────────────────────────────────────────────
+pendingCheckinToken = getUrlParam('checkin');
+
+if (!session) {
+  renderLogin();
+} else {
+  startDashboard();
+}
+
+// ── Login ─────────────────────────────────────────────────────────────────
+function renderLogin() {
+  stopListeners();
+  document.getElementById('header-user').innerHTML = '';
+  document.getElementById('app').innerHTML = `
+    <div class="flex justify-center items-center py-12">
+      <div class="w-full max-w-md card p-7 relative overflow-hidden anim-in">
+        <div style="position:absolute;top:0;left:25%;right:25%;height:2px;background:linear-gradient(90deg,#dc2626,#e11d48);"></div>
+        <div class="text-center mb-8">
+          <div style="width:56px;height:56px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.25);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><i class="fas fa-user" style="color:#ef4444;font-size:1.3rem;"></i></div>
+          <h2 style="font-size:1.4rem;font-weight:900;color:white;">მომხმარებლის კაბინეტი</h2>
+          <p style="color:#64748b;font-size:0.85rem;margin-top:6px;">FitHouse წევრის მონაცემებით ავტორიზაცია</p>
+        </div>
+        <div id="login-error" style="display:none;" class="mb-5 p-4 text-sm font-bold rounded-xl flex items-start gap-3" style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;"></div>
+        <form id="login-form" class="space-y-5">
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">მეილი</label>
+            <div style="position:relative;">
+              <i class="fas fa-envelope" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+              <input id="l-email" type="email" required placeholder="user@example.com" class="form-input" autocomplete="email">
+            </div>
+          </div>
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">პირადი ნომერი</label>
+            <div style="position:relative;">
+              <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+              <input id="l-pid" type="password" required placeholder="••••••••••••" class="form-input" autocomplete="off" style="letter-spacing:0.15em;">
+            </div>
+          </div>
+          <button type="submit" class="btn-primary mt-2" id="login-btn">შესვლა</button>
+        </form>
+        <p style="margin-top:20px;text-align:center;font-size:0.78rem;color:#475569;">გამოიყენეთ Fit House-ში რეგისტრირებული მეილი და პირადი ნომერი</p>
+      </div>
+    </div>
+  `;
+
+  const form = document.getElementById('login-form');
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = document.getElementById('l-email').value.trim().toLowerCase();
+    const pid = document.getElementById('l-pid').value.trim();
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('login-error');
+    btn.disabled = true; btn.textContent = 'მიმდინარეობს შესვლა...';
+    errEl.style.display = 'none';
+    try {
+      const q = query(collection(db, 'members'), where('email', '==', email));
+      const snap = await getDocs(q);
+      if (snap.empty) {
+        showLoginError('მეილი ან პირადი ნომერი არასწორია');
+        return;
+      }
+      let found = null;
+      snap.forEach(d => { if (d.data().personalId === pid) found = { id: d.id, ...d.data() }; });
+      if (!found) { showLoginError('მეილი ან პირადი ნომერი არასწორია'); return; }
+      session = { memberId: found.id, email: found.email, firstName: found.firstName, lastName: found.lastName, ts: Date.now() };
+      localStorage.setItem('fh_member_session', JSON.stringify(session));
+      // Clean URL (remove ?checkin if present - will handle after login)
+      const token = pendingCheckinToken;
+      window.history.replaceState({}, '', '/member');
+      pendingCheckinToken = token;
+      startDashboard(token ? 'qr' : 'overview');
+    } catch(err) {
+      console.error(err);
+      showLoginError('კავშირის შეცდომა. სცადეთ ხელახლა.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'შესვლა';
+    }
+  });
+
+  function showLoginError(msg) {
+    const el = document.getElementById('login-error');
+    el.innerHTML = `<i class="fas fa-exclamation-circle" style="color:#f87171;font-size:1.1rem;flex-shrink:0;margin-top:2px;"></i><span style="color:#f87171;">${msg}</span>`;
+    el.style.cssText = 'display:flex;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);margin-bottom:20px;padding:14px;border-radius:12px;';
+    document.getElementById('login-btn').disabled = false;
+    document.getElementById('login-btn').textContent = 'შესვლა';
+  }
+}
+
+// ── Dashboard bootstrap ────────────────────────────────────────────────────
+async function startDashboard(initialTab) {
+  if (initialTab) activeTab = initialTab;
+  renderDashboardShell();
+  await loadMemberData();
+  if (pendingCheckinToken) {
+    activeTab = 'qr';
+    renderTabContent();
+    autoProcessCheckin(pendingCheckinToken);
+    pendingCheckinToken = null;
+  } else {
+    renderTabContent();
+  }
+}
+
+function renderDashboardShell() {
+  const exp = isExpiredSub(member);
+  const statusBadge = !member ? '' : effectiveStatus(member) === 'active'
+    ? '<span class="badge-active">● აქტიური</span>'
+    : effectiveStatus(member) === 'paused'
+    ? '<span class="badge-paused">● შეჩერებული</span>'
+    : '<span class="badge-expired">● ვადაგასული</span>';
+
+  const firstName = member?.firstName || session?.firstName || '';
+  const lastName = member?.lastName || session?.lastName || '';
+  const initial = firstName.charAt(0) || '?';
+
+  // Header
+  document.getElementById('header-user').innerHTML = `
+    <span class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold text-slate-300" style="background:rgba(15,23,42,0.7);border:1px solid #1e293b;">
+      <i class="fas fa-user" style="color:#ef4444;font-size:0.8rem;"></i> ${firstName} ${lastName}
+    </span>
+    <button onclick="doLogout()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:rgba(159,18,57,0.2);border:1px solid rgba(159,18,57,0.3);border-radius:10px;color:#f87171;font-size:0.78rem;font-weight:800;cursor:pointer;">
+      <i class="fas fa-sign-out-alt"></i> გასვლა
+    </button>
+  `;
+
+  document.getElementById('app').innerHTML = `
+    <div class="flex flex-col md:flex-row gap-6 items-start">
+      <!-- Sidebar -->
+      <div class="w-full md:w-72 card p-4 flex-shrink-0">
+        <div class="flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
+          <div style="width:48px;height:48px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${initial}</div>
+          <div>
+            <div style="font-weight:900;color:white;font-size:0.95rem;">${firstName} ${lastName}</div>
+            <div class="mt-1">${statusBadge}</div>
+          </div>
+        </div>
+        <nav id="sidebar-nav" class="space-y-1">
+          ${navItem('overview','fas fa-user','მომხმარებლის გვერდი')}
+          ${navItem('sub','fas fa-calendar-check','ჩემი აბონემენტი')}
+          ${navItem('qr','fas fa-qrcode','QR სკანირება — შესვლა')}
+          ${navItem('visits','fas fa-history','ვიზიტების ისტორია')}
+          ${navItem('payments','fas fa-credit-card','გადახდები')}
+          ${navItem('history','fas fa-clock-rotate-left','აბონემენტის ისტორია')}
+        </nav>
+      </div>
+      <!-- Content -->
+      <div class="flex-1 w-full card p-5 md:p-8 min-h-96" id="tab-content"></div>
+    </div>
+  `;
+
+  document.querySelectorAll('[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => { setTab(btn.dataset.tab); });
+  });
+}
+
+function navItem(tab, icon, label) {
+  const isActive = activeTab === tab;
+  return `<button class="tab-btn${isActive ? ' active' : ''}" data-tab="${tab}">
+    <i class="${icon}" style="width:16px;text-align:center;"></i> ${label}
+  </button>`;
+}
+
+function setTab(tab) {
+  if (tab !== 'qr') stopQrScanner();
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  renderTabContent();
+}
+
+// ── Load data with real-time listeners ────────────────────────────────────
+async function loadMemberData() {
+  if (!session?.memberId) { doLogout(); return; }
+  stopListeners();
+
+  // Real-time member doc listener
+  memberUnsub = onSnapshot(doc(db, 'members', session.memberId), snap => {
+    if (!snap.exists()) { doLogout(); return; }
+    const wasLoaded = !!member;
+    member = { id: snap.id, ...snap.data() };
+    updateSidebarStatus();
+    if (wasLoaded) renderTabContent();
+  }, () => loadMemberDataFallback());
+
+  // Real-time visits listener
+  visitsUnsub = onSnapshot(
+    query(collection(db, 'check_ins'), where('memberId', '==', session.memberId), orderBy('checkInTime', 'desc'), limit(100)),
+    snap => {
+      visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (activeTab === 'visits') renderTabContent();
+    }, () => {}
+  );
+
+  // Load payments and history once (not real-time needed)
+  try {
+    const txSnap = await getDocs(query(collection(db, 'transactions'), where('memberId', '==', session.memberId)));
+    const txs = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    payments = txs
+      .filter(t => t.category === 'membership' || t.type === 'membership_registration' || t.type === 'membership_renewal')
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    subHistory = payments;
+  } catch(_) {}
+}
+
+async function loadMemberDataFallback() {
+  try {
+    const pid = 'fit-house-gym-d3595';
+    const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/members/${session.memberId}`;
+    const r = await fetch(url);
+    if (r.ok) {
+      const d = await r.json();
+      const f = d.fields || {};
+      member = { id: session.memberId, ...Object.fromEntries(Object.entries(f).map(([k,v]) => [k, Object.values(v)[0]])) };
+      renderTabContent();
+    }
+  } catch(_) {}
+}
+
+function updateSidebarStatus() {
+  const nav = document.getElementById('sidebar-nav');
+  if (!nav || !member) return;
+  const badge = effectiveStatus(member) === 'active' ? '<span class="badge-active">● აქტიური</span>'
+    : effectiveStatus(member) === 'paused' ? '<span class="badge-paused">● შეჩერებული</span>'
+    : '<span class="badge-expired">● ვადაგასული</span>';
+  const profileDiv = nav.previousElementSibling?.querySelector('div > div:last-child');
+  if (profileDiv) profileDiv.innerHTML = `<div style="font-weight:900;color:white;font-size:0.95rem;">${member.firstName} ${member.lastName}</div><div class="mt-1">${badge}</div>`;
+}
+
+function stopListeners() {
+  if (memberUnsub) { memberUnsub(); memberUnsub = null; }
+  if (visitsUnsub) { visitsUnsub(); visitsUnsub = null; }
+}
+
+// ── Tab content rendering ─────────────────────────────────────────────────
+function renderTabContent() {
+  if (!member && activeTab !== 'qr') {
+    document.getElementById('tab-content').innerHTML = `<div class="flex items-center justify-center h-40 text-slate-500"><i class="fas fa-spinner fa-spin mr-2"></i> იტვირთება...</div>`;
+    return;
+  }
+  const el = document.getElementById('tab-content');
+  if (!el) return;
+  switch(activeTab) {
+    case 'overview': el.innerHTML = renderOverview(); break;
+    case 'sub': el.innerHTML = renderSubscription(); break;
+    case 'qr': el.innerHTML = renderQrTab(); startQrScanner(); break;
+    case 'visits': el.innerHTML = renderVisits(); break;
+    case 'payments': el.innerHTML = renderPayments(); break;
+    case 'history': el.innerHTML = renderHistory(); break;
+  }
+}
+
+// ── Tab: Overview ──────────────────────────────────────────────────────────
+function renderOverview() {
+  const sub = member;
+  const isActive = effectiveStatus(member) === 'active';
+  const rDays = sub?.subscriptionEndDate ? remainingDays(sub.subscriptionEndDate) : 0;
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">მომხმარებლის გვერდი</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">თქვენი პროფილი და მიმდინარე მდგომარეობა</p>
+      </div>
+      ${!isActive ? `
+        <div style="padding:16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:12px;display:flex;gap:12px;">
+          <i class="fas fa-exclamation-circle" style="color:#f87171;font-size:1.2rem;flex-shrink:0;margin-top:2px;"></i>
+          <div><p style="font-weight:800;color:#f87171;">თქვენი აბონემენტი ვადაგასულია</p>
+          <p style="font-size:0.82rem;color:#f87171;opacity:0.8;margin-top:4px;">ჯიმში შესასვლელად გთხოვთ მიმართოთ Fit House Gym-ის ადმინისტრატორს.</p></div>
+        </div>` : ''}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div style="padding:18px;background:#020617;border:1px solid #1e293b;border-radius:14px;display:flex;gap:14px;">
+          <div style="padding:12px;background:rgba(239,68,68,0.1);border-radius:10px;"><i class="fas fa-calendar-check" style="color:#ef4444;font-size:1.2rem;"></i></div>
+          <div><p style="font-size:0.68rem;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">აბონემენტი</p>
+          <p style="font-weight:900;color:white;font-size:1rem;">${subName(member?.subscriptionType)}</p>
+          <p style="font-size:0.75rem;color:#475569;margin-top:2px;">${sub?.subscriptionEndDate ? 'ვადა: '+formatD(sub.subscriptionEndDate) : '—'}</p></div>
+        </div>
+        <div style="padding:18px;background:#020617;border:1px solid #1e293b;border-radius:14px;display:flex;gap:14px;">
+          <div style="padding:12px;background:rgba(239,68,68,0.1);border-radius:10px;"><i class="fas fa-clock" style="color:#ef4444;font-size:1.2rem;"></i></div>
+          <div><p style="font-size:0.68rem;color:#64748b;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:4px;">დარჩენილი</p>
+          <p style="font-weight:900;color:white;font-size:1rem;">${rDays > 0 ? rDays+' დღე' : '—'}</p>
+          <p style="font-size:0.75rem;color:#475569;margin-top:2px;">${member?.remainingVisits != null ? member.remainingVisits+' ვიზიტი' : 'ულიმიტო'}</p></div>
+        </div>
+      </div>
+      <div style="background:rgba(2,6,23,0.6);padding:20px;border-radius:16px;border:1px solid #1e293b;">
+        <h3 style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:10px;margin-bottom:16px;">პირადი ინფორმაცია</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+          ${profileField('სახელი და გვარი', member.firstName+' '+member.lastName)}
+          ${profileField('მეილი', member.email)}
+          ${profileField('ტელეფონი', member.phone || 'შევსებული არ არის')}
+          ${profileField('სტატუსი', isActive ? 'აქტიური წევრი' : 'არააქტიური')}
+          ${profileField('ბოლო ვიზიტი', member.lastVisit ? formatDT(member.lastVisit) : '—')}
+          ${profileField('სულ ვიზიტები', (member.totalVisits || 0)+' ვარჯიში')}
+        </div>
+      </div>
+    </div>
+  `;
+}
+function profileField(label, value) {
+  return `<div><span style="color:#475569;font-size:0.75rem;display:block;">${label}</span><span style="color:#e2e8f0;font-weight:700;display:block;margin-top:2px;">${value}</span></div>`;
+}
+
+// ── Tab: Subscription ─────────────────────────────────────────────────────
+function renderSubscription() {
+  const isActive = effectiveStatus(member) === 'active';
+  const rDays = member?.subscriptionEndDate ? remainingDays(member.subscriptionEndDate) : 0;
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">აბონემენტის დეტალები</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">მიმდინარე აბონემენტის პირობები</p>
+      </div>
+      ${member?.subscriptionType ? `
+        <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;overflow:hidden;">
+          <div style="padding:20px 24px;border-bottom:1px solid #0f172a;background:rgba(15,23,42,0.3);display:flex;justify-content:space-between;align-items:start;">
+            <div>
+              <span style="font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#ef4444;">მიმდინარე პაკეტი</span>
+              <h3 style="font-size:1.2rem;font-weight:900;color:white;margin-top:4px;">${subName(member.subscriptionType)}</h3>
+            </div>
+            ${isActive ? '<span class="badge-active">აქტიური</span>' : '<span class="badge-expired">ვადაგასული</span>'}
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-y-5 gap-x-6 p-6">
+            ${subDetailRow('დაწყების თარიღი', formatD(member.subscriptionStartDate))}
+            ${subDetailRow('დასრულების თარიღი', formatD(member.subscriptionEndDate))}
+            ${subDetailRow('დარჩენილი დღეები', rDays > 0 ? rDays+' დღე' : 'ვადაგასულია')}
+            ${subDetailRow('დარჩენილი ვიზიტები', member.remainingVisits != null ? member.remainingVisits+' ვიზიტი' : 'ულიმიტო')}
+            ${subDetailRow('ღირებულება', member.subscriptionPrice ? member.subscriptionPrice+'₾' : '—')}
+          </div>
+        </div>
+        ${!isActive ? `<div style="padding:16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:12px;text-align:center;font-size:0.9rem;color:#f87171;font-weight:700;">
+          თქვენი აბონემენტი ვადაგასულია. გთხოვთ მიმართოთ ადმინისტრატორს.
+        </div>` : ''}
+      ` : `<div style="text-align:center;padding:48px;color:#475569;">
+        <i class="fas fa-calendar-xmark" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
+        <p>ამჟამად არ გაქვთ აბონემენტი. გთხოვთ მიმართოთ Fit House Gym-ის ადმინისტრატორს.</p>
+      </div>`}
+    </div>
+  `;
+}
+function subDetailRow(label, value) {
+  return `<div><span style="color:#475569;font-size:0.75rem;display:block;">${label}</span><p style="color:#e2e8f0;font-weight:800;margin-top:2px;">${value}</p></div>`;
+}
+
+// ── Tab: QR Check-in ──────────────────────────────────────────────────────
+function renderQrTab() {
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">QR სკანირება — შესვლა</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">Fit House-ში განთავსებულ QR კოდს დაასკანერეთ ქვემოთ</p>
+      </div>
+      <div id="checkin-result-area"></div>
+      <div id="qr-scanner-wrap" style="max-width:480px;margin:0 auto;">
+        <div id="qr-reader" style="border-radius:16px;overflow:hidden;background:#020617;"></div>
+        <p style="text-align:center;color:#475569;font-size:0.8rem;margin-top:12px;"><i class="fas fa-info-circle mr-1"></i> სკანირება ავტომატურია. კამერა მიმართეთ QR კოდისკენ.</p>
+      </div>
+    </div>
+  `;
+}
+
+function startQrScanner() {
+  if (qrScannerRunning) return;
+  const el = document.getElementById('qr-reader');
+  if (!el) return;
+  try {
+    qrScanner = new Html5Qrcode('qr-reader');
+    qrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 280, height: 280 } },
+      (decoded) => {
+        stopQrScanner();
+        handleScannedQr(decoded);
+      },
+      () => {}
+    ).then(() => { qrScannerRunning = true; }).catch(err => {
+      el.innerHTML = `<div style="padding:32px;text-align:center;color:#f87171;font-size:0.85rem;"><i class="fas fa-video-slash" style="font-size:2rem;margin-bottom:12px;display:block;"></i>კამერაზე წვდომა ვერ მოხერხდა. შეამოწმეთ ბრაუზერის ნებართვები.</div>`;
+    });
+  } catch(e) {
+    el.innerHTML = `<div style="padding:24px;text-align:center;color:#64748b;">QR სკანერი ვერ ჩაიტვირთა</div>`;
+  }
+}
+
+function stopQrScanner() {
+  if (qrScanner && qrScannerRunning) {
+    qrScanner.stop().catch(() => {});
+    qrScannerRunning = false;
+  }
+}
+
+async function handleScannedQr(decoded) {
+  // Extract checkin token from decoded string (may be full URL or just token)
+  let token = decoded;
+  try {
+    const url = new URL(decoded);
+    token = url.searchParams.get('checkin') || decoded;
+  } catch(_) {}
+  await autoProcessCheckin(token);
+}
+
+async function autoProcessCheckin(gymToken) {
+  if (!gymToken) return;
+  const resultEl = document.getElementById('checkin-result-area');
+  if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin mr-2"></i>მოწმდება...</div>`;
+
+  try {
+    // 1. Validate gym QR token
+    const qrDoc = await getDoc(doc(db, 'gym_settings', 'gym_qr_config'));
+    if (!qrDoc.exists() || qrDoc.data().token !== gymToken) {
+      showCheckinResult('rejected', null, 'QR კოდი არასწორია', 'invalid_qr');
+      await logCheckin('rejected', 'invalid_qr', gymToken);
+      return;
+    }
+
+    // 2. Get fresh member data
+    const mDoc = await getDoc(doc(db, 'members', session.memberId));
+    if (!mDoc.exists()) {
+      showCheckinResult('rejected', null, 'მომხმარებელი ვერ მოიძებნა', 'no_member');
+      return;
+    }
+    const m = { id: mDoc.id, ...mDoc.data() };
+
+    // 3. Apply check-in logic (mirrors existing app logic)
+    const now = new Date();
+    const hour = now.getHours();
+    let result = 'approved', reason = '';
+
+    if (m.status !== 'active') {
+      result = 'denied'; reason = 'inactive_subscription';
+    } else if (m.subscriptionEndDate && now > new Date(m.subscriptionEndDate)) {
+      result = 'denied'; reason = 'expired_subscription';
+      await updateDoc(doc(db, 'members', m.id), { status: 'expired' });
+    } else if (m.remainingVisits !== null && m.remainingVisits <= 0) {
+      result = 'denied'; reason = 'no_visits';
+      await updateDoc(doc(db, 'members', m.id), { status: 'expired' });
+    } else if (m.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) {
+      result = 'denied'; reason = 'time_restriction';
+    }
+
+    // 4. If approved, update member stats
+    if (result === 'approved') {
+      const updates = { lastVisit: now.toISOString(), totalVisits: (m.totalVisits || 0) + 1 };
+      if (m.remainingVisits !== null) {
+        updates.remainingVisits = m.remainingVisits - 1;
+        if (updates.remainingVisits <= 0) updates.status = 'expired';
+      }
+      await updateDoc(doc(db, 'members', m.id), updates);
+    }
+
+    // 5. Log check-in
+    await logCheckin(result, reason, gymToken, m);
+
+    // 6. Show result
+    showCheckinResult(result, m, reasonText(reason), reason);
+
+  } catch(err) {
+    console.error('checkin error', err);
+    if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:24px;color:#f87171;">შეცდომა. სცადეთ ხელახლა.</div>`;
+  }
+}
+
+function reasonText(r) {
+  const map = {
+    expired_subscription: 'აბონემენტი ვადაგასულია',
+    inactive_subscription: 'აბონემენტი არ არის აქტიური',
+    no_visits: 'ვიზიტები ამოწურულია',
+    invalid_qr: 'QR კოდი არასწორია',
+    time_restriction: 'მხოლოდ 09:00–16:00 (დილის აბონემენტი)',
+    no_member: 'მომხმარებელი ვერ მოიძებნა'
+  };
+  return map[r] || r;
+}
+
+function showCheckinResult(result, m, message, reason) {
+  const el = document.getElementById('checkin-result-area');
+  if (!el) return;
+  const approved = result === 'approved';
+  const rDays = m?.subscriptionEndDate ? remainingDays(m.subscriptionEndDate) : 0;
+  el.innerHTML = `
+    <div class="${approved ? 'checkin-result-approved' : 'checkin-result-rejected'} anim-in">
+      <div style="font-size:2.5rem;font-weight:900;color:${approved ? '#10b981' : '#ef4444'};margin-bottom:8px;">
+        ${approved ? 'შესვლა დადასტურებულია ✅' : 'შესვლა უარყოფილია ❌'}
+      </div>
+      ${m ? `<p style="font-size:1.1rem;font-weight:800;color:#e2e8f0;margin-bottom:4px;">${m.firstName} ${m.lastName}</p>` : ''}
+      ${approved ? `
+        <p style="color:#94a3b8;font-size:0.85rem;">აბონემენტი: <strong style="color:#e2e8f0;">${subName(m?.subscriptionType)}</strong></p>
+        ${rDays > 0 ? `<p style="color:#94a3b8;font-size:0.85rem;">დარჩენილი დღეები: <strong style="color:#e2e8f0;">${rDays}</strong></p>` : ''}
+        ${m?.remainingVisits != null ? `<p style="color:#94a3b8;font-size:0.85rem;">დარჩენილი ვიზიტები: <strong style="color:#e2e8f0;">${Math.max(0,m.remainingVisits-1)}</strong></p>` : ''}
+      ` : `
+        ${message ? `<p style="color:#f87171;font-size:0.9rem;margin-top:6px;">მიზეზი: <strong>${message}</strong></p>` : ''}
+      `}
+      <button onclick="retryCheckin()" style="margin-top:20px;padding:10px 24px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#e2e8f0;font-weight:700;cursor:pointer;font-size:0.85rem;">ხელახლა სცადე</button>
+    </div>
+  `;
+}
+
+window.retryCheckin = function() {
+  const el = document.getElementById('checkin-result-area');
+  if (el) el.innerHTML = '';
+  startQrScanner();
+};
+
+async function logCheckin(result, reason, gymToken, m) {
+  try {
+    await addDoc(collection(db, 'check_ins'), {
+      memberId: session.memberId,
+      memberName: m ? `${m.firstName} ${m.lastName}`.trim() : (session.firstName+' '+session.lastName),
+      phone: m?.phone || '—',
+      personalId: m?.personalId || '—',
+      subscriptionStatus: m ? effectiveStatus(m) : 'unknown',
+      subscriptionType: m?.subscriptionType || '—',
+      result,
+      reason: reason || '',
+      qrToken: gymToken || '',
+      checkInTime: new Date().toISOString(),
+      source: 'member_portal'
+    });
+  } catch(_) {}
+}
+
+// ── Tab: Visits ────────────────────────────────────────────────────────────
+function renderVisits() {
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h2 style="font-size:1.4rem;font-weight:900;color:white;">ვიზიტების ისტორია</h2>
+          <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">QR სკანირებით დაფიქსირებული შესვლები</p>
+        </div>
+      </div>
+      ${visits.length === 0 ? `
+        <div style="text-align:center;padding:48px;color:#475569;">
+          <i class="fas fa-history" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
+          <p>ვიზიტების ისტორია ცარიელია</p>
+        </div>
+      ` : `
+        <div class="space-y-3 max-h-96 overflow-y-auto pr-1">
+          ${visits.map(v => `
+            <div class="${v.result==='approved' ? 'visit-card-approved' : 'visit-card-rejected'} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:${v.result==='approved' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};flex-shrink:0;">
+                  <i class="fas fa-${v.result==='approved' ? 'check' : 'times'}" style="color:${v.result==='approved' ? '#10b981' : '#ef4444'};font-size:0.85rem;"></i>
+                </div>
+                <div>
+                  <p style="font-weight:800;font-size:0.9rem;color:#e2e8f0;">${formatDT(v.checkInTime)}</p>
+                  <p style="font-size:0.72rem;color:#64748b;margin-top:2px;text-transform:uppercase;letter-spacing:0.05em;">წყარო: QR სკანერი</p>
+                </div>
+              </div>
+              <div style="text-align:right;">
+                <span style="font-size:0.78rem;font-weight:800;padding:3px 10px;border-radius:9999px;background:${v.result==='approved' ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};color:${v.result==='approved' ? '#10b981' : '#f87171'};">
+                  ${v.result==='approved' ? 'შესვლა დადასტურებულია' : 'შესვლა უარყოფილია'}
+                </span>
+                ${v.reason ? `<p style="font-size:0.75rem;color:#f87171;margin-top:4px;">${reasonText(v.reason)}</p>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// ── Tab: Payments ──────────────────────────────────────────────────────────
+function renderPayments() {
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">გადახდების ისტორია</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">დაფიქსირებული გადახდები</p>
+      </div>
+      ${payments.length === 0 ? `
+        <div style="text-align:center;padding:48px;color:#475569;">
+          <i class="fas fa-credit-card" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
+          <p>გადახდების ისტორია ცარიელია</p>
+        </div>
+      ` : `
+        <div style="overflow-x:auto;border:1px solid #1e293b;border-radius:14px;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+            <thead>
+              <tr style="background:#020617;">
+                <th style="padding:12px 16px;text-align:left;color:#64748b;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;">თარიღი</th>
+                <th style="padding:12px 16px;text-align:left;color:#64748b;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;">თანხა</th>
+                <th style="padding:12px 16px;text-align:left;color:#64748b;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;">აბონემენტი</th>
+                <th style="padding:12px 16px;text-align:left;color:#64748b;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;">მეთოდი</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payments.map(p => `
+                <tr style="border-top:1px solid #1e293b;">
+                  <td style="padding:12px 16px;color:#94a3b8;">${formatD(p.createdAt)}</td>
+                  <td style="padding:12px 16px;color:#ef4444;font-weight:800;">${p.amount || 0}₾</td>
+                  <td style="padding:12px 16px;color:#e2e8f0;font-weight:700;">${p.subscriptionName || subName(p.subscriptionType) || '—'}</td>
+                  <td style="padding:12px 16px;color:#64748b;">${p.paymentMethod || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// ── Tab: Subscription History ─────────────────────────────────────────────
+function renderHistory() {
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">აბონემენტის ისტორია</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">გააქტიურებები და განახლებები</p>
+      </div>
+      ${subHistory.length === 0 ? `
+        <div style="text-align:center;padding:48px;color:#475569;">
+          <i class="fas fa-clock-rotate-left" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
+          <p>ისტორია ცარიელია</p>
+        </div>
+      ` : `
+        <div class="space-y-4 max-h-96 overflow-y-auto pr-1">
+          ${subHistory.map(h => `
+            <div style="background:#020617;border:1px solid #1e293b;border-radius:14px;padding:16px 20px;">
+              <div class="flex items-start justify-between gap-3 flex-wrap">
+                <div>
+                  <p style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#ef4444;">${h.type === 'membership_registration' ? 'გააქტიურება' : 'განახლება'}</p>
+                  <p style="font-weight:900;color:white;font-size:1rem;margin-top:2px;">${h.subscriptionName || subName(h.subscriptionType)}</p>
+                </div>
+                <span style="font-weight:800;font-size:1.1rem;color:#ef4444;">${h.amount}₾</span>
+              </div>
+              <div class="grid grid-cols-2 gap-3 mt-4 text-sm">
+                ${h.subscriptionStartDate ? `<div><span style="color:#475569;font-size:0.75rem;">დასაწყისი</span><p style="color:#e2e8f0;font-weight:700;">${formatD(h.subscriptionStartDate)}</p></div>` : ''}
+                ${h.subscriptionEndDate ? `<div><span style="color:#475569;font-size:0.75rem;">დასასრული</span><p style="color:#e2e8f0;font-weight:700;">${formatD(h.subscriptionEndDate)}</p></div>` : ''}
+                <div><span style="color:#475569;font-size:0.75rem;">ოპერაცია</span><p style="color:#94a3b8;font-size:0.82rem;">${formatD(h.createdAt)}</p></div>
+                ${h.paymentMethod ? `<div><span style="color:#475569;font-size:0.75rem;">გადახდა</span><p style="color:#94a3b8;">${h.paymentMethod}</p></div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `}
+    </div>
+  `;
+}
+
+// ── Logout ─────────────────────────────────────────────────────────────────
+window.doLogout = function() {
+  stopListeners();
+  stopQrScanner();
+  session = null; member = null; visits = []; payments = []; subHistory = [];
+  localStorage.removeItem('fh_member_session');
+  window.location.href = '/member';
+};
+</script>
+</body>
+</html>
