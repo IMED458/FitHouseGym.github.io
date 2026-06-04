@@ -282,7 +282,9 @@ function renderDashboardShell() {
         </nav>
       </div>
       <!-- Content -->
-      <div class="flex-1 w-full card p-5 md:p-8 min-h-96" id="tab-content"></div>
+      <div class="flex-1 w-full card" style="overflow-y:auto;max-height:calc(100vh - 120px);" id="tab-content-wrap">
+        <div id="tab-content" style="padding:20px 24px;"></div>
+      </div>
     </div>
   `;
 
@@ -474,6 +476,42 @@ function renderOverview() {
           ${profileField('სტატუსი', isActive ? 'აქტიური წევრი' : 'არააქტიური')}
           ${profileField('ბოლო ვიზიტი', member.lastVisit ? formatDT(member.lastVisit) : '—')}
           ${profileField('სულ ვიზიტები', (member.totalVisits || 0)+' ვარჯიში')}
+        </div>
+      </div>
+
+      <div style="background:rgba(2,6,23,0.6);padding:20px;border-radius:16px;border:1px solid #1e293b;">
+        <div style="display:flex;align-items:center;gap:8px;border-bottom:1px solid #1e293b;padding-bottom:10px;margin-bottom:16px;">
+          <i class="fas fa-lock" style="color:#ef4444;font-size:0.85rem;"></i>
+          <h3 style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin:0;">პაროლის შეცვლა</h3>
+        </div>
+        <div id="pw-msg"></div>
+        <div style="max-width:420px;">
+          <div style="margin-bottom:12px;">
+            <label style="display:block;font-size:0.72rem;font-weight:700;color:#64748b;margin-bottom:6px;">მიმდინარე პაროლი (პირადი ნომერი)</label>
+            <div style="position:relative;">
+              <i class="fas fa-lock" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.8rem;"></i>
+              <input id="pw-current" type="password" placeholder="••••••••••••" class="form-input" style="font-size:0.88rem;">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div>
+              <label style="display:block;font-size:0.72rem;font-weight:700;color:#64748b;margin-bottom:6px;">ახალი პაროლი</label>
+              <div style="position:relative;">
+                <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.8rem;"></i>
+                <input id="pw-new" type="password" placeholder="••••••••••••" class="form-input" style="font-size:0.88rem;">
+              </div>
+            </div>
+            <div>
+              <label style="display:block;font-size:0.72rem;font-weight:700;color:#64748b;margin-bottom:6px;">გაიმეორეთ</label>
+              <div style="position:relative;">
+                <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.8rem;"></i>
+                <input id="pw-confirm" type="password" placeholder="••••••••••••" class="form-input" style="font-size:0.88rem;">
+              </div>
+            </div>
+          </div>
+          <button onclick="window.changePassword()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#dc2626,#e11d48);color:white;border:none;border-radius:10px;font-weight:800;font-size:0.85rem;cursor:pointer;" id="pw-btn">
+            <i class="fas fa-save"></i> პაროლის განახლება
+          </button>
         </div>
       </div>
     </div>
@@ -827,6 +865,40 @@ function renderHistory() {
 }
 
 // ── Logout ─────────────────────────────────────────────────────────────────
+window.changePassword = async function() {
+  const cur = document.getElementById('pw-current')?.value?.trim();
+  const nw = document.getElementById('pw-new')?.value?.trim();
+  const cf = document.getElementById('pw-confirm')?.value?.trim();
+  const msgEl = document.getElementById('pw-msg');
+  const btn = document.getElementById('pw-btn');
+
+  function showPwMsg(text, ok) {
+    if (!msgEl) return;
+    msgEl.innerHTML = `<div style="margin-bottom:12px;padding:10px 14px;border-radius:10px;font-size:0.82rem;font-weight:700;background:${ok ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)'};border:1px solid ${ok ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'};color:${ok ? '#34d399' : '#f87171'};display:flex;gap:8px;align-items:center;"><i class="fas fa-${ok ? 'check-circle' : 'exclamation-circle'}"></i>${text}</div>`;
+  }
+
+  if (!cur || !nw || !cf) { showPwMsg('შეავსეთ ყველა ველი', false); return; }
+  if (nw !== cf) { showPwMsg('ახალი პაროლები არ ემთხვევა', false); return; }
+  if (nw.length < 3) { showPwMsg('პაროლი ძალიან მოკლეა', false); return; }
+
+  btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> მიმდინარეობს...';
+  try {
+    const mDoc = await getDoc(doc(db, 'members', session.memberId));
+    if (!mDoc.exists()) { showPwMsg('მომხმარებელი ვერ მოიძებნა', false); return; }
+    const m = mDoc.data();
+    if (m.personalId !== cur) { showPwMsg('მიმდინარე პაროლი არასწორია', false); return; }
+    await updateDoc(doc(db, 'members', session.memberId), { personalId: nw });
+    showPwMsg('პაროლი წარმატებით შეიცვალა!', true);
+    document.getElementById('pw-current').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-confirm').value = '';
+  } catch(e) {
+    showPwMsg('შეცდომა. სცადეთ ხელახლა.', false);
+  } finally {
+    btn.disabled = false; btn.innerHTML = '<i class="fas fa-save"></i> პაროლის განახლება';
+  }
+};
+
 window.doLogout = function() {
   stopListeners();
   stopQrScanner();
