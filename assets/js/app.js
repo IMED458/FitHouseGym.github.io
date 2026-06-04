@@ -2622,6 +2622,7 @@ ${memberPortalUrl}
       }
       const saved = await updateMember(updated);
       if (!saved) return;
+      logMemberVisit(member, 'approved', '', 'admin_qr');
 
       const remainingText = updated.remainingVisits != null
         ? `<div><strong>დარჩენილი ვიზიტი:</strong> ${updated.remainingVisits}</div>`
@@ -2640,6 +2641,27 @@ ${memberPortalUrl}
     }
 
     function checkUrlQrParam() {}
+
+    async function logMemberVisit(member, result, reason, source) {
+      if (!member?.id) return;
+      try {
+        const { collection: col, addDoc: aDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
+        await aDoc(col(db, 'check_ins'), {
+          memberId: member.id,
+          memberName: `${member.firstName || ''} ${member.lastName || ''}`.trim(),
+          phone: member.phone || '—',
+          personalId: member.personalId || '—',
+          subscriptionStatus: getEffectiveStatus(member),
+          subscriptionType: member.subscriptionType || '—',
+          result,
+          reason: reason || '',
+          qrToken: '',
+          checkInTime: new Date().toISOString(),
+          source,
+          loggedBy: getCurrentUserDisplayName() || 'admin'
+        });
+      } catch(_) {}
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // QR CODE — ADMIN MANAGEMENT
@@ -3226,6 +3248,7 @@ ${memberPortalUrl}
         if (updated.remainingVisits <= 0) updated.status = 'expired';
       }
       await updateMember(updated);
+      logMemberVisit(m, 'approved', '', 'admin_manual');
       showToast("შესვლა დაფიქსირდა!");
       document.getElementById('checkinSearch').value = '';
       document.getElementById('checkinResult').innerHTML = '';

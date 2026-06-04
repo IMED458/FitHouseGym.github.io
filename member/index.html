@@ -35,8 +35,9 @@
     .visit-card-rejected { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 12px; padding: 14px 16px; }
     @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     .anim-in { animation: slideIn 0.2s ease; }
-    .checkin-result-approved { background: rgba(16,185,129,0.1); border: 2px solid #10b981; border-radius: 20px; padding: 32px 24px; text-align: center; }
-    .checkin-result-rejected { background: rgba(239,68,68,0.1); border: 2px solid #ef4444; border-radius: 20px; padding: 32px 24px; text-align: center; }
+    .checkin-result-approved { background: rgba(16,185,129,0.1); border: 2px solid #10b981; border-radius: 20px; padding: 24px 16px; text-align: center; overflow: hidden; }
+    .checkin-result-rejected { background: rgba(239,68,68,0.1); border: 2px solid #ef4444; border-radius: 20px; padding: 24px 16px; text-align: center; overflow: hidden; }
+    .checkin-headline { font-size: clamp(1.2rem, 5vw, 1.8rem); font-weight: 900; line-height: 1.2; word-break: break-word; }
     ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
   </style>
 </head>
@@ -320,23 +321,69 @@ async function loadMemberData() {
     if (wasLoaded) renderTabContent();
   }, () => loadMemberDataFallback());
 
-  // Real-time visits listener
+  // Real-time visits listener — no orderBy to avoid composite index requirement; sort in JS
   visitsUnsub = onSnapshot(
-    query(collection(db, 'check_ins'), where('memberId', '==', session.memberId), orderBy('checkInTime', 'desc'), limit(100)),
+    query(collection(db, 'check_ins'), where('memberId', '==', session.memberId), limit(200)),
     snap => {
-      visits = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      visits = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
       if (activeTab === 'visits') renderTabContent();
-    }, () => {}
+    },
+    () => loadVisitsFallback()
   );
 
-  // Load payments and history once (not real-time needed)
+  // Load payments and history — no orderBy compound query; sort in JS
   try {
     const txSnap = await getDocs(query(collection(db, 'transactions'), where('memberId', '==', session.memberId)));
     const txs = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
     payments = txs
       .filter(t => t.category === 'membership' || t.type === 'membership_registration' || t.type === 'membership_renewal')
       .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-    subHistory = payments;
+    subHistory = [...payments];
+  } catch(e) {
+    await loadPaymentsFallback();
+  }
+}
+
+async function loadVisitsFallback() {
+  try {
+    const pid = 'fit-house-gym-d3595';
+    const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents:runQuery`;
+    const body = { structuredQuery: { from: [{ collectionId: 'check_ins' }], where: { fieldFilter: { field: { fieldPath: 'memberId' }, op: 'EQUAL', value: { stringValue: session.memberId } } }, limit: 200 } };
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) return;
+    const results = await r.json();
+    visits = (results || [])
+      .filter(row => row.document)
+      .map(row => {
+        const f = row.document.fields || {};
+        return Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Object.values(v)[0]]));
+      })
+      .sort((a, b) => (b.checkInTime || '').localeCompare(a.checkInTime || ''));
+    if (activeTab === 'visits') renderTabContent();
+  } catch(_) {}
+}
+
+async function loadPaymentsFallback() {
+  try {
+    const pid = 'fit-house-gym-d3595';
+    const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents:runQuery`;
+    const body = { structuredQuery: { from: [{ collectionId: 'transactions' }], where: { fieldFilter: { field: { fieldPath: 'memberId' }, op: 'EQUAL', value: { stringValue: session.memberId } } }, limit: 100 } };
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!r.ok) return;
+    const results = await r.json();
+    const txs = (results || [])
+      .filter(row => row.document)
+      .map(row => {
+        const f = row.document.fields || {};
+        return Object.fromEntries(Object.entries(f).map(([k, v]) => [k, Object.values(v)[0]]));
+      });
+    payments = txs
+      .filter(t => t.category === 'membership' || t.type === 'membership_registration' || t.type === 'membership_renewal')
+      .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    subHistory = [...payments];
+    if (activeTab === 'payments' || activeTab === 'history') renderTabContent();
   } catch(_) {}
 }
 
@@ -609,20 +656,23 @@ function reasonText(r) {
 function showCheckinResult(result, m, message, reason) {
   const el = document.getElementById('checkin-result-area');
   if (!el) return;
+  // Hide scanner after result
+  const wrap = document.getElementById('qr-scanner-wrap');
+  if (wrap) wrap.style.display = 'none';
   const approved = result === 'approved';
   const rDays = m?.subscriptionEndDate ? remainingDays(m.subscriptionEndDate) : 0;
   el.innerHTML = `
     <div class="${approved ? 'checkin-result-approved' : 'checkin-result-rejected'} anim-in">
-      <div style="font-size:2.5rem;font-weight:900;color:${approved ? '#10b981' : '#ef4444'};margin-bottom:8px;">
-        ${approved ? 'შესვლა დადასტურებულია ✅' : 'შესვლა უარყოფილია ❌'}
+      <div class="checkin-headline" style="color:${approved ? '#10b981' : '#ef4444'};margin-bottom:12px;">
+        ${approved ? '✅ შესვლა<br>დადასტურებულია' : '❌ შესვლა<br>უარყოფილია'}
       </div>
-      ${m ? `<p style="font-size:1.1rem;font-weight:800;color:#e2e8f0;margin-bottom:4px;">${m.firstName} ${m.lastName}</p>` : ''}
+      ${m ? `<p style="font-size:1rem;font-weight:800;color:#e2e8f0;margin-bottom:8px;">${m.firstName} ${m.lastName}</p>` : ''}
       ${approved ? `
-        <p style="color:#94a3b8;font-size:0.85rem;">აბონემენტი: <strong style="color:#e2e8f0;">${subName(m?.subscriptionType)}</strong></p>
-        ${rDays > 0 ? `<p style="color:#94a3b8;font-size:0.85rem;">დარჩენილი დღეები: <strong style="color:#e2e8f0;">${rDays}</strong></p>` : ''}
-        ${m?.remainingVisits != null ? `<p style="color:#94a3b8;font-size:0.85rem;">დარჩენილი ვიზიტები: <strong style="color:#e2e8f0;">${Math.max(0,m.remainingVisits-1)}</strong></p>` : ''}
+        <p style="color:#94a3b8;font-size:0.85rem;margin-bottom:2px;">აბონემენტი: <strong style="color:#e2e8f0;">${subName(m?.subscriptionType)}</strong></p>
+        ${rDays > 0 ? `<p style="color:#94a3b8;font-size:0.85rem;margin-bottom:2px;">დარჩენილი დღეები: <strong style="color:#e2e8f0;">${rDays}</strong></p>` : ''}
+        ${m?.remainingVisits != null ? `<p style="color:#94a3b8;font-size:0.85rem;">დარჩენილი ვიზიტები: <strong style="color:#e2e8f0;">${Math.max(0, (m.remainingVisits||0) - 1)}</strong></p>` : ''}
       ` : `
-        ${message ? `<p style="color:#f87171;font-size:0.9rem;margin-top:6px;">მიზეზი: <strong>${message}</strong></p>` : ''}
+        ${message ? `<p style="color:#f87171;font-size:0.88rem;margin-top:8px;">მიზეზი: <strong>${message}</strong></p>` : ''}
       `}
       <button onclick="retryCheckin()" style="margin-top:20px;padding:10px 24px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#e2e8f0;font-weight:700;cursor:pointer;font-size:0.85rem;">ხელახლა სცადე</button>
     </div>
@@ -632,6 +682,8 @@ function showCheckinResult(result, m, message, reason) {
 window.retryCheckin = function() {
   const el = document.getElementById('checkin-result-area');
   if (el) el.innerHTML = '';
+  const wrap = document.getElementById('qr-scanner-wrap');
+  if (wrap) wrap.style.display = '';
   startQrScanner();
 };
 
