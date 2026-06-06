@@ -90,6 +90,7 @@
         <button class="nav-tab" data-admin-only onclick="showTab('stats')"><span class="nav-tab-icon"><i class="fas fa-chart-line"></i></span><span class="nav-tab-text">სტატისტიკა</span></button>
         <button class="nav-tab" data-admin-only onclick="showTab('users')"><span class="nav-tab-icon"><i class="fas fa-user-shield"></i></span><span class="nav-tab-text">იუზერები</span></button>
         <button class="nav-tab" data-admin-only onclick="showTab('qrmanage')"><span class="nav-tab-icon"><i class="fas fa-qrcode"></i></span><span class="nav-tab-text">QR კოდი</span></button>
+        <button class="nav-tab" onclick="showTab('trainers')"><span class="nav-tab-icon"><i class="fas fa-dumbbell"></i></span><span class="nav-tab-text">ტრენერები</span></button>
         <button class="nav-tab" onclick="showTab('settings')"><span class="nav-tab-icon"><i class="fas fa-gear"></i></span><span class="nav-tab-text">პარამეტრები</span></button>
         <button class="nav-tab utility-nav-tab utility-nav-tab-message bg-purple-600 hover:bg-purple-700" onclick="openBulkMessageModal()">
           <span class="nav-tab-icon"><i class="fas fa-envelope"></i></span><span class="nav-tab-text">შეტყობინება</span>
@@ -220,7 +221,17 @@
             <input type="number" id="customDuration" placeholder="ვადა (დღე)" class="form-input">
             <input type="number" id="customVisits" placeholder="ვიზიტები (ცარიელი = ულიმიტო)" class="form-input">
           </div>
-          
+
+          <div class="mt-8 p-5 bg-slate-900 rounded-2xl">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" id="regTrainerService" onchange="window.toggleRegTrainer()" style="width:20px;height:20px;cursor:pointer;">
+              <span class="font-bold text-lg"><i class="fas fa-dumbbell text-red-400"></i> ტრენერის სერვისი</span>
+            </label>
+            <div id="regTrainerSelectWrap" style="display:none;" class="mt-4">
+              <select id="regTrainerId" class="form-input"></select>
+            </div>
+          </div>
+
           <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-4 mt-8 w-full">
             რეგისტრაცია
           </button>
@@ -557,6 +568,22 @@
           </div>
         </div>
         <div id="qrManageContent"></div>
+      </div>
+
+      <div id="trainers" class="tab-content">
+        <div class="section-header">
+          <div class="section-copy">
+            <h2 class="section-title">ტრენერები</h2>
+            <p class="section-subtitle">ტრენერების მართვა და რენქინგი კლიენტების მიხედვით</p>
+          </div>
+          <div class="section-actions">
+            <input type="text" id="trainerSearchInput" placeholder="სახელი, სპეციალიზაცია..." class="search-input">
+            <button class="btn bg-emerald-600 hover:bg-emerald-700" onclick="window.openTrainerForm()">
+              <i class="fas fa-user-plus"></i> ტრენერის დამატება
+            </button>
+          </div>
+        </div>
+        <div id="trainersTable" class="admin-table-wrap"></div>
       </div>
 
       <div id="settings" class="tab-content">
@@ -1088,6 +1115,61 @@
           <i class="fas fa-save"></i> შენახვა
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeUserForm()">
+          გაუქმება
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="trainerFormModal" class="modal">
+    <div class="modal-content" style="max-width:640px;">
+      <div class="modal-header">
+        <h3 id="trainerFormTitle">ტრენერის დამატება</h3>
+        <button class="modal-close" onclick="window.closeTrainerForm()">×</button>
+      </div>
+      <input type="hidden" id="trainerFormId">
+      <div class="product-form-grid">
+        <div class="product-form-field">
+          <label for="trainerFirstName">სახელი</label>
+          <input type="text" id="trainerFirstName" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="trainerLastName">გვარი</label>
+          <input type="text" id="trainerLastName" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="trainerPhone">ტელეფონი</label>
+          <input type="tel" id="trainerPhone" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="trainerSpecialization">სპეციალიზაცია</label>
+          <select id="trainerSpecialization" class="form-input"></select>
+        </div>
+        <div class="product-form-field">
+          <label for="trainerUsername">იუზერი (login)</label>
+          <input type="text" id="trainerUsername" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="trainerPassword">პაროლი</label>
+          <input type="password" id="trainerPassword" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="trainerStatus">სტატუსი</label>
+          <select id="trainerStatus" class="form-input">
+            <option value="active">აქტიური</option>
+            <option value="disabled">არააქტიური</option>
+          </select>
+        </div>
+        <div class="product-form-field">
+          <label for="trainerPhotoUrl">ფოტოს URL (არასავალდებულო)</label>
+          <input type="text" id="trainerPhotoUrl" class="form-input" placeholder="https://...">
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="window.saveTrainer()">
+          <i class="fas fa-save"></i> შენახვა
+        </button>
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeTrainerForm()">
           გაუქმება
         </button>
       </div>

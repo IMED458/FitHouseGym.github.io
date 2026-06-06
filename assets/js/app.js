@@ -45,6 +45,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.products = [];
     window.transactions = [];
     window.activityLogs = [];
+    window.trainers = [];
+    let trainersStreamStarted = false;
+    let trainersLoadedOnce = false;
     window.selectedSubscription = null;
     window.editingProductId = null;
     window.productSaleCart = [];
@@ -429,6 +432,38 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     }
 
+    async function fetchTrainersViaRest() {
+      return (await fetchCollectionViaRest('trainers'))
+        .sort((a, b) => String(a.firstName || '').localeCompare(String(b.firstName || ''), 'ka'));
+    }
+
+    async function hydrateTrainersFromRest() {
+      try {
+        window.trainers = await fetchTrainersViaRest();
+        trainersLoadedOnce = true;
+        safeUiUpdate('trainers', updateTrainersTab);
+      } catch (e) {
+        console.warn('trainers rest hydrate failed', e);
+      }
+    }
+
+    function loadTrainers() {
+      hydrateTrainersFromRest();
+      if (trainersStreamStarted) return;
+      trainersStreamStarted = true;
+      const q = query(collection(db, "trainers"));
+      onSnapshot(q, (snapshot) => {
+        window.trainers = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => String(a.firstName || '').localeCompare(String(b.firstName || ''), 'ka'));
+        trainersLoadedOnce = true;
+        safeUiUpdate('trainers', updateTrainersTab);
+      }, (error) => {
+        console.warn('trainers snapshot failed, using rest fallback', error);
+        hydrateTrainersFromRest();
+      });
+    }
+
     async function hydrateActivityLogsFromRest() {
       try {
         window.activityLogs = await fetchActivityLogsViaRest();
@@ -783,6 +818,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
             <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
+            ${member.trainerServiceEnabled && member.trainerId ? `<div><strong>ტრენერი:</strong> <span style="color:#f87171;"><i class="fas fa-dumbbell"></i> ${getTrainerName(member.trainerId) || '—'}</span></div>` : ''}
           </div>
           <div class="flex flex-wrap gap-3 justify-center">
             <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
@@ -1016,6 +1052,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         loadProducts();
         loadTransactions();
         loadActivityLogs();
+        loadTrainers();
         dataStreamsStarted = true;
       } else {
         updateAll();
@@ -2246,6 +2283,210 @@ ${memberPortalUrl}
       );
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // TRAINERS MODULE
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const TRAINER_SPECIALIZATIONS = ['CrossFit', 'Bodybuilding', 'Cardio', 'Yoga', 'Pilates', 'Functional', 'Powerlifting', 'Boxing', 'სხვა'];
+
+    function getActiveTrainers() {
+      return (window.trainers || []).filter((t) => (t.status || 'active') !== 'disabled');
+    }
+
+    function getTrainerById(id) {
+      return (window.trainers || []).find((t) => t.id === id) || null;
+    }
+
+    function getTrainerName(id) {
+      const t = getTrainerById(id);
+      return t ? `${t.firstName || ''} ${t.lastName || ''}`.trim() : '';
+    }
+
+    function getTrainerClientCount(trainerId) {
+      return (window.members || []).filter((m) =>
+        m.trainerId === trainerId && m.trainerServiceEnabled && getEffectiveStatus(m) === 'active'
+      ).length;
+    }
+
+    function buildTrainerOptions(selectedId) {
+      const active = getActiveTrainers();
+      const opts = active.map((t) =>
+        `<option value="${t.id}" ${t.id === selectedId ? 'selected' : ''}>${t.firstName} ${t.lastName}${t.specialization ? ' — ' + t.specialization : ''}</option>`
+      ).join('');
+      return `<option value="">— აირჩიეთ ტრენერი —</option>${opts}`;
+    }
+
+    window.toggleRegTrainer = function() {
+      const checked = document.getElementById('regTrainerService').checked;
+      const wrap = document.getElementById('regTrainerSelectWrap');
+      wrap.style.display = checked ? 'block' : 'none';
+      if (checked) {
+        document.getElementById('regTrainerId').innerHTML = buildTrainerOptions('');
+      }
+    };
+
+    window.toggleEditTrainer = function(id) {
+      const checked = document.getElementById(`e_trainerService_${id}`).checked;
+      const wrap = document.getElementById(`e_trainerSelectWrap_${id}`);
+      wrap.style.display = checked ? 'block' : 'none';
+    };
+
+    function updateTrainersTab() {
+      const container = document.getElementById('trainersTable');
+      if (!container) return;
+
+      const searchValue = normalizeUsername(document.getElementById('trainerSearchInput')?.value);
+      let trainers = (window.trainers || []).map((t) => ({
+        ...t,
+        clientCount: getTrainerClientCount(t.id)
+      }));
+      trainers.sort((a, b) => b.clientCount - a.clientCount);
+
+      const filtered = trainers.filter((t) => {
+        if (!searchValue) return true;
+        return normalizeUsername(`${t.firstName || ''} ${t.lastName || ''}`).includes(searchValue) ||
+          normalizeUsername(t.username).includes(searchValue) ||
+          normalizeUsername(t.specialization).includes(searchValue);
+      });
+
+      const rows = filtered.map((t, idx) => {
+        const rank = idx + 1;
+        const rankBadge = rank <= 3
+          ? `<span class="status-badge status-active" style="font-weight:800;">#${rank}</span>`
+          : `<span style="color:#94a3b8;font-weight:700;">#${rank}</span>`;
+        const photo = t.photoUrl
+          ? `<img src="${t.photoUrl}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none'">`
+          : `<div style="width:36px;height:36px;border-radius:50%;background:rgba(239,68,68,0.15);color:#ef4444;display:flex;align-items:center;justify-content:center;font-weight:800;">${(t.firstName || '?').charAt(0)}</div>`;
+        return `
+          <tr>
+            <td>${rankBadge}</td>
+            <td><div style="display:flex;align-items:center;gap:10px;">${photo}<span>${t.firstName || '—'} ${t.lastName || ''}</span></div></td>
+            <td>${t.specialization || '—'}</td>
+            <td><strong>${t.clientCount}</strong> კლიენტი</td>
+            <td>${t.username || '—'}</td>
+            <td><span class="status-badge ${t.status === 'disabled' ? 'status-expired' : 'status-active'}">${t.status === 'disabled' ? 'არააქტიური' : 'აქტიური'}</span></td>
+            <td>${formatDateTime(t.updatedAt || t.createdAt)}</td>
+            <td>
+              <div class="admin-action-row">
+                <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>
+                <button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deleteTrainer('${t.id}')"><i class="fas fa-trash"></i> წაშლა</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      });
+
+      container.innerHTML = buildAdminTable(
+        ['რენქი', 'სახელი / გვარი', 'სპეციალიზაცია', 'კლიენტები', 'იუზერი', 'სტატუსი', 'განახლდა', 'ქმედება'],
+        rows,
+        'ტრენერები ჯერ არ არის'
+      );
+    }
+
+    async function saveTrainerRecord(trainer) {
+      try {
+        const { id, ...payload } = trainer;
+        if (id) {
+          await setDoc(doc(db, "trainers", id), payload, { merge: true });
+          return { ok: true, id };
+        }
+        const docRef = await addDoc(collection(db, "trainers"), payload);
+        return { ok: true, id: docRef.id };
+      } catch (e) {
+        console.error('trainer save failed', e);
+        showToast('ტრენერის შენახვა ვერ მოხერხდა', 'error');
+        return { ok: false };
+      }
+    }
+
+    window.openTrainerForm = function(trainerId = '') {
+      const t = trainerId ? getTrainerById(trainerId) : null;
+      const specOptions = TRAINER_SPECIALIZATIONS.map((s) =>
+        `<option value="${s}" ${t?.specialization === s ? 'selected' : ''}>${s}</option>`).join('');
+      document.getElementById('trainerFormTitle').textContent = t ? 'ტრენერის რედაქტირება' : 'ტრენერის დამატება';
+      document.getElementById('trainerFormId').value = t?.id || '';
+      document.getElementById('trainerFirstName').value = t?.firstName || '';
+      document.getElementById('trainerLastName').value = t?.lastName || '';
+      document.getElementById('trainerPhone').value = t?.phone || '';
+      document.getElementById('trainerSpecialization').innerHTML = specOptions;
+      if (t?.specialization && !TRAINER_SPECIALIZATIONS.includes(t.specialization)) {
+        document.getElementById('trainerSpecialization').innerHTML += `<option value="${t.specialization}" selected>${t.specialization}</option>`;
+      }
+      document.getElementById('trainerUsername').value = t?.username || '';
+      document.getElementById('trainerPassword').value = '';
+      document.getElementById('trainerPhotoUrl').value = t?.photoUrl || '';
+      document.getElementById('trainerStatus').value = t?.status || 'active';
+      document.getElementById('trainerFormModal').style.display = 'flex';
+    };
+
+    window.closeTrainerForm = function() {
+      document.getElementById('trainerFormModal').style.display = 'none';
+    };
+
+    window.saveTrainer = async function() {
+      const id = document.getElementById('trainerFormId').value;
+      const firstName = document.getElementById('trainerFirstName').value.trim();
+      const lastName = document.getElementById('trainerLastName').value.trim();
+      const phone = document.getElementById('trainerPhone').value.trim();
+      const specialization = document.getElementById('trainerSpecialization').value;
+      const username = normalizeUsername(document.getElementById('trainerUsername').value);
+      const password = document.getElementById('trainerPassword').value;
+      const photoUrl = document.getElementById('trainerPhotoUrl').value.trim() || null;
+      const status = document.getElementById('trainerStatus').value === 'disabled' ? 'disabled' : 'active';
+
+      if (!firstName || !lastName || !username) {
+        showToast('სახელი, გვარი და იუზერი სავალდებულოა', 'error');
+        return;
+      }
+      if (!id && !password) {
+        showToast('ახალ ტრენერზე პაროლი სავალდებულოა', 'error');
+        return;
+      }
+      const usernameTaken = (window.trainers || []).some((t) =>
+        normalizeUsername(t.username) === username && t.id !== id);
+      if (usernameTaken) {
+        showToast('ეს იუზერი უკვე არსებობს', 'error');
+        return;
+      }
+
+      const existing = id ? getTrainerById(id) : null;
+      const nowIso = new Date().toISOString();
+      const passwordHash = password ? await sha256Hex(password) : existing?.passwordHash || null;
+      const payload = {
+        firstName, lastName, phone, specialization, username, passwordHash,
+        photoUrl, status, role: 'trainer',
+        updatedAt: nowIso,
+        createdAt: existing?.createdAt || nowIso
+      };
+      if (id) payload.id = id;
+
+      const saved = await saveTrainerRecord(payload);
+      if (!saved.ok) return;
+      logDateAudit('trainer_save', { id: saved.id, firstName, lastName, personalId: username }, null, null, { action: id ? 'edit' : 'create' });
+      showToast(id ? 'ტრენერი განახლდა' : 'ტრენერი დაემატა');
+      window.closeTrainerForm();
+      hydrateTrainersFromRest();
+    };
+
+    window.deleteTrainer = async function(trainerId) {
+      const t = getTrainerById(trainerId);
+      if (!t) return;
+      if (!confirm(`წავშალოთ ტრენერი ${t.firstName} ${t.lastName}?`)) return;
+      try {
+        await deleteDoc(doc(db, "trainers", trainerId));
+        // Unassign from members
+        const assigned = (window.members || []).filter((m) => m.trainerId === trainerId);
+        for (const m of assigned) {
+          await updateMemberFields(m.id, { trainerId: null, trainerServiceEnabled: false });
+        }
+        showToast('ტრენერი წაიშალა');
+        hydrateTrainersFromRest();
+      } catch (e) {
+        console.error('trainer delete failed', e);
+        showToast('წაშლა ვერ მოხერხდა', 'error');
+      }
+    };
+
     function updateSettingsTab() {
       const profile = document.getElementById('settingsProfileCard');
       if (!profile) return;
@@ -3181,6 +3422,11 @@ ${memberPortalUrl}
       if (tab === 'qrmanage') {
         loadGymQrToken().then(() => updateQrTab());
       }
+      if (tab === 'trainers') {
+        hydrateTrainersFromRest();
+        hydrateMembersFromRest();
+        updateTrainersTab();
+      }
       if (tab === 'dashboard') {
         document.getElementById('expiringSoonSection').style.display = 'none';
         document.getElementById('todayVisitsSection').style.display = 'none';
@@ -3498,6 +3744,8 @@ ${memberPortalUrl}
           window.selectedSubscription = null;
           document.querySelectorAll('.subscription-card').forEach((card) => card.classList.remove('selected'));
           document.getElementById('customSubscriptionFields').style.display = 'none';
+          const regTrainerWrap = document.getElementById('regTrainerSelectWrap');
+          if (regTrainerWrap) regTrainerWrap.style.display = 'none';
           showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } else if (context.mode === 'renew') {
           const existingMember = window.members.find((item) => item.id === context.memberId);
@@ -3634,6 +3882,16 @@ ${memberPortalUrl}
               <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
               <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
             </div>
+            <div class="edit-field">
+              <label class="edit-field-label">ტრენერის სერვისი</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0;">
+                <input type="checkbox" id="e_trainerService_${id}" ${m.trainerServiceEnabled ? 'checked' : ''} onchange="window.toggleEditTrainer('${id}')" style="width:18px;height:18px;cursor:pointer;">
+                <span>ტრენერი ჰყავს</span>
+              </label>
+              <div id="e_trainerSelectWrap_${id}" style="display:${m.trainerServiceEnabled ? 'block' : 'none'};margin-top:6px;">
+                <select id="e_trainerId_${id}" class="form-input">${buildTrainerOptions(m.trainerId || '')}</select>
+              </div>
+            </div>
           </div>
           <div class="edit-actions">
             <button class="btn btn-success px-8 py-3" onclick="window.saveEdit('${id}')">შენახვა</button>
@@ -3693,7 +3951,9 @@ ${memberPortalUrl}
         subscriptionStartDate: dateInputToISOEndOfDay(startDate),
         subscriptionEndDate: dateInputToISOEndOfDay(endDate),
         remainingVisits: document.getElementById(`e_visits_${id}`).value === '' ? null : parseInt(document.getElementById(`e_visits_${id}`).value),
-        status: document.getElementById(`e_status_${id}`).value
+        status: document.getElementById(`e_status_${id}`).value,
+        trainerServiceEnabled: document.getElementById(`e_trainerService_${id}`)?.checked || false,
+        trainerId: (document.getElementById(`e_trainerService_${id}`)?.checked && document.getElementById(`e_trainerId_${id}`)?.value) || null
       };
       const saved = await updateMember(updated);
       if (!saved) return;
@@ -5387,6 +5647,8 @@ ${memberPortalUrl}
             totalVisits: 0,
             status: 'active',
             lastVisit: null,
+            trainerServiceEnabled: document.getElementById('regTrainerService')?.checked || false,
+            trainerId: (document.getElementById('regTrainerService')?.checked && document.getElementById('regTrainerId')?.value) || null,
             createdAt: new Date().toISOString(),
             expiringEmailSent: false
           };
@@ -5407,6 +5669,7 @@ ${memberPortalUrl}
       document.getElementById('searchInput')?.addEventListener('input', updateSearchMemberList);
       document.getElementById('productSearchInput')?.addEventListener('input', updateProductsTab);
       document.getElementById('userSearchInput')?.addEventListener('input', updateUsersTab);
+      document.getElementById('trainerSearchInput')?.addEventListener('input', updateTrainersTab);
       document.getElementById('saleQuantity')?.addEventListener('input', window.updateProductSaleTotal);
       document.getElementById('passwordChangeForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
