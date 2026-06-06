@@ -3323,3 +3323,132 @@ body.admin-mode.light-mode .admin-table-wrap td {
 body.admin-mode.light-mode .admin-table-wrap tr:hover td {
   background: #f9fbff;
 }
+
+/* ═══════════════════════════════════════════════
+   MOBILE SIDEBAR DRAWER + PWA IMPROVEMENTS
+   ═══════════════════════════════════════════════ */
+
+/* Prevent iOS auto-zoom on input focus */
+@media (max-width: 768px) {
+  .form-input,
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="password"],
+  input[type="number"],
+  input[type="date"],
+  input[type="time"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Hamburger button — hidden on desktop */
+#hamburger-btn {
+  display: none;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: none;
+  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  color: #fff;
+  font-size: 1.15rem;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 20px rgba(37,99,235,0.45);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+#hamburger-btn:active { transform: scale(0.93); }
+
+/* Backdrop */
+#nav-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.55);
+  z-index: 998;
+  backdrop-filter: blur(3px);
+}
+#nav-backdrop.open { display: block; }
+
+/* Drawer header (close button row — hidden on desktop) */
+.nav-drawer-header { display: none; }
+
+/* ── Mobile (<1180px): drawer ── */
+@media (max-width: 1179px) {
+  #hamburger-btn { display: flex; }
+
+  body.admin-mode .nav-tabs {
+    position: fixed !important;
+    top: 0;
+    left: -300px;
+    width: 272px;
+    height: 100dvh;
+    overflow-y: auto;
+    z-index: 999;
+    padding: 0 14px 32px !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch !important;
+    gap: 4px !important;
+    border-radius: 0 24px 24px 0 !important;
+    transition: left 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+    margin-bottom: 0 !important;
+  }
+
+  body.admin-mode .nav-tabs.drawer-open {
+    left: 0;
+    box-shadow: 6px 0 48px rgba(0,0,0,0.55);
+  }
+
+  body.admin-mode .nav-tab {
+    width: 100% !important;
+    flex: 0 0 auto !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding: 13px 16px !important;
+  }
+
+  .nav-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 6px 14px;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #1e293b;
+    position: sticky;
+    top: 0;
+    background: inherit;
+    z-index: 1;
+  }
+
+  /* Content area takes full width when drawer is closed */
+  body.admin-mode .container {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      'header'
+      'content' !important;
+  }
+
+  body.admin-mode .nav-tabs {
+    grid-area: unset;
+  }
+}
+
+/* Trainer service badge in member cards */
+.trainer-service-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, rgba(239,68,68,0.18), rgba(220,38,38,0.12));
+  border: 1px solid rgba(239,68,68,0.35);
+  color: #f87171;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}

@@ -2,8 +2,14 @@
 <html lang="ka" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>FitHouse — პირადი კაბინეტი</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FitHouse">
+  <link rel="apple-touch-icon" href="/fithause logo.png">
+  <meta name="theme-color" content="#020617">
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -27,7 +33,7 @@
     .btn-primary { background: linear-gradient(135deg, #dc2626, #e11d48); color: white; border: none; border-radius: 12px; padding: 12px 20px; font-weight: 800; font-size: 0.9rem; cursor: pointer; transition: opacity 0.15s; width: 100%; }
     .btn-primary:hover { opacity: 0.9; }
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .form-input { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 12px 12px 12px 42px; color: #f1f5f9; font-size: 0.9rem; width: 100%; outline: none; transition: border-color 0.15s; }
+    .form-input { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 12px 12px 12px 42px; color: #f1f5f9; font-size: 16px; width: 100%; outline: none; transition: border-color 0.15s; }
     .form-input:focus { border-color: rgba(239,68,68,0.5); }
     #qr-reader { border-radius: 12px; overflow: hidden; }
     #qr-reader video { border-radius: 12px; }
@@ -328,6 +334,7 @@ async function loadMemberData() {
     member = { id: snap.id, ...snap.data() };
     updateSidebarStatus();
     if (wasLoaded) renderTabContent();
+    if (member.trainerId) loadTrainerCard(member.trainerId);
   }, () => loadMemberDataFallback());
 
   // Real-time visits listener — no orderBy to avoid composite index requirement; sort in JS
@@ -373,6 +380,24 @@ async function loadMemberData() {
   } catch(e) {
     await loadPaymentsFallback();
   }
+}
+
+async function loadTrainerCard(trainerId) {
+  try {
+    const tSnap = await getDoc(doc(db, 'trainers', trainerId));
+    if (!tSnap.exists()) return;
+    const t = { id: tSnap.id, ...tSnap.data() };
+    const photoWrap = document.getElementById('trainer-photo-wrap');
+    const detailsWrap = document.getElementById('trainer-details-wrap');
+    if (photoWrap) photoWrap.innerHTML = t.photoUrl
+      ? `<img src="${t.photoUrl}" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:3px solid #ef4444;" onerror="this.style.display='none'">`
+      : `<div style="width:64px;height:64px;border-radius:50%;background:rgba(239,68,68,0.2);color:#ef4444;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.5rem;">${(t.firstName||'T').charAt(0)}</div>`;
+    if (detailsWrap) detailsWrap.innerHTML = `
+      <div style="color:#ef4444;font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;"><i class="fas fa-dumbbell"></i> ჩემი ტრენერი</div>
+      <div style="font-weight:900;color:#e2e8f0;font-size:1rem;">${t.firstName || ''} ${t.lastName || ''}</div>
+      ${t.phone ? `<div style="color:#94a3b8;font-size:0.82rem;margin-top:2px;"><i class="fas fa-phone" style="font-size:0.75rem;"></i> ${t.phone}</div>` : ''}
+    `;
+  } catch(_) {}
 }
 
 async function loadVisitsFallback() {
@@ -498,6 +523,12 @@ function renderOverview() {
           <p style="font-size:0.75rem;color:#475569;margin-top:2px;">${member?.remainingVisits != null ? member.remainingVisits+' ვიზიტი' : 'ულიმიტო'}</p></div>
         </div>
       </div>
+      ${member.trainerServiceEnabled && member.trainerId ? `
+        <div id="trainer-info-card" style="background:linear-gradient(135deg,rgba(239,68,68,0.1),rgba(220,38,38,0.05));border:1px solid rgba(239,68,68,0.3);border-radius:16px;padding:16px 20px;display:flex;align-items:center;gap:16px;">
+          <div id="trainer-photo-wrap" style="flex-shrink:0;"></div>
+          <div id="trainer-details-wrap"><div style="color:#ef4444;font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;"><i class="fas fa-dumbbell"></i> ჩემი ტრენერი</div><div style="color:#64748b;font-size:0.82rem;">იტვირთება...</div></div>
+        </div>` : ''}
+
       <div style="background:rgba(2,6,23,0.6);padding:20px;border-radius:16px;border:1px solid #1e293b;">
         <h3 style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;border-bottom:1px solid #1e293b;padding-bottom:10px;margin-bottom:16px;">პირადი ინფორმაცია</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">

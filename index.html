@@ -7,6 +7,12 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" />
   <link rel="icon" type="image/png" href="fithause logo.png">
   <link rel="shortcut icon" type="image/png" href="fithause logo.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FitHouse">
+  <link rel="apple-touch-icon" href="fithause logo.png">
+  <meta name="theme-color" content="#0a0c12">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
   
   <!-- EmailJS SDK -->
@@ -76,10 +82,19 @@
           <button class="btn bg-slate-700 hover:bg-slate-600 header-logout-btn" onclick="window.logout()">
             <i class="fas fa-right-from-bracket"></i> გასვლა
           </button>
+          <button id="hamburger-btn" onclick="toggleDrawer()" aria-label="მენიუ">
+            <i class="fas fa-bars" id="hamburger-icon"></i>
+          </button>
         </div>
       </div>
-      
-      <div class="nav-tabs">
+
+      <div id="nav-backdrop" onclick="closeDrawer()"></div>
+
+      <div class="nav-tabs" id="main-nav">
+        <div class="nav-drawer-header">
+          <span style="font-weight:800;color:#fff;font-size:1rem;">მენიუ</span>
+          <button onclick="closeDrawer()" style="background:none;border:none;color:#94a3b8;font-size:1.4rem;cursor:pointer;"><i class="fas fa-times"></i></button>
+        </div>
         <button class="nav-tab active" onclick="showTab('dashboard')"><span class="nav-tab-icon"><i class="fas fa-chart-pie"></i></span><span class="nav-tab-text">დეშბორდი</span></button>
         <button class="nav-tab" onclick="showTab('register')"><span class="nav-tab-icon"><i class="fas fa-user-plus"></i></span><span class="nav-tab-text">რეგისტრაცია</span></button>
         <button class="nav-tab" onclick="showTab('search')"><span class="nav-tab-icon"><i class="fas fa-magnifying-glass"></i></span><span class="nav-tab-text">ძიება</span></button>
@@ -1138,12 +1153,15 @@
           <input type="text" id="trainerLastName" class="form-input">
         </div>
         <div class="product-form-field">
-          <label for="trainerPhone">ტელეფონი</label>
-          <input type="tel" id="trainerPhone" class="form-input">
+          <label for="trainerStatus">სტატუსი</label>
+          <select id="trainerStatus" class="form-input">
+            <option value="active">აქტიური</option>
+            <option value="disabled">არააქტიური</option>
+          </select>
         </div>
         <div class="product-form-field">
-          <label for="trainerSpecialization">სპეციალიზაცია</label>
-          <select id="trainerSpecialization" class="form-input"></select>
+          <label for="trainerPhone">ტელეფონი</label>
+          <input type="tel" id="trainerPhone" class="form-input">
         </div>
         <div class="product-form-field">
           <label for="trainerUsername">იუზერი (login)</label>
@@ -1153,14 +1171,7 @@
           <label for="trainerPassword">პაროლი</label>
           <input type="password" id="trainerPassword" class="form-input">
         </div>
-        <div class="product-form-field">
-          <label for="trainerStatus">სტატუსი</label>
-          <select id="trainerStatus" class="form-input">
-            <option value="active">აქტიური</option>
-            <option value="disabled">არააქტიური</option>
-          </select>
-        </div>
-        <div class="product-form-field">
+        <div class="product-form-field product-form-field-full">
           <label for="trainerPhotoUrl">ფოტოს URL (არასავალდებულო)</label>
           <input type="text" id="trainerPhotoUrl" class="form-input" placeholder="https://...">
         </div>

@@ -1,0 +1,21 @@
+{
+  "name": "FitHouse Gym",
+  "short_name": "FitHouse",
+  "description": "Fit House Gym - მართვის სისტემა",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0a0c12",
+  "theme_color": "#2563eb",
+  "lang": "ka",
+  "icons": [
+    { "src": "fithause logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "fithause logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "categories": ["productivity", "business"],
+  "shortcuts": [
+    { "name": "შესვლა (Check-in)", "url": "/", "icons": [{ "src": "fithause logo.png", "sizes": "96x96" }] },
+    { "name": "კლიენტების პანელი", "url": "/member", "icons": [{ "src": "fithause logo.png", "sizes": "96x96" }] },
+    { "name": "ტრენერის პანელი", "url": "/trainer", "icons": [{ "src": "fithause logo.png", "sizes": "96x96" }] }
+  ]
+}

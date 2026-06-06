@@ -818,14 +818,24 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
             <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
-            ${member.trainerServiceEnabled && member.trainerId ? `<div><strong>ტრენერი:</strong> <span style="color:#f87171;"><i class="fas fa-dumbbell"></i> ${getTrainerName(member.trainerId) || '—'}</span></div>` : ''}
           </div>
+          ${member.trainerServiceEnabled && member.trainerId ? `
+            <div style="margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(220,38,38,0.06));border:1px solid rgba(239,68,68,0.3);border-radius:14px;display:flex;align-items:center;gap:10px;">
+              ${(() => { const tr = getTrainerById(member.trainerId); return tr?.photoUrl ? `<img src="${tr.photoUrl}" style="width:42px;height:42px;border-radius:50%;object-fit:cover;border:2px solid #ef4444;" onerror="this.style.display='none'">` : `<div style="width:42px;height:42px;border-radius:50%;background:rgba(239,68,68,0.2);color:#ef4444;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.1rem;">${(getTrainerById(member.trainerId)?.firstName||'T').charAt(0)}</div>`; })()}
+              <div>
+                <div style="font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.07em;color:#ef4444;margin-bottom:2px;"><i class="fas fa-dumbbell"></i> ტრენერის სერვისი</div>
+                <div style="font-weight:800;color:#fff;font-size:0.95rem;">${getTrainerName(member.trainerId)}</div>
+                ${(() => { const tr = getTrainerById(member.trainerId); return tr?.phone ? `<div style="color:#94a3b8;font-size:0.8rem;">${tr.phone}</div>` : ''; })()}
+              </div>
+            </div>
+          ` : ''}
           <div class="flex flex-wrap gap-3 justify-center">
             <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="window.showEditForm(event, '${member.id}')">რედაქტირება</button>
             <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
             ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> QR გაგზავნა</button>` : ''}
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
+            ${member.trainerServiceEnabled && member.trainerId ? `<button class="btn bg-orange-600 hover:bg-orange-700 text-sm px-6 py-2" onclick="window.removeTrainerFromMember('${member.id}')"><i class="fas fa-user-minus"></i> ტრენერი ამოხსნა</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
         </div>
@@ -2361,11 +2371,10 @@ ${memberPortalUrl}
           <tr>
             <td>${rankBadge}</td>
             <td><div style="display:flex;align-items:center;gap:10px;">${photo}<span>${t.firstName || '—'} ${t.lastName || ''}</span></div></td>
-            <td>${t.specialization || '—'}</td>
             <td><strong>${t.clientCount}</strong> კლიენტი</td>
+            <td>${t.phone || '—'}</td>
             <td>${t.username || '—'}</td>
             <td><span class="status-badge ${t.status === 'disabled' ? 'status-expired' : 'status-active'}">${t.status === 'disabled' ? 'არააქტიური' : 'აქტიური'}</span></td>
-            <td>${formatDateTime(t.updatedAt || t.createdAt)}</td>
             <td>
               <div class="admin-action-row">
                 <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>
@@ -2377,7 +2386,7 @@ ${memberPortalUrl}
       });
 
       container.innerHTML = buildAdminTable(
-        ['რენქი', 'სახელი / გვარი', 'სპეციალიზაცია', 'კლიენტები', 'იუზერი', 'სტატუსი', 'განახლდა', 'ქმედება'],
+        ['რენქი', 'სახელი / გვარი', 'კლიენტები', 'ტელეფონი', 'იუზერი', 'სტატუსი', 'ქმედება'],
         rows,
         'ტრენერები ჯერ არ არის'
       );
@@ -2401,17 +2410,11 @@ ${memberPortalUrl}
 
     window.openTrainerForm = function(trainerId = '') {
       const t = trainerId ? getTrainerById(trainerId) : null;
-      const specOptions = TRAINER_SPECIALIZATIONS.map((s) =>
-        `<option value="${s}" ${t?.specialization === s ? 'selected' : ''}>${s}</option>`).join('');
       document.getElementById('trainerFormTitle').textContent = t ? 'ტრენერის რედაქტირება' : 'ტრენერის დამატება';
       document.getElementById('trainerFormId').value = t?.id || '';
       document.getElementById('trainerFirstName').value = t?.firstName || '';
       document.getElementById('trainerLastName').value = t?.lastName || '';
       document.getElementById('trainerPhone').value = t?.phone || '';
-      document.getElementById('trainerSpecialization').innerHTML = specOptions;
-      if (t?.specialization && !TRAINER_SPECIALIZATIONS.includes(t.specialization)) {
-        document.getElementById('trainerSpecialization').innerHTML += `<option value="${t.specialization}" selected>${t.specialization}</option>`;
-      }
       document.getElementById('trainerUsername').value = t?.username || '';
       document.getElementById('trainerPassword').value = '';
       document.getElementById('trainerPhotoUrl').value = t?.photoUrl || '';
@@ -2428,7 +2431,6 @@ ${memberPortalUrl}
       const firstName = document.getElementById('trainerFirstName').value.trim();
       const lastName = document.getElementById('trainerLastName').value.trim();
       const phone = document.getElementById('trainerPhone').value.trim();
-      const specialization = document.getElementById('trainerSpecialization').value;
       const username = normalizeUsername(document.getElementById('trainerUsername').value);
       const password = document.getElementById('trainerPassword').value;
       const photoUrl = document.getElementById('trainerPhotoUrl').value.trim() || null;
@@ -2453,7 +2455,7 @@ ${memberPortalUrl}
       const nowIso = new Date().toISOString();
       const passwordHash = password ? await sha256Hex(password) : existing?.passwordHash || null;
       const payload = {
-        firstName, lastName, phone, specialization, username, passwordHash,
+        firstName, lastName, phone, username, passwordHash,
         photoUrl, status, role: 'trainer',
         updatedAt: nowIso,
         createdAt: existing?.createdAt || nowIso
@@ -3383,7 +3385,25 @@ ${memberPortalUrl}
       `;
     }
 
+    window.toggleDrawer = function() {
+      const nav = document.getElementById('main-nav');
+      const bd = document.getElementById('nav-backdrop');
+      const icon = document.getElementById('hamburger-icon');
+      const isOpen = nav?.classList.contains('drawer-open');
+      nav?.classList.toggle('drawer-open', !isOpen);
+      bd?.classList.toggle('open', !isOpen);
+      if (icon) icon.className = isOpen ? 'fas fa-bars' : 'fas fa-times';
+    };
+
+    window.closeDrawer = function() {
+      document.getElementById('main-nav')?.classList.remove('drawer-open');
+      document.getElementById('nav-backdrop')?.classList.remove('open');
+      const icon = document.getElementById('hamburger-icon');
+      if (icon) icon.className = 'fas fa-bars';
+    };
+
     window.showTab = function(tab) {
+      closeDrawer();
       if ((tab === 'finance' || tab === 'stats' || tab === 'users' || tab === 'qrmanage') && !isAdmin()) {
         showToast('ეს სექცია მხოლოდ ადმინისტრატორისთვის არის ხელმისაწვდომი', 'error');
         tab = 'dashboard';
@@ -3844,6 +3864,16 @@ ${memberPortalUrl}
               <label class="edit-field-label" for="e_pid_${id}">პირადი ნომერი</label>
               <input type="text" value="${m.personalId}" id="e_pid_${id}" class="form-input" placeholder="პირადი">
             </div>
+            <div class="edit-field" style="grid-column:1/-1;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);border-radius:12px;padding:14px;">
+              <label class="edit-field-label" style="color:#ef4444;"><i class="fas fa-dumbbell"></i> ტრენერის სერვისი</label>
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0;">
+                <input type="checkbox" id="e_trainerService_${id}" ${m.trainerServiceEnabled ? 'checked' : ''} onchange="window.toggleEditTrainer('${id}')" style="width:18px;height:18px;cursor:pointer;accent-color:#ef4444;">
+                <span style="font-weight:700;">ტრენერი ჰყავს</span>
+              </label>
+              <div id="e_trainerSelectWrap_${id}" style="display:${m.trainerServiceEnabled ? 'block' : 'none'};margin-top:4px;">
+                <select id="e_trainerId_${id}" class="form-input">${buildTrainerOptions(m.trainerId || '')}</select>
+              </div>
+            </div>
             <div class="edit-field">
               <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
               <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
@@ -3881,16 +3911,6 @@ ${memberPortalUrl}
             <div class="edit-field">
               <label class="edit-field-label" for="e_note_${id}">შენიშვნა</label>
               <textarea id="e_note_${id}" class="form-input edit-note-input" placeholder="შენიშვნა">${m.note || ''}</textarea>
-            </div>
-            <div class="edit-field">
-              <label class="edit-field-label">ტრენერის სერვისი</label>
-              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 0;">
-                <input type="checkbox" id="e_trainerService_${id}" ${m.trainerServiceEnabled ? 'checked' : ''} onchange="window.toggleEditTrainer('${id}')" style="width:18px;height:18px;cursor:pointer;">
-                <span>ტრენერი ჰყავს</span>
-              </label>
-              <div id="e_trainerSelectWrap_${id}" style="display:${m.trainerServiceEnabled ? 'block' : 'none'};margin-top:6px;">
-                <select id="e_trainerId_${id}" class="form-input">${buildTrainerOptions(m.trainerId || '')}</select>
-              </div>
             </div>
           </div>
           <div class="edit-actions">
@@ -5424,6 +5444,7 @@ ${memberPortalUrl}
               <div class="search-id">სტატუსი: <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
               <div class="search-id">გააქტიურდა: ${formatDate(m.subscriptionStartDate)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
+              ${m.trainerServiceEnabled && m.trainerId ? `<div class="trainer-service-badge" style="margin-top:6px;"><i class="fas fa-dumbbell"></i> ${getTrainerName(m.trainerId) || 'ტრენერი'}</div>` : ''}
             </div>
             <div class="search-arrow">${document.getElementById(`details-${m.id}`) ? '−' : '+'}</div>
           </div>
@@ -5552,6 +5573,18 @@ ${memberPortalUrl}
       const isLight = document.body.classList.toggle('light-mode');
       localStorage.setItem('gym-theme', isLight ? 'light' : 'dark');
       document.querySelector('.theme-toggle i').className = isLight ? 'fas fa-moon' : 'fas fa-sun';
+    };
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+
+    window.removeTrainerFromMember = async function(memberId) {
+      const m = window.members.find(x => x.id === memberId);
+      if (!m) return;
+      if (!confirm(`${m.firstName} ${m.lastName}-ს ამოვხსნათ ტრენერი?`)) return;
+      const saved = await updateMemberFields(memberId, { trainerId: null, trainerServiceEnabled: false });
+      if (saved !== false) { showToast('ტრენერი ამოხსნილია'); updateAll(); }
     };
 
     document.addEventListener('DOMContentLoaded', () => {

@@ -2,8 +2,14 @@
 <html lang="ka" class="dark">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
   <title>FitHouse — ტრენერის პანელი</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FitHouse">
+  <link rel="apple-touch-icon" href="/fithause logo.png">
+  <meta name="theme-color" content="#020617">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
   <style>
@@ -20,7 +26,7 @@
     .btn-primary { background:linear-gradient(135deg,#dc2626,#e11d48); color:#fff; border:none; border-radius:12px; padding:12px 20px; font-weight:800; font-size:.9rem; cursor:pointer; transition:opacity .15s; }
     .btn-primary:hover { opacity:.9; }
     .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
-    .form-input { background:#020617; border:1px solid #1e293b; border-radius:12px; padding:12px; color:#f1f5f9; font-size:.9rem; width:100%; outline:none; transition:border-color .15s; }
+    .form-input { background:#020617; border:1px solid #1e293b; border-radius:12px; padding:12px; color:#f1f5f9; font-size:16px; width:100%; outline:none; transition:border-color .15s; }
     .form-input:focus { border-color:rgba(239,68,68,.5); }
     .stat-card { background:#020617; border:1px solid #1e293b; border-radius:14px; padding:18px; display:flex; gap:14px; align-items:center; }
     .stat-icon { padding:12px; background:rgba(239,68,68,.1); border-radius:10px; color:#ef4444; font-size:1.2rem; width:48px; height:48px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
@@ -93,6 +99,7 @@ async function sha256Hex(text){
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 function formatD(iso){ if(!iso) return '—'; const d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; }
+function showToast(msg, type='success'){ const t=document.createElement('div'); t.textContent=msg; t.style.cssText=`position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:${type==='error'?'#dc2626':'#16a34a'};color:#fff;padding:10px 20px;border-radius:12px;font-weight:700;font-size:.85rem;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.3);`; document.body.appendChild(t); setTimeout(()=>t.remove(),3000); }
 function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function curMonthKey(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
 function effectiveStatus(m){
@@ -307,7 +314,8 @@ window.renderClientList = function(returnHtml){
         return `<div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
           <div><div style="font-weight:800;color:#e2e8f0;">${c.firstName} ${c.lastName}</div>
           <div style="font-size:.78rem;color:#64748b;margin-top:3px;"><i class="fas fa-phone" style="font-size:.7rem;"></i> ${c.phone||'—'} &bull; ${subName(c.subscriptionType)}</div></div>
-          <div style="text-align:right;"><div>${badge}</div><div style="font-size:.72rem;color:#64748b;margin-top:4px;">ვადა: ${formatD(c.subscriptionEndDate)}</div></div>
+          <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px;"><div>${badge}</div><div style="font-size:.72rem;color:#64748b;">ვადა: ${formatD(c.subscriptionEndDate)}</div>
+          <button onclick="removeClientFromTrainer('${c.id}')" style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.3);color:#f87171;padding:4px 10px;border-radius:8px;font-size:.7rem;font-weight:700;cursor:pointer;"><i class="fas fa-user-minus"></i> ამოშლა</button></div>
         </div>`;}).join('')}</div>`;
   if(returnHtml) return html;
   document.getElementById('client-list').innerHTML=html;
@@ -322,18 +330,19 @@ function renderCalendar(){
         <p style="color:#64748b;font-size:.85rem;margin-top:4px;">ვარჯიშის სეანსების მართვა</p></div>
         <div style="display:flex;gap:8px;align-items:center;">
           <div style="display:flex;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:3px;">
-            <button onclick="setCalMode('week')" style="padding:6px 12px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='week'?'#ef4444':'transparent'};color:${calMode==='week'?'#fff':'#94a3b8'};">კვირა</button>
-            <button onclick="setCalMode('month')" style="padding:6px 12px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='month'?'#ef4444':'transparent'};color:${calMode==='month'?'#fff':'#94a3b8'};">თვე</button>
+            <button onclick="setCalMode('day')" style="padding:6px 10px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='day'?'#ef4444':'transparent'};color:${calMode==='day'?'#fff':'#94a3b8'};">დღე</button>
+            <button onclick="setCalMode('week')" style="padding:6px 10px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='week'?'#ef4444':'transparent'};color:${calMode==='week'?'#fff':'#94a3b8'};">კვირა</button>
+            <button onclick="setCalMode('month')" style="padding:6px 10px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='month'?'#ef4444':'transparent'};color:${calMode==='month'?'#fff':'#94a3b8'};">თვე</button>
           </div>
           <button class="btn-primary" style="padding:8px 14px;font-size:.82rem;" onclick="openSessionModal()"><i class="fas fa-plus"></i> სეანსი</button>
         </div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <button onclick="calNav(-1)" style="background:#1e293b;border:none;color:#e2e8f0;width:36px;height:36px;border-radius:10px;cursor:pointer;"><i class="fas fa-chevron-left"></i></button>
-        <span style="font-weight:800;color:#fff;font-size:1rem;">${calMode==='month'?`${MONTHS[calCursor.getMonth()]} ${calCursor.getFullYear()}`:weekLabel()}</span>
+        <span style="font-weight:800;color:#fff;font-size:1rem;">${calMode==='month'?`${MONTHS[calCursor.getMonth()]} ${calCursor.getFullYear()}`:calMode==='day'?formatD(calCursor.toISOString()):weekLabel()}</span>
         <button onclick="calNav(1)" style="background:#1e293b;border:none;color:#e2e8f0;width:36px;height:36px;border-radius:10px;cursor:pointer;"><i class="fas fa-chevron-right"></i></button>
       </div>
-      ${calMode==='month'?renderMonthGrid():renderWeekView()}
+      ${calMode==='month'?renderMonthGrid():calMode==='day'?renderDayView():renderWeekView()}
     </div>`;
 }
 function weekLabel(){ const {start,end}=weekRange(); return `${formatD(start.toISOString())} - ${formatD(end.toISOString())}`; }
@@ -389,7 +398,31 @@ function renderDaySessions(ds, compact){
     </div>`).join('')}</div>`;
 }
 window.setCalMode=function(m){ calMode=m; renderTab(); };
-window.calNav=function(dir){ if(calMode==='month') calCursor.setMonth(calCursor.getMonth()+dir); else calCursor.setDate(calCursor.getDate()+dir*7); renderTab(); };
+window.calNav=function(dir){
+  if(calMode==='month') calCursor.setMonth(calCursor.getMonth()+dir);
+  else if(calMode==='day') calCursor.setDate(calCursor.getDate()+dir);
+  else calCursor.setDate(calCursor.getDate()+dir*7);
+  renderTab();
+};
+function renderDayView(){
+  const ds=ymd(calCursor);
+  return `<div style="background:#020617;border:1px solid #1e293b;border-radius:14px;padding:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <span style="font-weight:800;color:${ds===ymd(new Date())?'#ef4444':'#e2e8f0'};">${WEEKDAYS[(calCursor.getDay()+6)%7]} — ${formatD(calCursor.toISOString())}</span>
+      <button onclick="openSessionModal(null,'${ds}')" class="btn-primary" style="padding:7px 14px;font-size:.78rem;"><i class="fas fa-plus"></i> სეანსი</button>
+    </div>
+    ${renderDaySessions(ds,false)}
+  </div>`;
+}
+window.removeClientFromTrainer = async function(memberId) {
+  if(!confirm('კლიენტს ამოვხსნათ ტრენერი?')) return;
+  try {
+    await updateDoc(doc(db,'members',memberId),{ trainerId:null, trainerServiceEnabled:false });
+    clients = clients.filter(c=>c.id!==memberId);
+    showToast('კლიენტი ამოხსნილია');
+    renderTab();
+  } catch(e){ console.error(e); showToast('შეცდომა','error'); }
+};
 window.openDay=function(ds){
   const el=document.getElementById('day-detail'); if(!el) return;
   el.innerHTML=`<div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;">
