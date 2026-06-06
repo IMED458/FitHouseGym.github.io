@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="ka" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FitHouse — ტრენერის პანელი</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #020617; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    .tab-btn { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-weight:700; font-size:0.875rem; cursor:pointer; transition:all .15s; width:100%; text-align:left; border:none; background:transparent; color:#94a3b8; }
+    .tab-btn:hover { background:#1e293b; color:#e2e8f0; }
+    .tab-btn.active { background:#1e293b; color:#ef4444; }
+    .tab-btn.active i { color:#ef4444; }
+    .card { background:#0f172a; border:1px solid #1e293b; border-radius:16px; }
+    .badge-active { background:rgba(16,185,129,.15); color:#34d399; border:1px solid rgba(16,185,129,.3); padding:2px 10px; border-radius:9999px; font-size:.7rem; font-weight:800; }
+    .badge-expired { background:rgba(239,68,68,.15); color:#f87171; border:1px solid rgba(239,68,68,.3); padding:2px 10px; border-radius:9999px; font-size:.7rem; font-weight:800; }
+    .badge-paused { background:rgba(245,158,11,.15); color:#fbbf24; border:1px solid rgba(245,158,11,.3); padding:2px 10px; border-radius:9999px; font-size:.7rem; font-weight:800; }
+    .btn-primary { background:linear-gradient(135deg,#dc2626,#e11d48); color:#fff; border:none; border-radius:12px; padding:12px 20px; font-weight:800; font-size:.9rem; cursor:pointer; transition:opacity .15s; }
+    .btn-primary:hover { opacity:.9; }
+    .btn-primary:disabled { opacity:.5; cursor:not-allowed; }
+    .form-input { background:#020617; border:1px solid #1e293b; border-radius:12px; padding:12px; color:#f1f5f9; font-size:.9rem; width:100%; outline:none; transition:border-color .15s; }
+    .form-input:focus { border-color:rgba(239,68,68,.5); }
+    .stat-card { background:#020617; border:1px solid #1e293b; border-radius:14px; padding:18px; display:flex; gap:14px; align-items:center; }
+    .stat-icon { padding:12px; background:rgba(239,68,68,.1); border-radius:10px; color:#ef4444; font-size:1.2rem; width:48px; height:48px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px; }
+    .cal-day { aspect-ratio:1; border:1px solid #1e293b; border-radius:10px; padding:4px; font-size:.8rem; cursor:pointer; position:relative; transition:background .15s; min-height:46px; }
+    .cal-day:hover { background:#1e293b; }
+    .cal-day.today { border-color:#ef4444; }
+    .cal-day.has-sessions { background:rgba(239,68,68,.08); }
+    .cal-dot { width:6px; height:6px; border-radius:50%; background:#ef4444; display:inline-block; margin:1px; }
+    @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+    .anim-in { animation:slideIn .2s ease; }
+    ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:4px; }
+  </style>
+</head>
+<body class="min-h-screen text-slate-100">
+
+<header class="sticky top-0 z-50 border-b border-slate-900" style="background:rgba(2,6,23,.9);backdrop-filter:blur(12px);">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div style="width:40px;height:40px;background:linear-gradient(135deg,#dc2626,#e11d48);border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;color:#fff;letter-spacing:1px;">FH</div>
+      <div>
+        <div style="font-weight:900;color:#fff;line-height:1.1;font-size:.95rem;">FIT HOUSE</div>
+        <div style="font-size:.6rem;color:#ef4444;font-weight:800;letter-spacing:.2em;">ტრენერის პანელი</div>
+      </div>
+    </div>
+    <div id="header-user" class="flex items-center gap-3"></div>
+  </div>
+</header>
+
+<main id="app" class="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]"></main>
+
+<footer class="py-4 border-t border-slate-900 text-center text-xs text-slate-700">
+  &copy; <span id="fyear"></span> Fit House Gym &bull; ტრენერის პანელი
+</footer>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js';
+import { initializeFirestore, collection, query, where, getDocs, doc, getDoc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot } from 'https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js';
+
+document.getElementById('fyear').textContent = new Date().getFullYear();
+
+const firebaseConfig = {
+  apiKey:'AIzaSyA1HOc9IvnfougHBMHRnQwktfOrS72Ttt8', authDomain:'fit-house-gym-d3595.firebaseapp.com',
+  projectId:'fit-house-gym-d3595', storageBucket:'fit-house-gym-d3595.firebasestorage.app',
+  messagingSenderId:'548276737406', appId:'1:548276737406:web:12286429916b8c751fcf2f'
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = initializeFirestore(fbApp, { experimentalForceLongPolling:true, useFetchStreams:false });
+
+// ── State ──
+let session = null;
+try { session = JSON.parse(localStorage.getItem('fh_trainer_session') || 'null'); } catch(_) {}
+let trainer = null;
+let clients = [];
+let sessions = [];
+let payments = [];
+let activeTab = 'overview';
+let calMode = 'month';
+let calCursor = new Date();
+let clientsUnsub = null, sessionsUnsub = null, paymentsUnsub = null;
+
+const SUB_NAMES = { '12visits':'12 ვარჯიში', single_visit:'1 ვიზიტი', morning:'დილის (09-16)', unlimited:'ულიმიტო', other:'სხვა' };
+function subName(t){ return SUB_NAMES[t] || t || '—'; }
+const MONTHS = ['იანვარი','თებერვალი','მარტი','აპრილი','მაისი','ივნისი','ივლისი','აგვისტო','სექტემბერი','ოქტომბერი','ნოემბერი','დეკემბერი'];
+const WEEKDAYS = ['ორშ','სამ','ოთხ','ხუთ','პარ','შაბ','კვი'];
+
+async function sha256Hex(text){
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function formatD(iso){ if(!iso) return '—'; const d=new Date(iso); return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`; }
+function ymd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function curMonthKey(){ const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+function effectiveStatus(m){
+  if(!m) return 'expired';
+  if(m.status==='active'){
+    if((m.remainingVisits!=null && m.remainingVisits<=0) || (m.subscriptionEndDate && new Date()>new Date(m.subscriptionEndDate))) return 'expired';
+  }
+  return m.status || 'expired';
+}
+
+// ── Entry ──
+if(!session) renderLogin(); else startDashboard();
+
+// ── Login ──
+function renderLogin(){
+  stopListeners();
+  document.getElementById('header-user').innerHTML='';
+  document.getElementById('app').innerHTML = `
+    <div class="flex justify-center items-center py-12">
+      <div class="w-full max-w-md card p-7 relative overflow-hidden anim-in">
+        <div style="position:absolute;top:0;left:25%;right:25%;height:2px;background:linear-gradient(90deg,#dc2626,#e11d48);"></div>
+        <div class="text-center mb-8">
+          <div style="width:56px;height:56px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><i class="fas fa-dumbbell" style="color:#ef4444;font-size:1.3rem;"></i></div>
+          <h2 style="font-size:1.4rem;font-weight:900;color:#fff;">ტრენერის პანელი</h2>
+          <p style="color:#64748b;font-size:.85rem;margin-top:6px;">შედით თქვენი იუზერით და პაროლით</p>
+        </div>
+        <div id="login-error" style="display:none;"></div>
+        <form id="login-form" class="space-y-5">
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px;">იუზერი</label>
+            <input id="l-user" type="text" required placeholder="username" class="form-input" autocomplete="username">
+          </div>
+          <div>
+            <label style="display:block;font-size:.7rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px;">პაროლი</label>
+            <input id="l-pass" type="password" required placeholder="••••••••" class="form-input" autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn-primary w-full" id="login-btn">შესვლა</button>
+        </form>
+      </div>
+    </div>`;
+  document.getElementById('login-form').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const username = document.getElementById('l-user').value.trim().toLowerCase();
+    const pass = document.getElementById('l-pass').value;
+    const btn = document.getElementById('login-btn');
+    btn.disabled=true; btn.textContent='მიმდინარეობს...';
+    try {
+      const snap = await getDocs(query(collection(db,'trainers'), where('username','==',username)));
+      if(snap.empty){ showLoginErr('იუზერი ან პაროლი არასწორია'); return; }
+      const hash = await sha256Hex(pass);
+      let found=null;
+      snap.forEach(d=>{ const t=d.data(); if(t.passwordHash===hash && (t.status||'active')!=='disabled') found={id:d.id,...t}; });
+      if(!found){ showLoginErr('იუზერი ან პაროლი არასწორია'); return; }
+      session = { trainerId:found.id, username:found.username, firstName:found.firstName, lastName:found.lastName, ts:Date.now() };
+      localStorage.setItem('fh_trainer_session', JSON.stringify(session));
+      startDashboard();
+    } catch(err){ console.error(err); showLoginErr('კავშირის შეცდომა'); }
+    finally { btn.disabled=false; btn.textContent='შესვლა'; }
+  });
+  function showLoginErr(msg){
+    const el=document.getElementById('login-error');
+    el.style.display='flex'; el.style.cssText='display:flex;gap:8px;align-items:center;margin-bottom:20px;padding:14px;border-radius:12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:#f87171;font-weight:700;font-size:.85rem;';
+    el.innerHTML=`<i class="fas fa-exclamation-circle"></i> ${msg}`;
+    document.getElementById('login-btn').disabled=false; document.getElementById('login-btn').textContent='შესვლა';
+  }
+}
+
+// ── Dashboard ──
+async function startDashboard(){
+  renderShell();
+  await loadData();
+  renderTab();
+}
+
+function renderShell(){
+  const fn = trainer?.firstName || session?.firstName || '';
+  const ln = trainer?.lastName || session?.lastName || '';
+  document.getElementById('header-user').innerHTML = `
+    <span class="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-bold text-slate-300" style="background:rgba(15,23,42,.7);border:1px solid #1e293b;">
+      <i class="fas fa-dumbbell" style="color:#ef4444;font-size:.8rem;"></i> ${fn} ${ln}
+    </span>
+    <button onclick="trLogout()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;background:rgba(159,18,57,.2);border:1px solid rgba(159,18,57,.3);border-radius:10px;color:#f87171;font-size:.78rem;font-weight:800;cursor:pointer;">
+      <i class="fas fa-sign-out-alt"></i> გასვლა
+    </button>`;
+  document.getElementById('app').innerHTML = `
+    <div class="flex flex-col md:flex-row gap-6 items-start">
+      <div class="w-full md:w-72 card p-4 flex-shrink-0">
+        <div class="flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
+          <div style="width:48px;height:48px;background:rgba(239,68,68,.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${(fn||'?').charAt(0)}</div>
+          <div>
+            <div style="font-weight:900;color:#fff;font-size:.95rem;">${fn} ${ln}</div>
+            <div style="font-size:.7rem;color:#64748b;margin-top:2px;">${trainer?.specialization||'ტრენერი'}</div>
+          </div>
+        </div>
+        <nav class="space-y-1">
+          ${navItem('overview','fas fa-chart-pie','დეშბორდი')}
+          ${navItem('clients','fas fa-users','ჩემი კლიენტები')}
+          ${navItem('calendar','fas fa-calendar-days','კალენდარი')}
+          ${navItem('payments','fas fa-money-bill-wave','გადახდები')}
+        </nav>
+      </div>
+      <div class="flex-1 w-full card" style="overflow-y:auto;max-height:calc(100vh - 120px);" id="tab-wrap">
+        <div id="tab-content" style="padding:20px 24px;"></div>
+      </div>
+    </div>`;
+  document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+}
+function navItem(tab,icon,label){ return `<button class="tab-btn${activeTab===tab?' active':''}" data-tab="${tab}"><i class="${icon}" style="width:16px;text-align:center;"></i> ${label}</button>`; }
+function setTab(tab){ activeTab=tab; document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab)); renderTab(); }
+
+// ── Data ──
+async function loadData(){
+  if(!session?.trainerId){ trLogout(); return; }
+  stopListeners();
+  // trainer doc
+  onSnapshot(doc(db,'trainers',session.trainerId), snap=>{
+    if(!snap.exists()){ trLogout(); return; } trainer={id:snap.id,...snap.data()};
+  }, ()=>{});
+  // clients (members with this trainer)
+  clientsUnsub = onSnapshot(query(collection(db,'members'), where('trainerId','==',session.trainerId)), snap=>{
+    clients = snap.docs.map(d=>({id:d.id,...d.data()})).filter(m=>m.trainerServiceEnabled);
+    if(['overview','clients','payments','calendar'].includes(activeTab)) renderTab();
+  }, ()=>loadClientsFallback());
+  // sessions
+  sessionsUnsub = onSnapshot(query(collection(db,'training_sessions'), where('trainerId','==',session.trainerId)), snap=>{
+    sessions = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(['overview','calendar'].includes(activeTab)) renderTab();
+  }, ()=>{});
+  // payments
+  paymentsUnsub = onSnapshot(query(collection(db,'trainer_payments'), where('trainerId','==',session.trainerId)), snap=>{
+    payments = snap.docs.map(d=>({id:d.id,...d.data()}));
+    if(['overview','payments'].includes(activeTab)) renderTab();
+  }, ()=>{});
+}
+async function loadClientsFallback(){
+  try {
+    const pid='fit-house-gym-d3595';
+    const body={ structuredQuery:{ from:[{collectionId:'members'}], where:{ fieldFilter:{ field:{fieldPath:'trainerId'}, op:'EQUAL', value:{stringValue:session.trainerId} } }, limit:500 } };
+    const r=await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents:runQuery`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok) return; const res=await r.json();
+    clients=(res||[]).filter(x=>x.document).map(x=>{const f=x.document.fields||{};return {id:x.document.name.split('/').pop(),...Object.fromEntries(Object.entries(f).map(([k,v])=>[k,Object.values(v)[0]]))};}).filter(m=>m.trainerServiceEnabled);
+    renderTab();
+  } catch(_){}
+}
+function stopListeners(){ [clientsUnsub,sessionsUnsub,paymentsUnsub].forEach(u=>u&&u()); clientsUnsub=sessionsUnsub=paymentsUnsub=null; }
+
+// ── Render tab dispatcher ──
+function renderTab(){
+  const el=document.getElementById('tab-content'); if(!el) return;
+  if(activeTab==='overview') el.innerHTML=renderOverview();
+  else if(activeTab==='clients') el.innerHTML=renderClients();
+  else if(activeTab==='calendar') el.innerHTML=renderCalendar();
+  else if(activeTab==='payments') el.innerHTML=renderPayments();
+  bindTabEvents();
+}
+
+// ── Overview ──
+function renderOverview(){
+  const today=ymd(new Date());
+  const todaySessions=sessions.filter(s=>s.sessionDate===today).length;
+  const now=new Date(); const weekStart=new Date(now); weekStart.setDate(now.getDate()-((now.getDay()+6)%7)); weekStart.setHours(0,0,0,0);
+  const weekEnd=new Date(weekStart); weekEnd.setDate(weekStart.getDate()+7);
+  const weekSessions=sessions.filter(s=>{const d=new Date(s.sessionDate);return d>=weekStart&&d<weekEnd;}).length;
+  const mk=curMonthKey();
+  const newThisMonth=clients.filter(c=>(c.createdAt||'').slice(0,7)===mk).length;
+  const unpaid=clients.filter(c=>effectiveStatus(c)==='active' && !isPaidThisMonth(c.id)).length;
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:#fff;">დეშბორდი</h2>
+        <p style="color:#64748b;font-size:.85rem;margin-top:4px;">თქვენი მიმდინარე სტატისტიკა</p>
+      </div>
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        ${statCard('fas fa-users', clients.length, 'სულ კლიენტი')}
+        ${statCard('fas fa-calendar-day', todaySessions, 'დღეს ვარჯიში')}
+        ${statCard('fas fa-calendar-week', weekSessions, 'კვირაში ვარჯიში')}
+        ${statCard('fas fa-user-plus', newThisMonth, 'ახალი ამ თვეში')}
+      </div>
+      ${unpaid>0?`<div style="padding:16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);border-radius:12px;display:flex;align-items:center;gap:12px;">
+        <i class="fas fa-exclamation-circle" style="color:#f87171;font-size:1.3rem;"></i>
+        <div><span style="font-weight:800;color:#f87171;font-size:1.1rem;">გადაუხდელი კლიენტები — ${unpaid}</span>
+        <p style="font-size:.8rem;color:#f87171;opacity:.8;">ნახეთ "გადახდები" სექციაში</p></div>
+      </div>`:''}
+      <div>
+        <h3 style="font-size:.8rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:12px;">დღევანდელი ვარჯიშები</h3>
+        ${renderDaySessions(today, false)}
+      </div>
+    </div>`;
+}
+function statCard(icon,val,label){ return `<div class="stat-card"><div class="stat-icon"><i class="${icon}"></i></div><div><div style="font-size:1.6rem;font-weight:900;color:#fff;line-height:1;">${val}</div><div style="font-size:.72rem;color:#64748b;margin-top:4px;">${label}</div></div></div>`; }
+
+// ── Clients ──
+function renderClients(){
+  return `
+    <div class="space-y-5 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div><h2 style="font-size:1.4rem;font-weight:900;color:#fff;">ჩემი კლიენტები</h2>
+        <p style="color:#64748b;font-size:.85rem;margin-top:4px;">${clients.length} კლიენტი</p></div>
+        <input type="text" id="client-search" placeholder="ძიება..." class="form-input" style="max-width:240px;" oninput="renderClientList()">
+      </div>
+      <div id="client-list">${renderClientList(true)}</div>
+    </div>`;
+}
+window.renderClientList = function(returnHtml){
+  const q=(document.getElementById('client-search')?.value||'').toLowerCase();
+  const filtered=clients.filter(c=>!q || `${c.firstName} ${c.lastName} ${c.phone||''}`.toLowerCase().includes(q));
+  const html = filtered.length===0
+    ? `<div style="text-align:center;padding:40px;color:#475569;"><i class="fas fa-users" style="font-size:2.5rem;margin-bottom:12px;display:block;"></i>კლიენტები არ მოიძებნა</div>`
+    : `<div class="space-y-3">${filtered.map(c=>{
+        const st=effectiveStatus(c);
+        const badge=st==='active'?'<span class="badge-active">აქტიური</span>':st==='paused'?'<span class="badge-paused">შეჩერებული</span>':'<span class="badge-expired">ვადაგასული</span>';
+        return `<div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div><div style="font-weight:800;color:#e2e8f0;">${c.firstName} ${c.lastName}</div>
+          <div style="font-size:.78rem;color:#64748b;margin-top:3px;"><i class="fas fa-phone" style="font-size:.7rem;"></i> ${c.phone||'—'} &bull; ${subName(c.subscriptionType)}</div></div>
+          <div style="text-align:right;"><div>${badge}</div><div style="font-size:.72rem;color:#64748b;margin-top:4px;">ვადა: ${formatD(c.subscriptionEndDate)}</div></div>
+        </div>`;}).join('')}</div>`;
+  if(returnHtml) return html;
+  document.getElementById('client-list').innerHTML=html;
+};
+
+// ── Calendar ──
+function renderCalendar(){
+  return `
+    <div class="space-y-5 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div><h2 style="font-size:1.4rem;font-weight:900;color:#fff;">კალენდარი</h2>
+        <p style="color:#64748b;font-size:.85rem;margin-top:4px;">ვარჯიშის სეანსების მართვა</p></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <div style="display:flex;background:#020617;border:1px solid #1e293b;border-radius:10px;padding:3px;">
+            <button onclick="setCalMode('week')" style="padding:6px 12px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='week'?'#ef4444':'transparent'};color:${calMode==='week'?'#fff':'#94a3b8'};">კვირა</button>
+            <button onclick="setCalMode('month')" style="padding:6px 12px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;background:${calMode==='month'?'#ef4444':'transparent'};color:${calMode==='month'?'#fff':'#94a3b8'};">თვე</button>
+          </div>
+          <button class="btn-primary" style="padding:8px 14px;font-size:.82rem;" onclick="openSessionModal()"><i class="fas fa-plus"></i> სეანსი</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <button onclick="calNav(-1)" style="background:#1e293b;border:none;color:#e2e8f0;width:36px;height:36px;border-radius:10px;cursor:pointer;"><i class="fas fa-chevron-left"></i></button>
+        <span style="font-weight:800;color:#fff;font-size:1rem;">${calMode==='month'?`${MONTHS[calCursor.getMonth()]} ${calCursor.getFullYear()}`:weekLabel()}</span>
+        <button onclick="calNav(1)" style="background:#1e293b;border:none;color:#e2e8f0;width:36px;height:36px;border-radius:10px;cursor:pointer;"><i class="fas fa-chevron-right"></i></button>
+      </div>
+      ${calMode==='month'?renderMonthGrid():renderWeekView()}
+    </div>`;
+}
+function weekLabel(){ const {start,end}=weekRange(); return `${formatD(start.toISOString())} - ${formatD(end.toISOString())}`; }
+function weekRange(){ const s=new Date(calCursor); s.setDate(calCursor.getDate()-((calCursor.getDay()+6)%7)); s.setHours(0,0,0,0); const e=new Date(s); e.setDate(s.getDate()+6); return {start:s,end:e}; }
+function renderMonthGrid(){
+  const y=calCursor.getFullYear(), mo=calCursor.getMonth();
+  const first=new Date(y,mo,1); const startOffset=(first.getDay()+6)%7;
+  const daysInMonth=new Date(y,mo+1,0).getDate();
+  const today=ymd(new Date());
+  let cells='';
+  for(let i=0;i<startOffset;i++) cells+=`<div></div>`;
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${y}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const daySessions=sessions.filter(s=>s.sessionDate===ds);
+    cells+=`<div class="cal-day ${ds===today?'today':''} ${daySessions.length?'has-sessions':''}" onclick="openDay('${ds}')">
+      <div style="font-weight:700;color:${ds===today?'#ef4444':'#e2e8f0'};">${d}</div>
+      <div style="position:absolute;bottom:4px;left:4px;right:4px;text-align:center;">${daySessions.slice(0,4).map(()=>'<span class="cal-dot"></span>').join('')}</div>
+    </div>`;
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">
+    ${WEEKDAYS.map(w=>`<div style="text-align:center;font-size:.7rem;font-weight:800;color:#64748b;padding-bottom:4px;">${w}</div>`).join('')}
+    ${cells}
+  </div>
+  <div id="day-detail" style="margin-top:16px;"></div>`;
+}
+function renderWeekView(){
+  const {start}=weekRange();
+  let html='<div class="space-y-3">';
+  for(let i=0;i<7;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i); const ds=ymd(d);
+    const isToday=ds===ymd(new Date());
+    html+=`<div style="background:#020617;border:1px solid ${isToday?'#ef4444':'#1e293b'};border-radius:12px;padding:12px 16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <span style="font-weight:800;color:${isToday?'#ef4444':'#e2e8f0'};">${WEEKDAYS[i]} ${formatD(d.toISOString())}</span>
+        <button onclick="openSessionModal(null,'${ds}')" style="background:#1e293b;border:none;color:#94a3b8;padding:4px 10px;border-radius:8px;font-size:.72rem;cursor:pointer;"><i class="fas fa-plus"></i></button>
+      </div>
+      ${renderDaySessions(ds, true)}
+    </div>`;
+  }
+  return html+'</div>';
+}
+function renderDaySessions(ds, compact){
+  const list=sessions.filter(s=>s.sessionDate===ds).sort((a,b)=>(a.startTime||'').localeCompare(b.startTime||''));
+  if(list.length===0) return `<div style="color:#475569;font-size:.82rem;${compact?'':'text-align:center;padding:24px;'}">ვარჯიში არ არის</div>`;
+  return `<div class="space-y-2">${list.map(s=>`
+    <div style="background:#0f172a;border:1px solid #1e293b;border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div><div style="font-weight:700;color:#e2e8f0;font-size:.85rem;">${s.startTime||''}${s.endTime?'–'+s.endTime:''} &bull; ${s.sessionType||'ვარჯიში'}</div>
+      <div style="font-size:.75rem;color:#94a3b8;margin-top:2px;"><i class="fas fa-user" style="font-size:.7rem;"></i> ${s.clientName||'—'}${s.notes?' &bull; '+s.notes:''}</div></div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="openSessionModal('${s.id}')" style="background:#1e293b;border:none;color:#60a5fa;width:30px;height:30px;border-radius:8px;cursor:pointer;"><i class="fas fa-pen" style="font-size:.72rem;"></i></button>
+        <button onclick="deleteSession('${s.id}')" style="background:#1e293b;border:none;color:#f87171;width:30px;height:30px;border-radius:8px;cursor:pointer;"><i class="fas fa-trash" style="font-size:.72rem;"></i></button>
+      </div>
+    </div>`).join('')}</div>`;
+}
+window.setCalMode=function(m){ calMode=m; renderTab(); };
+window.calNav=function(dir){ if(calMode==='month') calCursor.setMonth(calCursor.getMonth()+dir); else calCursor.setDate(calCursor.getDate()+dir*7); renderTab(); };
+window.openDay=function(ds){
+  const el=document.getElementById('day-detail'); if(!el) return;
+  el.innerHTML=`<div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:14px 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-weight:800;color:#fff;">${formatD(ds)}</span>
+      <button onclick="openSessionModal(null,'${ds}')" class="btn-primary" style="padding:6px 12px;font-size:.78rem;"><i class="fas fa-plus"></i> სეანსი</button>
+    </div>${renderDaySessions(ds,true)}</div>`;
+};
+
+// ── Session modal ──
+window.openSessionModal=function(sessionId,presetDate){
+  const s = sessionId ? sessions.find(x=>x.id===sessionId) : null;
+  const clientOpts = clients.map(c=>`<option value="${c.id}" ${s?.clientId===c.id?'selected':''}>${c.firstName} ${c.lastName}</option>`).join('');
+  const wrap=document.createElement('div'); wrap.className='modal-overlay'; wrap.id='session-modal';
+  wrap.innerHTML=`<div class="card anim-in" style="max-width:460px;width:100%;padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+      <h3 style="font-weight:900;color:#fff;font-size:1.1rem;">${s?'სეანსის რედაქტირება':'ახალი სეანსი'}</h3>
+      <button onclick="closeSessionModal()" style="background:none;border:none;color:#64748b;font-size:1.3rem;cursor:pointer;">×</button>
+    </div>
+    <div class="space-y-3">
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">კლიენტი</label>
+        <select id="s-client" class="form-input"><option value="">— აირჩიეთ —</option>${clientOpts}</select></div>
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">თარიღი</label>
+        <input id="s-date" type="date" class="form-input" value="${s?.sessionDate||presetDate||ymd(new Date())}"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">დაწყება</label>
+          <input id="s-start" type="time" class="form-input" value="${s?.startTime||'18:00'}"></div>
+        <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">დასრულება</label>
+          <input id="s-end" type="time" class="form-input" value="${s?.endTime||'19:00'}"></div>
+      </div>
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">ვარჯიშის ტიპი</label>
+        <input id="s-type" type="text" class="form-input" placeholder="მაგ: ზურგის ვარჯიში, კარდიო" value="${s?.sessionType||''}"></div>
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">შენიშვნა</label>
+        <textarea id="s-notes" class="form-input" rows="2">${s?.notes||''}</textarea></div>
+      <div id="s-err" style="color:#f87171;font-size:.8rem;"></div>
+      <button class="btn-primary w-full" onclick="saveSession('${sessionId||''}')">${s?'განახლება':'დამატება'}</button>
+    </div>
+  </div>`;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)closeSessionModal();});
+  document.body.appendChild(wrap);
+};
+window.closeSessionModal=function(){ document.getElementById('session-modal')?.remove(); };
+window.saveSession=async function(sessionId){
+  const clientId=document.getElementById('s-client').value;
+  const sessionDate=document.getElementById('s-date').value;
+  const startTime=document.getElementById('s-start').value;
+  const endTime=document.getElementById('s-end').value;
+  const sessionType=document.getElementById('s-type').value.trim();
+  const notes=document.getElementById('s-notes').value.trim();
+  const err=document.getElementById('s-err');
+  if(!clientId||!sessionDate||!startTime){ err.textContent='კლიენტი, თარიღი და დრო სავალდებულოა'; return; }
+  const client=clients.find(c=>c.id===clientId);
+  const payload={ trainerId:session.trainerId, trainerName:`${session.firstName||''} ${session.lastName||''}`.trim(), clientId, clientName:client?`${client.firstName} ${client.lastName}`:'',
+    sessionDate, startTime, endTime, sessionType:sessionType||'ვარჯიში', notes, updatedAt:new Date().toISOString() };
+  try{
+    if(sessionId){ await updateDoc(doc(db,'training_sessions',sessionId),payload); }
+    else { payload.createdAt=new Date().toISOString(); await addDoc(collection(db,'training_sessions'),payload); }
+    closeSessionModal(); renderTab();
+  }catch(e){ console.error(e); err.textContent='შენახვა ვერ მოხერხდა'; }
+};
+window.deleteSession=async function(id){
+  if(!confirm('წავშალოთ ეს სეანსი?')) return;
+  try{ await deleteDoc(doc(db,'training_sessions',id)); renderTab(); }catch(e){ console.error(e); }
+};
+
+// ── Payments ──
+function isPaidThisMonth(clientId){
+  const mk=curMonthKey();
+  return payments.some(p=>p.clientId===clientId && p.paymentMonth===mk && p.status==='paid');
+}
+function renderPayments(){
+  const mk=curMonthKey();
+  const active=clients.filter(c=>effectiveStatus(c)==='active');
+  const unpaidList=active.filter(c=>!isPaidThisMonth(c.id));
+  const sortedHistory=[...payments].filter(p=>p.status==='paid').sort((a,b)=>(b.paymentDate||'').localeCompare(a.paymentDate||''));
+  const totalThisMonth=payments.filter(p=>p.paymentMonth===mk&&p.status==='paid').reduce((s,p)=>s+(Number(p.amount)||0),0);
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:#fff;">გადახდები</h2>
+        <p style="color:#64748b;font-size:.85rem;margin-top:4px;">პრივატული — ჩანს მხოლოდ თქვენთვის</p>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        ${statCard('fas fa-coins', totalThisMonth+'₾', 'ამ თვის შემოსავალი')}
+        ${statCard('fas fa-exclamation-triangle', unpaidList.length, 'გადაუხდელი')}
+      </div>
+      <div>
+        <h3 style="font-size:.8rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:12px;">კლიენტები — ${MONTHS[new Date().getMonth()]}</h3>
+        <div class="space-y-2">
+          ${active.length===0?'<div style="color:#475569;padding:20px;text-align:center;">აქტიური კლიენტი არ არის</div>':active.map(c=>{
+            const paid=isPaidThisMonth(c.id);
+            return `<div style="background:#020617;border:1px solid ${paid?'#1e293b':'rgba(239,68,68,.3)'};border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div><div style="font-weight:700;color:${paid?'#e2e8f0':'#f87171'};">${c.firstName} ${c.lastName}</div>
+              <div style="font-size:.75rem;color:#64748b;margin-top:2px;">${c.phone||'—'}</div></div>
+              <div style="display:flex;align-items:center;gap:10px;">
+                ${paid?'<span class="badge-active">✅ გადახდილია</span>':'<span class="badge-expired">❌ გადაუხდელი</span>'}
+                <button class="btn-primary" style="padding:6px 12px;font-size:.75rem;" onclick="openPaymentModal('${c.id}')"><i class="fas fa-plus"></i> გადახდა</button>
+              </div>
+            </div>`;}).join('')}
+        </div>
+      </div>
+      <div>
+        <h3 style="font-size:.8rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:12px;">გადახდების ისტორია</h3>
+        ${sortedHistory.length===0?'<div style="color:#475569;padding:20px;text-align:center;">ისტორია ცარიელია</div>':`
+        <div style="overflow-x:auto;border:1px solid #1e293b;border-radius:12px;">
+          <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+            <thead><tr style="background:#020617;">
+              <th style="padding:10px 14px;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;">კლიენტი</th>
+              <th style="padding:10px 14px;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;">თვე</th>
+              <th style="padding:10px 14px;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;">თანხა</th>
+              <th style="padding:10px 14px;text-align:left;color:#64748b;font-size:.7rem;text-transform:uppercase;">თარიღი</th>
+              <th style="padding:10px 14px;"></th>
+            </tr></thead>
+            <tbody>${sortedHistory.map(p=>`<tr style="border-top:1px solid #1e293b;">
+              <td style="padding:10px 14px;color:#e2e8f0;font-weight:600;">${p.clientName||'—'}</td>
+              <td style="padding:10px 14px;color:#94a3b8;">${p.paymentMonth||'—'}</td>
+              <td style="padding:10px 14px;color:#34d399;font-weight:700;">${p.amount}₾</td>
+              <td style="padding:10px 14px;color:#64748b;">${formatD(p.paymentDate)}</td>
+              <td style="padding:10px 14px;text-align:right;"><button onclick="deletePayment('${p.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;"><i class="fas fa-trash" style="font-size:.78rem;"></i></button></td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>`}
+      </div>
+    </div>`;
+}
+window.openPaymentModal=function(clientId){
+  const client=clients.find(c=>c.id===clientId); if(!client) return;
+  const wrap=document.createElement('div'); wrap.className='modal-overlay'; wrap.id='payment-modal';
+  wrap.innerHTML=`<div class="card anim-in" style="max-width:420px;width:100%;padding:24px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+      <h3 style="font-weight:900;color:#fff;font-size:1.1rem;">გადახდის დაფიქსირება</h3>
+      <button onclick="closePaymentModal()" style="background:none;border:none;color:#64748b;font-size:1.3rem;cursor:pointer;">×</button>
+    </div>
+    <p style="color:#94a3b8;font-size:.88rem;margin-bottom:14px;">${client.firstName} ${client.lastName}</p>
+    <div class="space-y-3">
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">თანხა (₾)</label>
+        <input id="p-amount" type="number" class="form-input" placeholder="0"></div>
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">თვე</label>
+        <input id="p-month" type="month" class="form-input" value="${curMonthKey()}"></div>
+      <div><label style="font-size:.72rem;font-weight:700;color:#64748b;display:block;margin-bottom:5px;">შენიშვნა</label>
+        <input id="p-note" type="text" class="form-input"></div>
+      <div id="p-err" style="color:#f87171;font-size:.8rem;"></div>
+      <button class="btn-primary w-full" onclick="savePayment('${clientId}')">დაფიქსირება</button>
+    </div>
+  </div>`;
+  wrap.addEventListener('click',e=>{if(e.target===wrap)closePaymentModal();});
+  document.body.appendChild(wrap);
+};
+window.closePaymentModal=function(){ document.getElementById('payment-modal')?.remove(); };
+window.savePayment=async function(clientId){
+  const amount=Number(document.getElementById('p-amount').value);
+  const paymentMonth=document.getElementById('p-month').value;
+  const note=document.getElementById('p-note').value.trim();
+  const err=document.getElementById('p-err');
+  if(!amount||!paymentMonth){ err.textContent='თანხა და თვე სავალდებულოა'; return; }
+  const client=clients.find(c=>c.id===clientId);
+  try{
+    await addDoc(collection(db,'trainer_payments'),{
+      trainerId:session.trainerId, trainerName:`${session.firstName||''} ${session.lastName||''}`.trim(), clientId, clientName:client?`${client.firstName} ${client.lastName}`:'',
+      amount, paymentMonth, paymentDate:new Date().toISOString(), status:'paid', note,
+      createdAt:new Date().toISOString(), updatedAt:new Date().toISOString()
+    });
+    closePaymentModal(); renderTab();
+  }catch(e){ console.error(e); err.textContent='შენახვა ვერ მოხერხდა'; }
+};
+window.deletePayment=async function(id){
+  if(!confirm('წავშალოთ ეს გადახდა?')) return;
+  try{ await deleteDoc(doc(db,'trainer_payments',id)); renderTab(); }catch(e){ console.error(e); }
+};
+
+function bindTabEvents(){}
+
+window.trLogout=function(){
+  stopListeners();
+  session=null; trainer=null; clients=[]; sessions=[]; payments=[];
+  localStorage.removeItem('fh_trainer_session');
+  location.reload();
+};
+</script>
+</body>
+</html>

@@ -89,8 +89,13 @@ let activeTab = 'overview';
 let visits = [];
 let payments = [];
 let subHistory = [];
+let mySessions = [];
+let myTrainerPayments = [];
+let calCursor = new Date();
 let memberUnsub = null;
 let visitsUnsub = null;
+let sessionsUnsub = null;
+let trainerPayUnsub = null;
 let qrScanner = null;
 let qrScannerRunning = false;
 let pendingCheckinToken = null;
@@ -278,6 +283,8 @@ function renderDashboardShell() {
           ${navItem('qr','fas fa-qrcode','QR სკანირება — შესვლა')}
           ${navItem('visits','fas fa-history','ვიზიტების ისტორია')}
           ${navItem('payments','fas fa-credit-card','გადახდები')}
+          ${navItem('workouts','fas fa-calendar-days','ჩემი ვარჯიშები')}
+          ${navItem('status','fas fa-circle-check','ჩემი სტატუსი')}
           ${navItem('history','fas fa-clock-rotate-left','აბონემენტის ისტორია')}
         </nav>
       </div>
@@ -333,6 +340,26 @@ async function loadMemberData() {
       if (activeTab === 'visits') renderTabContent();
     },
     () => loadVisitsFallback()
+  );
+
+  // Real-time training sessions (trainer calendar)
+  sessionsUnsub = onSnapshot(
+    query(collection(db, 'training_sessions'), where('clientId', '==', session.memberId), limit(300)),
+    snap => {
+      mySessions = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (activeTab === 'workouts') renderTabContent();
+    },
+    () => {}
+  );
+
+  // Real-time trainer payments (my own only)
+  trainerPayUnsub = onSnapshot(
+    query(collection(db, 'trainer_payments'), where('clientId', '==', session.memberId), limit(200)),
+    snap => {
+      myTrainerPayments = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      if (activeTab === 'status') renderTabContent();
+    },
+    () => {}
   );
 
   // Load payments and history — no orderBy compound query; sort in JS
@@ -416,6 +443,8 @@ function updateSidebarStatus() {
 function stopListeners() {
   if (memberUnsub) { memberUnsub(); memberUnsub = null; }
   if (visitsUnsub) { visitsUnsub(); visitsUnsub = null; }
+  if (sessionsUnsub) { sessionsUnsub(); sessionsUnsub = null; }
+  if (trainerPayUnsub) { trainerPayUnsub(); trainerPayUnsub = null; }
 }
 
 // ── Tab content rendering ─────────────────────────────────────────────────
@@ -432,6 +461,8 @@ function renderTabContent() {
     case 'qr': el.innerHTML = renderQrTab(); startQrScanner(); break;
     case 'visits': el.innerHTML = renderVisits(); break;
     case 'payments': el.innerHTML = renderPayments(); break;
+    case 'workouts': el.innerHTML = renderWorkouts(); break;
+    case 'status': el.innerHTML = renderStatus(); break;
     case 'history': el.innerHTML = renderHistory(); break;
   }
 }
@@ -866,6 +897,96 @@ function renderHistory() {
       `}
     </div>
   `;
+}
+
+// ── Tab: My Workouts (trainer calendar) ────────────────────────────────────
+const M_MONTHS = ['იანვარი','თებერვალი','მარტი','აპრილი','მაისი','ივნისი','ივლისი','აგვისტო','სექტემბერი','ოქტომბერი','ნოემბერი','დეკემბერი'];
+function mYmd(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+
+function renderWorkouts() {
+  const hasTrainer = member?.trainerServiceEnabled && member?.trainerId;
+  const todayStr = mYmd(new Date());
+  const upcoming = mySessions.filter(s => s.sessionDate >= todayStr).sort((a,b)=>(a.sessionDate+a.startTime).localeCompare(b.sessionDate+b.startTime));
+  const past = mySessions.filter(s => s.sessionDate < todayStr).sort((a,b)=>(b.sessionDate+b.startTime).localeCompare(a.sessionDate+a.startTime));
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">ჩემი ვარჯიშები</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">ტრენერის მიერ დანიშნული სეანსები</p>
+      </div>
+      ${!hasTrainer ? `<div style="text-align:center;padding:40px;color:#475569;"><i class="fas fa-dumbbell" style="font-size:2.5rem;margin-bottom:14px;display:block;"></i>თქვენ არ გყავთ მიბმული ტრენერი. გთხოვთ მიმართოთ ადმინისტრატორს.</div>` : `
+        ${mySessions.length===0 ? `<div style="text-align:center;padding:40px;color:#475569;">ჯერ არ გაქვთ დანიშნული ვარჯიშები</div>` : `
+          ${upcoming.length>0 ? `<div>
+            <h3 style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#34d399;margin-bottom:10px;"><i class="fas fa-arrow-right"></i> მომავალი ვარჯიშები</h3>
+            <div class="space-y-3">${upcoming.map(s=>sessionCard(s,true)).join('')}</div>
+          </div>` : ''}
+          ${past.length>0 ? `<div style="margin-top:24px;">
+            <h3 style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:10px;"><i class="fas fa-clock-rotate-left"></i> წარსული ვარჯიშები</h3>
+            <div class="space-y-3 max-h-80 overflow-y-auto pr-1">${past.map(s=>sessionCard(s,false)).join('')}</div>
+          </div>` : ''}
+        `}
+      `}
+    </div>`;
+}
+function sessionCard(s, upcoming){
+  const isToday = s.sessionDate === mYmd(new Date());
+  return `<div style="background:#020617;border:1px solid ${isToday?'#ef4444':'#1e293b'};border-radius:12px;padding:14px 16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+      <div style="font-weight:800;color:${isToday?'#ef4444':'#e2e8f0'};font-size:0.95rem;">
+        ${isToday?'🔴 დღეს — ':''}${formatD(s.sessionDate)} &bull; ${s.startTime||''}${s.endTime?'–'+s.endTime:''}
+      </div>
+      <span style="font-size:0.72rem;font-weight:700;padding:3px 10px;border-radius:9999px;background:rgba(239,68,68,0.12);color:#f87171;">${s.sessionType||'ვარჯიში'}</span>
+    </div>
+    <div style="font-size:0.8rem;color:#94a3b8;margin-top:8px;">
+      <i class="fas fa-user-tie" style="font-size:0.72rem;"></i> ტრენერი: <strong style="color:#e2e8f0;">${s.trainerName||'—'}</strong>
+    </div>
+    ${s.notes?`<div style="font-size:0.8rem;color:#64748b;margin-top:4px;"><i class="fas fa-note-sticky" style="font-size:0.72rem;"></i> ${s.notes}</div>`:''}
+  </div>`;
+}
+
+// ── Tab: My Status (subscription + trainer payment) ────────────────────────
+function renderStatus() {
+  const isActive = effectiveStatus(member) === 'active';
+  const rDays = member?.subscriptionEndDate ? remainingDays(member.subscriptionEndDate) : 0;
+  const hasTrainer = member?.trainerServiceEnabled && member?.trainerId;
+  const mk = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+  const paidThisMonth = myTrainerPayments.some(p => p.paymentMonth === mk && p.status === 'paid');
+  const history = [...myTrainerPayments].filter(p=>p.status==='paid').sort((a,b)=>(b.paymentDate||'').localeCompare(a.paymentDate||''));
+  return `
+    <div class="space-y-6 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">ჩემი სტატუსი</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">აბონემენტი და ტრენერის გადახდები</p>
+      </div>
+      <div style="background:#020617;border:1px solid #1e293b;border-radius:14px;padding:18px;">
+        <h3 style="font-size:0.72rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:12px;">აქტიური აბონემენტი</h3>
+        <div class="grid grid-cols-2 gap-4">
+          <div><span style="color:#475569;font-size:0.75rem;">ტიპი</span><p style="color:#e2e8f0;font-weight:800;">${subName(member?.subscriptionType)}</p></div>
+          <div><span style="color:#475569;font-size:0.75rem;">სტატუსი</span><p>${isActive?'<span class="badge-active">აქტიური</span>':'<span class="badge-expired">ვადაგასული</span>'}</p></div>
+          <div><span style="color:#475569;font-size:0.75rem;">ვადა</span><p style="color:#e2e8f0;font-weight:700;">${formatD(member?.subscriptionEndDate)}</p></div>
+          <div><span style="color:#475569;font-size:0.75rem;">დარჩენილი</span><p style="color:#e2e8f0;font-weight:700;">${rDays>0?rDays+' დღე':'—'}${member?.remainingVisits!=null?' / '+member.remainingVisits+' ვიზიტი':''}</p></div>
+        </div>
+      </div>
+      ${hasTrainer ? `
+        <div style="background:#020617;border:1px solid ${paidThisMonth?'#1e293b':'rgba(239,68,68,0.3)'};border-radius:14px;padding:18px;">
+          <h3 style="font-size:0.72rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:12px;">ტრენერის მომსახურება — ${M_MONTHS[new Date().getMonth()]}</h3>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <span style="color:#94a3b8;font-size:0.9rem;">მიმდინარე თვის გადახდა</span>
+            ${paidThisMonth ? '<span class="badge-active" style="font-size:0.85rem;padding:4px 14px;">✅ გადახდილია</span>' : '<span class="badge-expired" style="font-size:0.85rem;padding:4px 14px;">❌ გადაუხდელია</span>'}
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size:0.78rem;font-weight:800;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:10px;">გადახდების ისტორია</h3>
+          ${history.length===0 ? `<div style="text-align:center;padding:30px;color:#475569;">გადახდები ჯერ არ დაფიქსირებულა</div>` : `
+            <div class="space-y-2">${history.map(p=>`
+              <div style="background:#020617;border:1px solid #1e293b;border-radius:12px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                <div><div style="font-weight:700;color:#e2e8f0;">${p.paymentMonth}</div>
+                <div style="font-size:0.75rem;color:#64748b;margin-top:2px;">${formatD(p.paymentDate)}${p.note?' &bull; '+p.note:''}</div></div>
+                <span style="color:#34d399;font-weight:800;">${p.amount}₾</span>
+              </div>`).join('')}</div>`}
+        </div>
+      ` : `<div style="text-align:center;padding:30px;color:#475569;"><i class="fas fa-user-tie" style="font-size:2rem;margin-bottom:12px;display:block;"></i>ტრენერის მომსახურება არ გაქვთ გააქტიურებული</div>`}
+    </div>`;
 }
 
 // ── Logout ─────────────────────────────────────────────────────────────────
