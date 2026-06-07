@@ -818,6 +818,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>სტატუსი:</strong> <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
             <div><strong>დარჩენილი:</strong> ${member.remainingVisits != null ? member.remainingVisits : 'ულიმიტო'}</div>
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
+            ${member.createdByFullName ? `<div><strong>რეგისტრავტორი:</strong> <span style="color:#94a3b8;">${member.createdByFullName}${member.createdByUsername ? ' (@'+member.createdByUsername+')' : ''}</span></div>` : ''}
+            ${member.lastMembershipHandledByFullName && member.lastMembershipHandledByFullName !== member.createdByFullName ? `<div><strong>ბოლო განახლება:</strong> <span style="color:#94a3b8;">${member.lastMembershipHandledByFullName}</span></div>` : ''}
           </div>
           ${member.trainerServiceEnabled && member.trainerId ? `
             <div style="margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(220,38,38,0.06));border:1px solid rgba(239,68,68,0.3);border-radius:14px;display:flex;align-items:center;gap:10px;">
@@ -2329,7 +2331,13 @@ ${memberPortalUrl}
     window.toggleRegTrainer = function() {
       const checked = document.getElementById('regTrainerService').checked;
       const wrap = document.getElementById('regTrainerSelectWrap');
+      const section = document.getElementById('trainerServiceSection');
+      const track = document.getElementById('regTrainerToggleTrack');
+      const thumb = document.getElementById('regTrainerToggleThumb');
       wrap.style.display = checked ? 'block' : 'none';
+      if (section) section.style.borderColor = checked ? 'rgba(239,68,68,0.6)' : 'rgba(239,68,68,0.3)';
+      if (track) { track.style.background = checked ? '#ef4444' : '#1e293b'; track.style.borderColor = checked ? '#ef4444' : '#334155'; }
+      if (thumb) { thumb.style.transform = checked ? 'translateX(24px)' : 'none'; thumb.style.background = checked ? '#fff' : '#64748b'; }
       if (checked) {
         document.getElementById('regTrainerId').innerHTML = buildTrainerOptions('');
       }
@@ -5444,6 +5452,7 @@ ${memberPortalUrl}
               <div class="search-id">სტატუსი: <span class="status-badge ${getStatusClass(effectiveStatus)}">${getStatusText(effectiveStatus)}</span></div>
               <div class="search-id">გააქტიურდა: ${formatDate(m.subscriptionStartDate)}</div>
               <div class="search-end">ვადა: ${formatDate(m.subscriptionEndDate)}</div>
+              ${m.createdByFullName ? `<div class="search-id" style="color:#64748b;font-size:0.78rem;margin-top:2px;"><i class="fas fa-user-pen" style="font-size:0.72rem;opacity:0.7;"></i> ${m.createdByFullName}</div>` : ''}
               ${m.trainerServiceEnabled && m.trainerId ? `<div class="trainer-service-badge" style="margin-top:6px;"><i class="fas fa-dumbbell"></i> ${getTrainerName(m.trainerId) || 'ტრენერი'}</div>` : ''}
             </div>
             <div class="search-arrow">${document.getElementById(`details-${m.id}`) ? '−' : '+'}</div>
