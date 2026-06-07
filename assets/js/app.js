@@ -2385,8 +2385,9 @@ ${memberPortalUrl}
             <td><span class="status-badge ${t.status === 'disabled' ? 'status-expired' : 'status-active'}">${t.status === 'disabled' ? 'არააქტიური' : 'აქტიური'}</span></td>
             <td>
               <div class="admin-action-row">
-                <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>
-                <button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deleteTrainer('${t.id}')"><i class="fas fa-trash"></i> წაშლა</button>
+                ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>` : ''}
+                ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deleteTrainer('${t.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
+                ${!isAdmin() ? `<span style="color:#64748b;font-size:0.82rem;">— მხოლოდ ნახვა —</span>` : ''}
               </div>
             </td>
           </tr>
@@ -3047,13 +3048,24 @@ ${memberPortalUrl}
         </div>
 
         <div class="section-panel">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
             <h3 class="panel-title" style="margin:0;">Check-in ისტორია</h3>
-            <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshCheckInHistory()">
-              <i class="fas fa-sync"></i> განახლება
-            </button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+              <select id="checkinFilterResult" onchange="window.refreshCheckInHistory()" style="background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:6px 10px;font-size:0.82rem;">
+                <option value="">ყველა</option>
+                <option value="approved">✅ დადასტურებული</option>
+                <option value="denied">❌ უარყოფილი</option>
+              </select>
+              <input type="date" id="checkinFilterDate" onchange="window.refreshCheckInHistory()" style="background:#1e293b;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:6px 10px;font-size:0.82rem;">
+              <button class="btn bg-slate-600 hover:bg-slate-700" onclick="document.getElementById('checkinFilterResult').value='';document.getElementById('checkinFilterDate').value='';window.refreshCheckInHistory();" style="padding:6px 10px;font-size:0.82rem;">
+                <i class="fas fa-times"></i> გასუფთავება
+              </button>
+              <button class="btn bg-slate-600 hover:bg-slate-700" onclick="window.refreshCheckInHistory()" style="padding:6px 10px;font-size:0.82rem;">
+                <i class="fas fa-sync"></i>
+              </button>
+            </div>
           </div>
-          <div id="checkInHistoryTable"></div>
+          <div id="checkInHistoryTable" style="height:420px;overflow-y:auto;border:1px solid #1e293b;border-radius:12px;"></div>
         </div>
       `;
 
@@ -3067,10 +3079,12 @@ ${memberPortalUrl}
     async function loadCheckInHistory() {
       const el = document.getElementById('checkInHistoryTable');
       if (!el) return;
-      el.innerHTML = '<div style="color:#94a3b8;padding:16px;text-align:center;">იტვირთება...</div>';
+      el.innerHTML = '<div style="color:#94a3b8;padding:20px;text-align:center;"><i class="fas fa-spinner fa-spin"></i> იტვირთება...</div>';
+      const filterResult = document.getElementById('checkinFilterResult')?.value || '';
+      const filterDate = document.getElementById('checkinFilterDate')?.value || '';
       try {
         const pid = firebaseConfig.projectId;
-        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=50`;
+        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=200`;
         const r = await fetch(url);
         if (!r.ok) { el.innerHTML = '<div style="color:#94a3b8;padding:16px;">ისტორია ვერ ჩაიტვირთა</div>'; return; }
         const data = await r.json();
@@ -3089,37 +3103,44 @@ ${memberPortalUrl}
             qrToken: f.qrToken?.stringValue || ''
           };
         });
-        if (docs.length === 0) {
-          el.innerHTML = '<div style="color:#94a3b8;padding:24px;text-align:center;">სკანირების ისტორია ცარიელია</div>';
+        // Apply filters
+        let filtered = docs;
+        if (filterResult) filtered = filtered.filter(d => d.result === filterResult);
+        if (filterDate) filtered = filtered.filter(d => d.checkInTime.startsWith(filterDate));
+
+        if (filtered.length === 0) {
+          el.innerHTML = `<div style="color:#94a3b8;padding:32px;text-align:center;"><i class="fas fa-inbox" style="font-size:2rem;display:block;margin-bottom:10px;opacity:0.4;"></i>${docs.length === 0 ? 'სკანირების ისტორია ცარიელია' : 'ფილტრით ჩანაწერი ვერ მოიძებნა'}</div>`;
           return;
         }
         el.innerHTML = `
           <div style="overflow-x:auto;">
-            <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+            <div style="padding:8px 12px;background:#0f172a;border-bottom:1px solid #1e293b;font-size:0.75rem;color:#64748b;display:flex;justify-content:space-between;">
+              <span>სულ: <strong style="color:#e2e8f0;">${filtered.length}</strong> ჩანაწერი</span>
+              <span>✅ ${filtered.filter(d=>d.result==='approved').length} &nbsp; ❌ ${filtered.filter(d=>d.result!=='approved').length}</span>
+            </div>
+            <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
               <thead>
-                <tr style="border-bottom:1px solid #334155;">
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">წევრი</th>
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">პირადი</th>
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">ტელეფონი</th>
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">აბონემენტი</th>
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">შედეგი</th>
-                  <th style="padding:10px;text-align:left;color:#94a3b8;">თარიღი</th>
+                <tr style="border-bottom:1px solid #1e293b;background:#0f172a;position:sticky;top:0;z-index:1;">
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;">წევრი</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;">პირადი</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;">ტელეფონი</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;">შედეგი</th>
+                  <th style="padding:10px 12px;text-align:left;color:#64748b;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.05em;">თარიღი</th>
                 </tr>
               </thead>
               <tbody>
-                ${docs.map(d => `
-                  <tr style="border-bottom:1px solid #1e293b;">
-                    <td style="padding:10px;color:#e2e8f0;">${d.memberName}</td>
-                    <td style="padding:10px;color:#94a3b8;">${d.personalId}</td>
-                    <td style="padding:10px;color:#94a3b8;">${d.phone}</td>
-                    <td style="padding:10px;color:#94a3b8;">${d.subscriptionStatus}</td>
-                    <td style="padding:10px;">
+                ${filtered.map(d => `
+                  <tr style="border-bottom:1px solid #0f172a;transition:background 0.1s;" onmouseover="this.style.background='#0f172a'" onmouseout="this.style.background=''">
+                    <td style="padding:10px 12px;color:#e2e8f0;font-weight:600;">${d.memberName}</td>
+                    <td style="padding:10px 12px;color:#94a3b8;font-size:0.8rem;">${d.personalId}</td>
+                    <td style="padding:10px 12px;color:#94a3b8;font-size:0.8rem;">${d.phone}</td>
+                    <td style="padding:10px 12px;">
                       ${d.result === 'approved'
-                        ? '<span style="color:#4ade80;font-weight:700;">✅ დადასტურდა</span>'
-                        : `<span style="color:#f87171;font-weight:700;">❌ უარყოფილია</span>${d.reason ? `<br><span style="font-size:0.75rem;color:#64748b;">${d.reason}</span>` : ''}`
+                        ? '<span style="color:#4ade80;font-weight:700;font-size:0.82rem;">✅ დადასტურდა</span>'
+                        : `<span style="color:#f87171;font-weight:700;font-size:0.82rem;">❌ უარყოფილია</span>${d.reason ? `<br><span style="font-size:0.72rem;color:#64748b;">${d.reason}</span>` : ''}`
                       }
                     </td>
-                    <td style="padding:10px;color:#64748b;font-size:0.8rem;">${formatDateTime(d.checkInTime)}</td>
+                    <td style="padding:10px 12px;color:#64748b;font-size:0.78rem;white-space:nowrap;">${formatDateTime(d.checkInTime)}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -3127,7 +3148,7 @@ ${memberPortalUrl}
           </div>
         `;
       } catch (e) {
-        el.innerHTML = '<div style="color:#f87171;padding:16px;">შეცდომა ისტორიის ჩატვირთვისას</div>';
+        el.innerHTML = '<div style="color:#f87171;padding:16px;text-align:center;"><i class="fas fa-exclamation-circle"></i> შეცდომა ისტორიის ჩატვირთვისას</div>';
       }
     }
 

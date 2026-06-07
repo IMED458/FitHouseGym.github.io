@@ -199,6 +199,7 @@ function renderShell(){
           ${navItem('clients','fas fa-users','ჩემი კლიენტები')}
           ${navItem('calendar','fas fa-calendar-days','კალენდარი')}
           ${navItem('payments','fas fa-money-bill-wave','გადახდები')}
+          ${navItem('settings','fas fa-lock','პაროლის შეცვლა')}
         </nav>
       </div>
       <div class="flex-1 w-full card" style="overflow-y:auto;max-height:calc(100vh - 120px);" id="tab-wrap">
@@ -253,6 +254,7 @@ function renderTab(){
   else if(activeTab==='clients') el.innerHTML=renderClients();
   else if(activeTab==='calendar') el.innerHTML=renderCalendar();
   else if(activeTab==='payments') el.innerHTML=renderPayments();
+  else if(activeTab==='settings') el.innerHTML=renderSettings();
   bindTabEvents();
 }
 
@@ -594,6 +596,79 @@ window.deletePayment=async function(id){
 };
 
 function bindTabEvents(){}
+
+function renderSettings(){
+  return `
+    <div class="space-y-5 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.4rem;font-weight:900;color:#fff;">პაროლის შეცვლა</h2>
+        <p style="color:#64748b;font-size:.85rem;margin-top:4px;">შეცვალეთ თქვენი ანგარიშის პაროლი</p>
+      </div>
+      <div id="pw-msg"></div>
+      <div style="max-width:420px;" class="space-y-4">
+        <div>
+          <label style="display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:6px;">მიმდინარე პაროლი</label>
+          <div style="position:relative;">
+            <i class="fas fa-lock" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
+            <input id="pw-cur" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:6px;">ახალი პაროლი</label>
+          <div style="position:relative;">
+            <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
+            <input id="pw-new" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+          </div>
+        </div>
+        <div>
+          <label style="display:block;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#64748b;margin-bottom:6px;">გაიმეორეთ ახალი პაროლი</label>
+          <div style="position:relative;">
+            <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
+            <input id="pw-conf" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+          </div>
+        </div>
+        <button onclick="changeTrainerPassword()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;border:none;border-radius:12px;font-weight:800;font-size:.88rem;cursor:pointer;" id="pw-btn">
+          <i class="fas fa-save"></i> პაროლის განახლება
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function changeTrainerPassword(){
+  const cur=document.getElementById('pw-cur')?.value?.trim();
+  const nw=document.getElementById('pw-new')?.value?.trim();
+  const cf=document.getElementById('pw-conf')?.value?.trim();
+  const msgEl=document.getElementById('pw-msg');
+  const btn=document.getElementById('pw-btn');
+  function showPwMsg(text,ok){
+    msgEl.innerHTML=`<div style="padding:10px 14px;border-radius:10px;font-size:.82rem;font-weight:700;margin-bottom:12px;background:${ok?'rgba(16,185,129,.1)':'rgba(239,68,68,.1)'};border:1px solid ${ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};color:${ok?'#34d399':'#f87171'};display:flex;gap:8px;align-items:center;"><i class="fas fa-${ok?'check-circle':'exclamation-circle'}"></i>${text}</div>`;
+  }
+  if(!cur||!nw||!cf){ showPwMsg('შეავსეთ ყველა ველი',false); return; }
+  if(nw!==cf){ showPwMsg('ახალი პაროლები არ ემთხვევა',false); return; }
+  if(nw.length<4){ showPwMsg('პაროლი ძალიან მოკლეა',false); return; }
+  btn.disabled=true; btn.innerHTML='<i class="fas fa-spinner fa-spin"></i> მიმდინარეობს...';
+  try{
+    const tDoc=await getDoc(doc(db,'trainers',session.trainerId));
+    if(!tDoc.exists()){ showPwMsg('ტრენერი ვერ მოიძებნა',false); return; }
+    // verify current password hash
+    const curHash=await sha256(cur);
+    if(tDoc.data().passwordHash!==curHash){ showPwMsg('მიმდინარე პაროლი არასწორია',false); return; }
+    const newHash=await sha256(nw);
+    await updateDoc(doc(db,'trainers',session.trainerId),{passwordHash:newHash,updatedAt:new Date().toISOString()});
+    showPwMsg('პაროლი წარმატებით შეიცვალა! ✅',true);
+    document.getElementById('pw-cur').value='';
+    document.getElementById('pw-new').value='';
+    document.getElementById('pw-conf').value='';
+  }catch(e){ console.error(e); showPwMsg('შეცდომა. სცადეთ ხელახლა.',false); }
+  finally{ btn.disabled=false; btn.innerHTML='<i class="fas fa-save"></i> პაროლის განახლება'; }
+}
+
+// sha256 helper (same as login)
+async function sha256(str){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
 
 window.trLogout=function(){
   stopListeners();
