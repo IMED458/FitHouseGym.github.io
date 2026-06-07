@@ -1,9 +1,11 @@
 {
-  "name": "FitHouse Gym",
+  "name": "FitHouse — ჩემი კაბინეტი",
   "short_name": "FitHouse",
+  "description": "Fit House Gym — წევრის პირადი კაბინეტი",
   "start_url": "/member/",
   "scope": "/member/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#020617",
   "theme_color": "#020617",
   "lang": "ka",
