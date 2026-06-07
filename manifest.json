@@ -1,11 +1,11 @@
 {
-  "name": "FitHouse Gym",
-  "short_name": "FitHouse",
-  "start_url": "/member/",
-  "scope": "/member/",
+  "name": "FitHouse Admin",
+  "short_name": "FH Admin",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#020617",
-  "theme_color": "#020617",
+  "background_color": "#0a0c12",
+  "theme_color": "#0a0c12",
   "lang": "ka",
   "icons": [
     { "src": "/fithause logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
