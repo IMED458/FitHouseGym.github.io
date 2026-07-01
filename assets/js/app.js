@@ -835,7 +835,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="window.showEditForm(event, '${member.id}')">რედაქტირება</button>
             <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
-            ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> QR გაგზავნა</button>` : ''}
+            ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             ${member.trainerServiceEnabled && member.trainerId ? `<button class="btn bg-orange-600 hover:bg-orange-700 text-sm px-6 py-2" onclick="window.removeTrainerFromMember('${member.id}')"><i class="fas fa-user-minus"></i> ტრენერი ამოხსნა</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
@@ -1312,19 +1312,36 @@ ${memberPortalUrl}
         return;
       }
 
-      const subject = '📱 თქვენი Fit House Gym QR კოდი';
-      const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(member.id)}`;
-      const message = `გამარჯობა ${member.firstName}, თქვენი QR კოდი ქვემოთაა:\n${qrImageUrl}`;
-      const htmlMessage = `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`;
+      const portalUrl = 'https://fithouse.imed.com.ge/member';
+      const subject = '📱 თქვენი პირადი კაბინეტი — Fit House Gym';
+      const message = `გამარჯობა ${member.firstName}!
+
+📱 პირადი კაბინეტის ლინკი:
+${portalUrl}
+
+შესვლა:
+📧 მეილი: ${member.email}
+🔒 პაროლი: თქვენი პირადი ნომერი
+
+კაბინეტში ნახავთ:
+✔ აბონემენტის დეტალებს
+✔ ვიზიტების ისტორიას
+✔ გადახდებს
+✔ QR სკანირება — შესასვლელად
+
+📍 Fit House Gym | +995 511 77 63 37`;
+      const htmlMessage = `<div style="text-align:center;padding:16px 0;">
+        <a href="${portalUrl}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#dc2626,#e11d48);color:white;text-decoration:none;border-radius:12px;font-weight:800;font-size:1rem;">პირად კაბინეტში შესვლა →</a>
+        <p style="color:#64748b;font-size:0.8rem;margin-top:8px;">${portalUrl}</p>
+        <p style="color:#94a3b8;font-size:0.85rem;margin-top:16px;">📧 მეილი: ${member.email}<br>🔒 პაროლი: თქვენი პირადი ნომერი</p>
+      </div>`;
 
       const sent = await sendEmail(member.email, member.firstName, subject, message, {
-        qr_image_url: qrImageUrl,
-        html_message: htmlMessage,
-        qr_url: qrImageUrl
+        html_message: htmlMessage
       });
 
-      if (sent) showToast(`QR გაიგზავნა: ${member.firstName} ${member.lastName}`);
-      else showToast('QR გაგზავნა ვერ მოხერხდა', 'error');
+      if (sent) showToast(`ლინკი გაიგზავნა: ${member.firstName} ${member.lastName}`);
+      else showToast('გაგზავნა ვერ მოხერხდა', 'error');
     };
 
     window.sendQrToActiveMembers = async function() {
@@ -1335,20 +1352,37 @@ ${memberPortalUrl}
         showToast('აქტიური წევრები Email-ით ვერ მოიძებნა', 'error');
         return;
       }
-      const ok = confirm(`გაიგზავნოს QR კოდი ${targets.length} აქტიურ მომხმარებელთან?`);
+      const ok = confirm(`გაიგზავნოს კაბინეტის ლინკი ${targets.length} აქტიურ მომხმარებელთან?`);
       if (!ok) return;
 
+      const portalUrl = 'https://fithouse.imed.com.ge/member';
+      const subject = '📱 თქვენი პირადი კაბინეტი — Fit House Gym';
       let success = 0;
       let failed = 0;
       for (const member of targets) {
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=10&data=${encodeURIComponent(member.id)}`;
-        const subject = '📱 თქვენი Fit House Gym QR კოდი';
-        const message = `გამარჯობა ${member.firstName || ''}, თქვენი QR კოდი ქვემოთაა:\n${qrImageUrl}`;
-        const htmlMessage = `<div style="text-align:center;padding:8px 0;"><img src="${qrImageUrl}" alt="Fit House QR" width="280" height="280" style="display:block;margin:0 auto;max-width:100%;height:auto;" /></div>`;
+        const message = `გამარჯობა ${member.firstName || ''}!
+
+📱 პირადი კაბინეტის ლინკი:
+${portalUrl}
+
+შესვლა:
+📧 მეილი: ${member.email}
+🔒 პაროლი: თქვენი პირადი ნომერი
+
+კაბინეტში ნახავთ:
+✔ აბონემენტის დეტალებს
+✔ ვიზიტების ისტორიას
+✔ გადახდებს
+✔ QR სკანირება — შესასვლელად
+
+📍 Fit House Gym | +995 511 77 63 37`;
+        const htmlMessage = `<div style="text-align:center;padding:16px 0;">
+          <a href="${portalUrl}" style="display:inline-block;padding:14px 28px;background:linear-gradient(135deg,#dc2626,#e11d48);color:white;text-decoration:none;border-radius:12px;font-weight:800;font-size:1rem;">პირად კაბინეტში შესვლა →</a>
+          <p style="color:#64748b;font-size:0.8rem;margin-top:8px;">${portalUrl}</p>
+          <p style="color:#94a3b8;font-size:0.85rem;margin-top:16px;">📧 მეილი: ${member.email}<br>🔒 პაროლი: თქვენი პირადი ნომერი</p>
+        </div>`;
 
         const sent = await sendEmail(member.email, member.firstName || 'მომხმარებელი', subject, message, {
-          qr_image_url: qrImageUrl,
-          qr_url: qrImageUrl,
           html_message: htmlMessage
         });
 
@@ -1357,7 +1391,7 @@ ${memberPortalUrl}
         await new Promise(resolve => setTimeout(resolve, 450));
       }
 
-      showToast(`აქტიურებზე QR გაგზავნა დასრულდა: ${success} წარმატებით, ${failed} შეცდომით`);
+      showToast(`კაბინეტის ლინკი გაიგზავნა: ${success} წარმატებით, ${failed} შეცდომით`);
     };
 
     // ავტომატური შეტყობინება განახლებისთვის
@@ -5440,7 +5474,7 @@ ${memberPortalUrl}
             <button class="btn btn-warning px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
             <button class="btn bg-indigo-600 hover:bg-indigo-700 px-5 py-2" onclick="window.showMemberQr('${m.id}')"><i class="fas fa-qrcode"></i> QR</button>
-            ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> QR გაგზავნა</button>` : ''}
+            ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="window.deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
@@ -5520,7 +5554,7 @@ ${memberPortalUrl}
           <div class="mt-4 flex gap-3 justify-center">
             <button class="btn btn-warning text-sm px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
-            ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> QR გაგზავნა</button>` : ''}
+            ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
           </div></div>`;
       }).join('');
