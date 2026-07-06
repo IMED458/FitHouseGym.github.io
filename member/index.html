@@ -208,19 +208,60 @@ function renderLogin() {
     const errEl = document.getElementById('login-error');
     btn.disabled = true; btn.textContent = 'მიმდინარეობს შესვლა...';
     errEl.style.display = 'none';
+
+    // Checks both SDK and REST fallback (Android Firestore SDK can silently fail)
+    async function findMemberByEmail(emailVal) {
+      // Try SDK first
+      try {
+        const q = query(collection(db, 'members'), where('email', '==', emailVal));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const results = [];
+          snap.forEach(d => results.push({ id: d.id, ...d.data() }));
+          return results;
+        }
+      } catch(_) {}
+      // REST fallback
+      try {
+        const pid2 = 'fit-house-gym-d3595';
+        const url = `https://firestore.googleapis.com/v1/projects/${pid2}/databases/(default)/documents:runQuery`;
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ structuredQuery: {
+            from: [{ collectionId: 'members' }],
+            where: { fieldFilter: { field: { fieldPath: 'email' }, op: 'EQUAL', value: { stringValue: emailVal } } }
+          }})
+        });
+        const rows = await res.json();
+        const results = [];
+        for (const row of rows) {
+          if (!row.document) continue;
+          const parts = row.document.name.split('/');
+          const id = parts[parts.length - 1];
+          const f = row.document.fields || {};
+          const toVal = v => v?.stringValue ?? v?.integerValue ?? v?.doubleValue ?? v?.booleanValue ?? null;
+          const data = {};
+          for (const [k, v] of Object.entries(f)) data[k] = toVal(v);
+          results.push({ id, ...data });
+        }
+        return results;
+      } catch(_) {}
+      return [];
+    }
+
     try {
-      const q = query(collection(db, 'members'), where('email', '==', email));
-      const snap = await getDocs(q);
-      if (snap.empty) {
-        showLoginError('მეილი ან პირადი ნომერი არასწორია');
+      const candidates = await findMemberByEmail(email);
+      if (!candidates.length) {
+        showLoginError('მეილი ან პაროლი არასწორია');
         return;
       }
-      let found = null;
-      snap.forEach(d => { if (d.data().personalId === pid) found = { id: d.id, ...d.data() }; });
-      if (!found) { showLoginError('მეილი ან პირადი ნომერი არასწორია'); return; }
+      // password field takes priority over personalId (backward compatible)
+      let found = candidates.find(d => d.password && d.password === pid);
+      if (!found) found = candidates.find(d => !d.password && d.personalId === pid);
+      if (!found) { showLoginError('მეილი ან პაროლი არასწორია'); return; }
       session = { memberId: found.id, email: found.email, firstName: found.firstName, lastName: found.lastName, ts: Date.now() };
       localStorage.setItem('fh_member_session', JSON.stringify(session));
-      // Clean URL (remove ?checkin if present - will handle after login)
       const token = pendingCheckinToken;
       window.history.replaceState({}, '', '/member');
       pendingCheckinToken = token;
@@ -556,7 +597,7 @@ function renderOverview() {
         <div id="pw-msg"></div>
         <div style="max-width:420px;">
           <div style="margin-bottom:12px;">
-            <label style="display:block;font-size:0.72rem;font-weight:700;color:#64748b;margin-bottom:6px;">მიმდინარე პაროლი (პირადი ნომერი)</label>
+            <label style="display:block;font-size:0.72rem;font-weight:700;color:#64748b;margin-bottom:6px;">მიმდინარე პაროლი</label>
             <div style="position:relative;">
               <i class="fas fa-lock" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.8rem;"></i>
               <input id="pw-current" type="password" placeholder="••••••••••••" class="form-input" style="font-size:0.88rem;">
@@ -1049,8 +1090,10 @@ window.changePassword = async function() {
     const mDoc = await getDoc(doc(db, 'members', session.memberId));
     if (!mDoc.exists()) { showPwMsg('მომხმარებელი ვერ მოიძებნა', false); return; }
     const m = mDoc.data();
-    if (m.personalId !== cur) { showPwMsg('მიმდინარე პაროლი არასწორია', false); return; }
-    await updateDoc(doc(db, 'members', session.memberId), { personalId: nw });
+    // check password field first, fall back to personalId for existing users
+    const currentValid = m.password ? m.password === cur : m.personalId === cur;
+    if (!currentValid) { showPwMsg('მიმდინარე პაროლი არასწორია', false); return; }
+    await updateDoc(doc(db, 'members', session.memberId), { password: nw });
     showPwMsg('პაროლი წარმატებით შეიცვალა!', true);
     document.getElementById('pw-current').value = '';
     document.getElementById('pw-new').value = '';

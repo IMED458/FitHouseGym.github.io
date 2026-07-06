@@ -837,6 +837,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
             ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
+            <button class="btn bg-teal-600 hover:bg-teal-700 text-sm px-6 py-2" onclick="window.resetMemberPassword('${member.id}', '${member.firstName} ${member.lastName}')"><i class="fas fa-key"></i> პაროლი</button>
             ${member.trainerServiceEnabled && member.trainerId ? `<button class="btn bg-orange-600 hover:bg-orange-700 text-sm px-6 py-2" onclick="window.removeTrainerFromMember('${member.id}')"><i class="fas fa-user-minus"></i> ტრენერი ამოხსნა</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
@@ -1392,6 +1393,22 @@ ${portalUrl}
       }
 
       showToast(`კაბინეტის ლინკი გაიგზავნა: ${success} წარმატებით, ${failed} შეცდომით`);
+    };
+
+    window.resetMemberPassword = async function(memberId, memberName) {
+      const newPass = prompt(`პაროლის შეცვლა — ${memberName}\n\nახალი პაროლი:`);
+      if (newPass === null) return; // cancelled
+      if (!newPass.trim()) { showToast('პაროლი ცარიელი არ უნდა იყოს', 'error'); return; }
+      const confirm2 = prompt(`დაადასტურეთ ახალი პაროლი — ${memberName}\n\nგაიმეორეთ პაროლი:`);
+      if (confirm2 === null) return;
+      if (newPass.trim() !== confirm2.trim()) { showToast('პაროლები არ ემთხვევა', 'error'); return; }
+      try {
+        await updateMemberFields(memberId, { password: newPass.trim() });
+        showToast(`✅ პაროლი განახლდა: ${memberName}`);
+      } catch(e) {
+        console.error(e);
+        showToast('პაროლის შეცვლა ვერ მოხერხდა', 'error');
+      }
     };
 
     // ავტომატური შეტყობინება განახლებისთვის
@@ -5475,6 +5492,7 @@ ${memberPortalUrl}
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
             ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> პირ. კაბინეტის ლინკი</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
+            <button class="btn bg-teal-600 hover:bg-teal-700 px-5 py-2" onclick="window.resetMemberPassword('${m.id}', '${m.firstName} ${m.lastName}')"><i class="fas fa-key"></i> პაროლი</button>
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="window.deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
       }).join('');
