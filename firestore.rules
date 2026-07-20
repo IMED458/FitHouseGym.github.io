@@ -1,407 +1,63 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // FitHouse Gym — Firestore Security Rules
-// Firebase Console → Firestore Database → Rules → გადააკოპირე
 //
-// ⚠️  ამ ფაილში 2 ვარიანტია:
+// ⚠️  ᲛᲘᲛᲓᲘᲜᲐᲠᲔ ᲛᲓᲒᲝᲛᲐᲠᲔᲝᲑᲐ — ᲬᲐᲘᲙᲘᲗᲮᲔ
 //
-// [A] ᲐᲮᲚᲐᲕᲔ ᲡᲐᲛᲣᲨᲐᲝ — Firebase Auth-ის გარეშე
-//     მოქმედებს ახლა. request.auth ყოველთვის null-ია, ამიტომ
-//     RBAC-ი მხოლოდ data-validation დონეზეა (write validations).
-//     trainer_payments-ის სრული დაცვა შეუძლებელია Auth-ის გარეშე.
+// პროექტი Firebase Auth-ს არ იყენებს: ადმინის, ოპერატორის, ტრენერისა და
+// წევრის ავტორიზაცია ბრაუზერშივე მოწმდება Firestore-იდან წაკითხულ hash-ებზე.
+// ამის გამო `request.auth` ყოველთვის null-ია და როლებზე დაფუძნებული დაცვა
+// rules-ის დონეზე შეუძლებელია.
 //
-// [B] სათანადო წესები — Firebase Auth + Custom Claims-ით
-//     RBAC-ი სრულ სიმძლავრეზე. auth.token.role-ით.
-//     საჭიროა: Firebase Auth sign-in + Cloud Function custom claims.
+// ამ ფაილის ამოცანა ამიტომ შეზღუდულია: დაიცვას ის, რაც ბრაუზერს საერთოდ
+// არ სჭირდება — კერძოდ `payments`.
 //
-// ════════════════════════════════════════════════════════════════════════════
-// აირჩიე [A] ან [B] და გადააკოპირე Firebase Console-ში.
-// ════════════════════════════════════════════════════════════════════════════
-
-// ════════════════════════════════════════════════════════════════════════════
-// [A] ᲐᲮᲚᲐᲕᲔ ᲡᲐᲛᲣᲨᲐᲝ — Firebase Auth-ის გარეშე
-// ════════════════════════════════════════════════════════════════════════════
+// ᲠᲐ ᲠᲩᲔᲑᲐ ᲓᲐᲣᲪᲕᲔᲚᲘ (იხ. README / ანგარიში):
+//   • users — ადმინის პაროლის hash-ები საჯაროდ იკითხება (login-ს სჭირდება)
+//   • members — წევრს შეუძლია საკუთარი აბონემენტის ველების პირდაპირ ჩაწერა
+//   ამის სრული გამოსწორება მოითხოვს Firebase Auth-ზე მიგრაციას.
+// ═══════════════════════════════════════════════════════════════════════════
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── Helper functions ──────────────────────────────────────────────────
-
-    function hasRequiredFields(fields) {
-      return request.resource.data.keys().hasAll(fields);
-    }
-
-    function notTooLarge(maxFields) {
-      return request.resource.data.size() <= maxFields;
-    }
-
-    function isValidString(field) {
-      return request.resource.data[field] is string
-          && request.resource.data[field].size() > 0
-          && request.resource.data[field].size() < 512;
-    }
-
-    // ─── members ──────────────────────────────────────────────────────────
-    // Read: ყველა (QR check-in, member portal, admin)
-    // Write: სტრუქტურის ვალიდაცია
-
-    match /members/{memberId} {
-      allow read: if true;
-
-      allow create: if hasRequiredFields(['firstName', 'lastName', 'email', 'personalId', 'status'])
-        && isValidString('firstName')
-        && isValidString('lastName')
-        && isValidString('email')
-        && isValidString('personalId')
-        && request.resource.data.status in ['active', 'expired', 'paused']
-        && notTooLarge(40);
-
-      allow update: if request.resource.data.keys().hasAny([
-          'firstName','lastName','email','phone','personalId','status',
-          'subscriptionType','subscriptionPrice','subscriptionStartDate',
-          'subscriptionEndDate','remainingVisits','totalVisits','lastVisit',
-          'trainerId','trainerServiceEnabled','note','expiringEmailSent','updatedAt'
-        ])
-        && notTooLarge(40);
-
-      allow delete: if true;  // admin-only UI-ს მხარეს — Auth-ის გარეშე ვერ ვზღუდავთ
-    }
-
-    // ─── users (admin / operator accounts) ───────────────────────────────
-    // Read: საჭიროა login-ისთვის (browser-იდან hash-ს ამოწმებს)
-    // Write: სტრუქტურის ვალიდაცია
-
-    match /users/{userId} {
-      allow read: if true;  // ⚠️ hash-ები ჩანს — Auth-ით გაუმჯობესდება
-
-      allow create: if hasRequiredFields(['username','passwordHash','role','status'])
-        && isValidString('username')
-        && isValidString('passwordHash')
-        && request.resource.data.role in ['admin', 'operator']
-        && request.resource.data.status in ['active', 'disabled']
-        && notTooLarge(20);
-
-      allow update: if request.resource.data.keys().hasAny([
-          'firstName','lastName','username','passwordHash','role','status','updatedAt','isSystemDefault'
-        ])
-        && notTooLarge(20);
-
-      allow delete: if true;
-    }
-
-    // ─── trainers ─────────────────────────────────────────────────────────
-    // Read: საჭიროა login-ისთვის და კლიენტის dropdown-ისთვის
-    // Write: სტრუქტურის ვალიდაცია
-
-    match /trainers/{trainerId} {
-      allow read: if true;
-
-      allow create: if hasRequiredFields(['username','passwordHash','firstName','lastName','status','role'])
-        && isValidString('username')
-        && isValidString('passwordHash')
-        && request.resource.data.role == 'trainer'
-        && request.resource.data.status in ['active', 'disabled']
-        && notTooLarge(20);
-
-      allow update: if request.resource.data.keys().hasAny([
-          'firstName','lastName','phone','specialization','username','passwordHash',
-          'photoUrl','status','updatedAt'
-        ])
-        && notTooLarge(20);
-
-      allow delete: if true;
-    }
-
-    // ─── training_sessions ────────────────────────────────────────────────
-    // Read: trainer + client (trainerId / clientId check-ი შეუძლებელია Auth-ის გარეშე)
-    // Write: სტრუქტურის ვალიდაცია
-
-    match /training_sessions/{sessionId} {
-      allow read: if true;
-
-      allow create: if hasRequiredFields(['trainerId','clientId','sessionDate','startTime'])
-        && isValidString('trainerId')
-        && isValidString('clientId')
-        && isValidString('sessionDate')
-        && notTooLarge(20);
-
-      allow update: if notTooLarge(20);
-      allow delete: if true;
-    }
-
-    // ─── trainer_payments ─────────────────────────────────────────────────
-    // ⚠️  Auth-ის გარეშე ვერ ვზღუდავთ admin-ის წვდომას Firestore დონეზე!
-    //     ადმინი UI-ში ამ collection-ს არ ითხოვს (კოდი არ წერია),
-    //     მაგრამ Firestore Console-იდან ან სხვა კლიენტიდან ნახვა შეიძლება.
-    //     სრული დაცვა → [B] ვარიანტი Firebase Auth-ით.
-
-    match /trainer_payments/{paymentId} {
-      allow read: if true;  // ← Auth-ით: მხოლოდ trainer + client (იხ. [B])
-
-      allow create: if hasRequiredFields(['trainerId','clientId','amount','paymentMonth','status'])
-        && isValidString('trainerId')
-        && isValidString('clientId')
-        && request.resource.data.amount is number
-        && request.resource.data.amount > 0
-        && request.resource.data.status in ['paid', 'unpaid']
-        && notTooLarge(20);
-
-      allow update: if notTooLarge(20);
-      allow delete: if true;
-    }
-
-    // ─── transactions ─────────────────────────────────────────────────────
-    match /transactions/{txId} {
-      allow read: if true;
-
-      allow create: if hasRequiredFields(['memberId','amount','type','createdAt'])
-        && request.resource.data.amount is number
-        && notTooLarge(30);
-
-      allow update: if notTooLarge(30);
-      allow delete: if true;
-    }
-
-    // ─── check_ins ────────────────────────────────────────────────────────
-    match /check_ins/{checkInId} {
-      allow read: if true;
-
-      allow create: if hasRequiredFields(['memberId','result','checkInTime'])
-        && request.resource.data.result in ['approved', 'denied', 'rejected']
-        && notTooLarge(20);
-
-      allow update, delete: if false;  // ლოგი შეუცვლელია
-    }
-
-    // ─── gym_settings ─────────────────────────────────────────────────────
-    match /gym_settings/{docId} {
-      allow read: if true;
-      allow write: if true;  // Auth-ით: მხოლოდ admin (იხ. [B])
-    }
-
-    // ─── activity_logs ────────────────────────────────────────────────────
-    match /activity_logs/{logId} {
-      allow read: if true;
-      allow create: if notTooLarge(20);
-      allow update, delete: if false;  // ლოგი შეუცვლელია
-    }
-
-    // ─── member_date_history ──────────────────────────────────────────────
-    match /member_date_history/{docId} {
-      allow read: if true;
-      allow create: if notTooLarge(20);
-      allow update, delete: if false;
-    }
-
-    // ─── subscription_plans (აბონემენტის ტარიფები) ────────────────────────
-    // Read: ყველა (რეგისტრაციის ფორმა და member portal ფასებს კითხულობს)
-    // Write: სტრუქტურის ვალიდაცია — admin-only UI-ს მხარეს
-    //
-    // ⚠️ ფასის შეცვლა მხოლოდ ახალ გადახდებზე მოქმედებს: members-სა და
-    //    transactions-ში ფასი snapshot-ად ინახება ჩაწერის მომენტში.
-
-    match /subscription_plans/{planId} {
-      allow read: if true;
-
-      allow create, update: if hasRequiredFields(['name', 'type', 'price', 'durationDays'])
-        && isValidString('name')
-        && isValidString('type')
-        && request.resource.data.price is int
-        && request.resource.data.price >= 0
-        && request.resource.data.durationDays is int
-        && request.resource.data.durationDays > 0
-        && notTooLarge(15);
-
-      allow delete: if true;  // admin-only UI-ს მხარეს
-    }
-
     // ─── payments (Flitt) — ᲑᲠᲐᲣᲖᲔᲠᲘᲓᲐᲜ ᲡᲠᲣᲚᲘᲐᲓ ᲓᲐᲮᲣᲠᲣᲚᲘ ────────────────
     //
-    // აქ ფული ფიქსირდება, ამიტომ ბრაუზერს არც კითხვის და არც წერის უფლება
-    // არ აქვს. ყველა ოპერაცია გადის Cloud Function-ზე, რომელიც Admin SDK-ით
-    // წერს და rules-ს გვერდს უვლის.
+    // აქ ფული ფიქსირდება. ბრაუზერს არც კითხვის და არც წერის უფლება არ აქვს.
+    // ყველა ოპერაცია გადის Cloudflare Worker-ზე, რომელიც service account-ით
+    // წერს და ამ წესებს გვერდს უვლის.
     //
-    // მომხმარებელი თავის გადახდის სტატუსს იღებს ავტორიზებული endpoint-ით:
-    //   GET /api/payments/{uuid}/status
+    // მომხმარებელი თავის სტატუსს იღებს ავტორიზებული endpoint-ით:
+    //   GET /payments/{uuid}/status
     //
-    // ეს კრიტიკულია: წინააღმდეგ შემთხვევაში წევრს შეეძლებოდა კონსოლიდან
-    // ჩაეწერა status:'paid' და უფასოდ გაეაქტიურებინა აბონემენტი.
+    // ამის გარეშე ნებისმიერს შეეძლებოდა ჩაეწერა status:'paid' და უფასოდ
+    // გაეაქტიურებინა აბონემენტი.
 
     match /payments/{paymentId} {
       allow read, write: if false;
     }
 
-    // ─── ყველა სხვა collection-ი — DENY ──────────────────────────────────
+    // ─── აპლიკაციის დანარჩენი კოლექციები ──────────────────────────────────
+    //
+    // ⚠️ დროებით ღიაა — ზუსტად ისე, როგორც აქამდე მუშაობდა.
+    // აქ შევიწროება Firebase Auth-ის გარეშე აპლიკაციას გატეხავს.
+
+    match /members/{doc}            { allow read, write: if true; }
+    match /users/{doc}              { allow read, write: if true; }
+    match /trainers/{doc}           { allow read, write: if true; }
+    match /training_sessions/{doc}  { allow read, write: if true; }
+    match /trainer_payments/{doc}   { allow read, write: if true; }
+    match /transactions/{doc}       { allow read, write: if true; }
+    match /check_ins/{doc}          { allow read, write: if true; }
+    match /gym_settings/{doc}       { allow read, write: if true; }
+    match /activity_logs/{doc}      { allow read, write: if true; }
+    match /member_date_history/{doc}{ allow read, write: if true; }
+    match /products/{doc}           { allow read, write: if true; }
+    match /subscription_plans/{doc} { allow read, write: if true; }
+
+    // ─── ყველა სხვა — DENY ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
-
-
-// ════════════════════════════════════════════════════════════════════════════
-// [B] სათანადო წესები — Firebase Auth + Custom Claims
-//
-// მიგრაციისთვის საჭიროა:
-//
-// 1. Firebase Console → Authentication → Sign-in method → Email/Password ჩართე
-//    (ან Anonymous sign-in, ან Custom Token — ნებისმიერი მეთოდი)
-//
-// 2. Cloud Function-ი Custom Claims-ის დასაყენებლად (Node.js მაგალითი):
-//
-//    exports.setRole = functions.firestore
-//      .document('users/{userId}').onWrite(async (change, context) => {
-//        const data = change.after.data();
-//        if (!data) return;
-//        const uid = data.firebaseUid; // member/trainer/user doc-ში ინახება
-//        await admin.auth().setCustomUserClaims(uid, {
-//          role: data.role,          // 'admin' | 'operator' | 'trainer' | 'member'
-//          ownerId: context.params.userId
-//        });
-//      });
-//
-// 3. App-ში login-ის შემდეგ Firebase Auth-ში შეხვედი:
-//    signInWithEmailAndPassword(auth, email, password) — ან custom token-ით
-//    შემდეგ Firestore-ის request.auth ივსება ავტომატურად.
-//
-// ════════════════════════════════════════════════════════════════════════════
-
-/*
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // ─── Auth helper functions ─────────────────────────────────────────────
-
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function role() {
-      return request.auth.token.role;
-    }
-
-    function ownerId() {
-      return request.auth.token.ownerId;
-    }
-
-    function isAdmin() {
-      return isSignedIn() && role() == 'admin';
-    }
-
-    function isOperator() {
-      return isSignedIn() && role() in ['admin', 'operator'];
-    }
-
-    function isTrainer() {
-      return isSignedIn() && role() == 'trainer';
-    }
-
-    function isMember() {
-      return isSignedIn() && role() == 'member';
-    }
-
-    function isThisTrainer(trainerId) {
-      return isTrainer() && ownerId() == trainerId;
-    }
-
-    function isThisMember(memberId) {
-      return isMember() && ownerId() == memberId;
-    }
-
-    // ─── members ──────────────────────────────────────────────────────────
-    match /members/{memberId} {
-      allow read: if isOperator()
-                  || isThisTrainer(resource.data.trainerId)  // ტრენერი კითხულობს თავის კლიენტებს
-                  || isThisMember(memberId);                  // კლიენტი კითხულობს თავის doc-ს
-
-      allow create, update: if isOperator();
-
-      allow delete: if isAdmin();
-    }
-
-    // ─── users ────────────────────────────────────────────────────────────
-    match /users/{userId} {
-      allow read: if isOperator();
-      allow create, update, delete: if isAdmin();
-    }
-
-    // ─── trainers ─────────────────────────────────────────────────────────
-    match /trainers/{trainerId} {
-      allow read: if isOperator()
-                  || isThisTrainer(trainerId)    // ტრენერი კითხულობს თავის doc-ს
-                  || isMember();                 // member portal-ში trainer-ების dropdown
-
-      allow create, update: if isOperator();
-      allow delete: if isAdmin();
-    }
-
-    // ─── training_sessions ────────────────────────────────────────────────
-    match /training_sessions/{sessionId} {
-      allow read: if isOperator()
-                  || isThisTrainer(resource.data.trainerId)   // ტრენერი კითხულობს თავის სეანსებს
-                  || isThisMember(resource.data.clientId);    // კლიენტი კითხულობს თავის სეანსებს
-
-      allow create, update, delete:
-        if isThisTrainer(request.resource.data.trainerId);    // მხოლოდ ამ ტრენერის სეანსები
-
-      // operator-ს სეანსების ნახვა შეუძლია (read only)
-    }
-
-    // ─── trainer_payments — სრული RBAC ───────────────────────────────────
-    // admin და operator ვერ კითხულობენ — ეს ყველაზე მნიშვნელოვანი წესია!
-    match /trainer_payments/{paymentId} {
-      allow read: if isThisTrainer(resource.data.trainerId)   // ტრენერი კითხულობს თავის გადახდებს
-                  || isThisMember(resource.data.clientId);    // კლიენტი კითხულობს საკუთარ გადახდებს
-      // ⛔ admin + operator — DENY (read-ი არ ექნება)
-
-      allow create: if isThisTrainer(request.resource.data.trainerId);  // ტრენერი ამატებს
-      allow update, delete: if isThisTrainer(resource.data.trainerId);  // ტრენერი ცვლის/შლის
-    }
-
-    // ─── transactions ─────────────────────────────────────────────────────
-    match /transactions/{txId} {
-      allow read: if isOperator()
-                  || isThisMember(resource.data.memberId);   // კლიენტი ხედავს საკუთარ ტრანზაქციებს
-
-      allow create, update: if isOperator();
-      allow delete: if isAdmin();
-    }
-
-    // ─── check_ins ────────────────────────────────────────────────────────
-    match /check_ins/{checkInId} {
-      allow read: if isOperator()
-                  || isThisTrainer(resource.data.loggedBy)   // თუ ტრენერმა ჩაიწერა
-                  || isThisMember(resource.data.memberId);   // კლიენტი ხედავს თავის ჩანაწერებს
-
-      allow create: if isSignedIn();    // ნებისმიერი ავტ. მომხ. ქმნის (check-in)
-      allow update, delete: if false;  // შეუცვლელი ლოგი
-    }
-
-    // ─── gym_settings ─────────────────────────────────────────────────────
-    match /gym_settings/{docId} {
-      allow read: if isSignedIn();     // QR token-ის ვალიდაციისთვის ყველა კითხულობს
-      allow write: if isAdmin();       // მხოლოდ admin ქმნის/ცვლის QR კოდს
-    }
-
-    // ─── activity_logs ────────────────────────────────────────────────────
-    match /activity_logs/{logId} {
-      allow read: if isOperator();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    // ─── member_date_history ──────────────────────────────────────────────
-    match /member_date_history/{docId} {
-      allow read: if isOperator();
-      allow create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    // ─── ყველა სხვა — DENY ───────────────────────────────────────────────
-    match /{document=**} {
-      allow read, write: if false;
-    }
-  }
-}
-*/
