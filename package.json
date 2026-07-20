@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "firebase-tools": "^15.24.0",
+    "jest": "^30.4.2",
+    "wrangler": "^4.112.0"
+  }
+}

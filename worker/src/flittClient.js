@@ -1,6 +1,6 @@
 'use strict';
 
-const { generateSignature, generateCallbackSignature } = require('./signature');
+import { generateSignature, generateCallbackSignature, safeEqualHex } from './signature.js';
 
 class FlittApiError extends Error {
   constructor(message, details = {}) {
@@ -15,7 +15,7 @@ class FlittApiError extends Error {
  * `httpClient` is injectable so tests never touch the network.
  */
 class FlittClient {
-  constructor(config, { httpClient = globalThis.fetch, logger = console } = {}) {
+  constructor(config, { httpClient = fetch, logger = console } = {}) {
     this.config = config;
     this.httpClient = httpClient;
     this.logger = logger;
@@ -28,7 +28,10 @@ class FlittClient {
 
     let response;
     try {
-      response = await this.httpClient(url, {
+      // Detached call — see firestore.js: Workers rejects fetch invoked as a
+      // method ("Illegal invocation").
+      const doFetch = this.httpClient;
+      response = await doFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ request: requestBody }),
@@ -88,7 +91,7 @@ class FlittClient {
       merchant_data: merchantData,
     };
 
-    request.signature = generateSignature(request, this.config.secretKey);
+    request.signature = await generateSignature(request, this.config.secretKey);
 
     const body = await this._post(this.config.checkoutPath, request);
 
@@ -124,7 +127,7 @@ class FlittClient {
       order_id: orderId,
       merchant_id: Number(this.config.merchantId),
     };
-    request.signature = generateSignature(request, this.config.secretKey);
+    request.signature = await generateSignature(request, this.config.secretKey);
 
     const body = await this._post(this.config.statusPath, request);
 
@@ -138,8 +141,8 @@ class FlittClient {
 
     // Verify the response signature when Flitt supplies one.
     if (body.signature) {
-      const expected = generateCallbackSignature(body, this.config.secretKey);
-      if (expected !== String(body.signature).toLowerCase()) {
+      const expected = await generateCallbackSignature(body, this.config.secretKey);
+      if (!safeEqualHex(expected, String(body.signature).toLowerCase())) {
         throw new FlittApiError('Flitt status response signature mismatch', {
           code: 'status_signature_invalid',
         });
@@ -150,4 +153,4 @@ class FlittClient {
   }
 }
 
-module.exports = { FlittClient, FlittApiError };
+export { FlittClient, FlittApiError };

@@ -155,4 +155,4 @@ class FakeFirestore {
   }
 }
 
-module.exports = { FakeFirestore };
+export { FakeFirestore };

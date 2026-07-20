@@ -1,10 +1,11 @@
 'use strict';
 
-const { FakeFirestore } = require('./helpers/fakeFirestore');
-const { PaymentService } = require('../src/paymentService');
-const { FlittApiError } = require('../src/flittClient');
-const { generateCallbackSignature } = require('../src/signature');
-const { STATUS } = require('../src/paymentStatus');
+import { jest } from '@jest/globals';
+import { FakeFirestore } from './helpers/fakeFirestore.js';
+import { PaymentService } from '../src/paymentService.js';
+import { FlittApiError } from '../src/flittClient.js';
+import { generateCallbackSignature } from '../src/signature.js';
+import { STATUS } from '../src/paymentStatus.js';
 
 const SECRET = 'test';
 
@@ -85,9 +86,9 @@ function buildService(db, flitt, config = CONFIG) {
 }
 
 /** Signs a callback payload the way Flitt would. */
-function signedCallback(fields) {
+async function signedCallback(fields) {
   const payload = { merchant_id: '1549901', currency: 'GEL', ...fields };
-  payload.signature = generateCallbackSignature(payload, SECRET);
+  payload.signature = await generateCallbackSignature(payload, SECRET);
   return payload;
 }
 
@@ -217,7 +218,7 @@ describe('callback processing', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     const result = await service.applyProviderResult(
-      signedCallback({
+      await signedCallback({
         order_id: checkout.orderId,
         order_status: 'approved',
         amount: 11000,
@@ -244,7 +245,7 @@ describe('callback processing', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
     );
 
     const txs = Object.values(db.dump('transactions'));
@@ -263,7 +264,7 @@ describe('callback processing', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     const result = await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'declined', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'declined', amount: 11000 })
     );
 
     expect(result.membershipActivated).toBe(false);
@@ -276,7 +277,7 @@ describe('callback processing', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'expired', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'expired', amount: 11000 })
     );
 
     expect(db.getDoc('members', 'm1').status).toBe('expired');
@@ -289,7 +290,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 100 })
+        await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 100 })
       )
     ).rejects.toMatchObject({ code: 'amount_mismatch' });
 
@@ -303,7 +304,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({
+        await signedCallback({
           order_id: checkout.orderId,
           order_status: 'approved',
           amount: 11000,
@@ -321,7 +322,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({
+        await signedCallback({
           order_id: checkout.orderId,
           order_status: 'approved',
           amount: 11000,
@@ -339,7 +340,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({
+        await signedCallback({
           order_id: checkout.orderId,
           order_status: 'approved',
           amount: 11000,
@@ -357,7 +358,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({ order_id: 'GYM-does-not-exist', order_status: 'approved', amount: 11000 })
+        await signedCallback({ order_id: 'GYM-does-not-exist', order_status: 'approved', amount: 11000 })
       )
     ).rejects.toMatchObject({ code: 'order_unknown' });
 
@@ -371,7 +372,7 @@ describe('callback processing', () => {
 
     await expect(
       service.applyProviderResult(
-        signedCallback({
+        await signedCallback({
           order_id: checkout.orderId,
           order_status: 'approved',
           amount: 11000,
@@ -386,7 +387,7 @@ describe('callback processing', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     await service.applyProviderResult(
-      signedCallback({
+      await signedCallback({
         order_id: checkout.orderId,
         order_status: 'approved',
         amount: 11000,
@@ -413,7 +414,7 @@ describe('idempotency', () => {
   test('duplicate approved callback activates the membership only once', async () => {
     const db = seed();
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
-    const payload = signedCallback({
+    const payload = await signedCallback({
       order_id: checkout.orderId,
       order_status: 'approved',
       amount: 11000,
@@ -437,11 +438,11 @@ describe('idempotency', () => {
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
 
     await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
     );
     // A spoofed/late "declined" must not revoke a paid membership.
     await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'declined', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'declined', amount: 11000 })
     );
 
     expect(db.getDoc('payments', checkout.orderId).status).toBe(STATUS.PAID);
@@ -451,7 +452,7 @@ describe('idempotency', () => {
   test('retry after a failure activates exactly once', async () => {
     const db = seed();
     const { service, checkout } = await createPaidCheckout(db, okFlitt());
-    const payload = signedCallback({
+    const payload = await signedCallback({
       order_id: checkout.orderId,
       order_status: 'approved',
       amount: 11000,
@@ -480,7 +481,7 @@ describe('idempotency', () => {
     const { service, checkout } = await createPaidCheckout(db, flitt);
 
     await service.applyProviderResult(
-      signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
+      await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
     );
 
     flitt.getOrderStatus = jest.fn(async () => ({

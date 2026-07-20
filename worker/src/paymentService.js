@@ -1,9 +1,8 @@
 'use strict';
 
-const crypto = require('crypto');
-const { STATUS, mapProviderStatus, isTerminal, grantsMembership } = require('./paymentStatus');
-const { gelToTetri } = require('./money');
-const { buildMembershipUpdate, buildTransactionRecord } = require('./membership');
+import { STATUS, mapProviderStatus, isTerminal, grantsMembership } from './paymentStatus.js';
+import { gelToTetri } from './money.js';
+import { buildMembershipUpdate, buildTransactionRecord } from './membership.js';
 
 const PAYMENTS = 'payments';
 const MEMBERS = 'members';
@@ -371,4 +370,4 @@ class PaymentService {
   }
 }
 
-module.exports = { PaymentService, PaymentError, generateOrderId };
+export { PaymentService, PaymentError, generateOrderId };

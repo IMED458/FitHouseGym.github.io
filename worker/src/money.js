@@ -31,4 +31,4 @@ function formatGel(tetri) {
   return `${tetriToGel(tetri).toFixed(2)}₾`;
 }
 
-module.exports = { gelToTetri, tetriToGel, formatGel };
+export { gelToTetri, tetriToGel, formatGel };
