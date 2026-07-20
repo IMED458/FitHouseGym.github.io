@@ -3987,21 +3987,25 @@ ${memberPortalUrl}
       document.getElementById('membershipPaymentMethod').value = 'CASH';
       document.getElementById('membershipPaymentNote').value = '';
       resetMembershipPaymentSelectionFields();
-      // Populate dynamic plan options
+
       const renewSel = document.getElementById('membershipPaymentSubscriptionType');
       if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
-      // Populate dynamic plan options
-      const renewSel = document.getElementById('membershipPaymentSubscriptionType');
-      if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
+
       if (context.member?.trainerSessionIncluded) {
         document.getElementById('membershipTrainerIncluded').checked = true;
         document.getElementById('membershipTrainerGift').checked = Boolean(context.member.trainerSessionGifted);
         document.getElementById('membershipTrainerPrice').value = Number(context.member.trainerSessionPrice || 0) || '';
       }
+
+      if (isRenew) {
+        const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
+        if (subscriptionField) subscriptionField.style.display = 'block';
+        if (member) {
+          const isStandardType = isStandardMembershipType(member.subscriptionType);
           document.getElementById('membershipPaymentSubscriptionType').value = isStandardType ? member.subscriptionType : 'other';
           if (!isStandardType) {
             document.getElementById('membershipPaymentCustomDescription').value = member.subscriptionType || '';
-            document.getElementById('membershipPaymentCustomPrice').value = Number(member.subscriptionPrice || 0) || '';
+            document.getElementById('membershipPaymentCustomPrice').value = Number(member.baseSubscriptionPrice || member.subscriptionPrice || 0) || '';
             document.getElementById('membershipPaymentCustomDuration').value =
               getMembershipDurationDays(member.subscriptionStartDate, member.subscriptionEndDate);
             document.getElementById('membershipPaymentCustomVisits').value =
@@ -4014,6 +4018,7 @@ ${memberPortalUrl}
           }
         }
       }
+
       window.updateMembershipPaymentSelection();
 
       const btn = document.getElementById('confirmMembershipPaymentBtn');
