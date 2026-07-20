@@ -330,10 +330,46 @@ function renderLogin() {
         showLoginError('მეილი ან პაროლი არასწორია');
         return;
       }
-      // password field takes priority over personalId (backward compatible)
-      let found = candidates.find(d => d.password && d.password === pid);
-      if (!found) found = candidates.find(d => !d.password && d.personalId === pid);
+      // Three ways in, in priority order. `reason` decides whether the member
+      // lands on the dashboard or is forced to set a permanent password first.
+      let found = null;
+      let reason = null;
+
+      // 1. Their own permanent password.
+      found = candidates.find(d => d.password && d.password === pid);
+
+      // 2. A staff-issued one-time code (stored hashed, single use, expiring).
+      if (!found) {
+        const otpHash = await sha256Hex(pid.toUpperCase());
+        const otpMatch = candidates.find(d =>
+          d.tempPasswordHash &&
+          d.tempPasswordHash === otpHash &&
+          d.tempPasswordExpiresAt &&
+          new Date(d.tempPasswordExpiresAt) > new Date()
+        );
+        if (otpMatch) { found = otpMatch; reason = 'otp'; }
+        else {
+          // Distinguish "expired code" from "wrong password" so the member
+          // knows to ask for a new one rather than retrying.
+          const stale = candidates.find(d => d.tempPasswordHash === otpHash);
+          if (stale) { showLoginError('ერთჯერადი პაროლის ვადა ამოიწურა. მოითხოვეთ ახალი.'); return; }
+        }
+      }
+
+      // 3. Legacy first login: personal ID, only while no password is set.
+      if (!found) {
+        const pidMatch = candidates.find(d => !d.password && d.personalId === pid);
+        if (pidMatch) { found = pidMatch; reason = 'first-login'; }
+      }
+
       if (!found) { showLoginError('მეილი ან პაროლი არასწორია'); return; }
+
+      // Either route means the member has no password of their own yet.
+      if (reason) {
+        renderForcePasswordChange(found, reason === 'otp' ? pid : null);
+        return;
+      }
+
       session = { memberId: found.id, email: found.email, firstName: found.firstName, lastName: found.lastName, ts: Date.now() };
 
       // Exchange credentials for a server-signed session token. The backend
@@ -368,7 +404,170 @@ function renderLogin() {
     }
   });
 
-  function showLoginError(msg) {
+  async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Minimum bar for a permanent password. Kept deliberately modest. */
+function validatePermanentPassword(pw) {
+  if (!pw || pw.length < 6) return 'პაროლი უნდა შეიცავდეს მინიმუმ 6 სიმბოლოს';
+  if (!/[a-zA-Zა-ჰ]/.test(pw)) return 'პაროლი უნდა შეიცავდეს მინიმუმ ერთ ასოს';
+  if (!/[0-9]/.test(pw)) return 'პაროლი უნდა შეიცავდეს მინიმუმ ერთ ციფრს';
+  return null;
+}
+
+/**
+ * Shown instead of the dashboard when a member arrives with a one-time code or
+ * on their very first personal-ID login. There is no way past it except
+ * setting a permanent password.
+ */
+function renderForcePasswordChange(memberDoc, presetOtp) {
+  const isOtp = Boolean(presetOtp);
+  document.getElementById('app').innerHTML = `
+    <div class="flex items-center justify-center" style="min-height:72vh;">
+      <div class="card w-full anim-in" style="max-width:440px;padding:32px 26px;">
+        <div style="text-align:center;margin-bottom:22px;">
+          <div style="width:60px;height:60px;border-radius:50%;background:rgba(239,68,68,0.12);
+                      border:2px solid rgba(239,68,68,0.4);display:flex;align-items:center;
+                      justify-content:center;margin:0 auto 14px;">
+            <i class="fas fa-shield-halved" style="color:#ef4444;font-size:1.4rem;"></i>
+          </div>
+          <h1 style="font-size:1.2rem;font-weight:900;color:#fff;margin-bottom:6px;">პაროლის დაყენება</h1>
+          <p style="color:#64748b;font-size:0.85rem;line-height:1.5;">
+            ${isOtp
+              ? 'შედით ერთჯერადი პაროლით. გასაგრძელებლად დააყენეთ მუდმივი პაროლი.'
+              : 'პირველი შესვლაა. უსაფრთხოებისთვის დააყენეთ თქვენი მუდმივი პაროლი.'}
+          </p>
+        </div>
+
+        <div id="fpc-error" style="display:none;margin-bottom:16px;"></div>
+
+        <div class="space-y-4">
+          ${isOtp ? `
+            <div>
+              <label style="display:block;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">ერთჯერადი პაროლი</label>
+              <div style="position:relative;">
+                <i class="fas fa-key" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+                <input id="fpc-otp" type="text" class="form-input" value="${presetOtp}"
+                       style="letter-spacing:0.12em;font-family:ui-monospace,monospace;">
+              </div>
+            </div>` : ''}
+
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">ახალი პაროლი</label>
+            <div style="position:relative;">
+              <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+              <input id="fpc-new" type="password" class="form-input" placeholder="მინიმუმ 6 სიმბოლო" autocomplete="new-password">
+              <button type="button" class="pw-toggle-btn" onclick="window.togglePwVisibility('fpc-new', this)"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+
+          <div>
+            <label style="display:block;font-size:0.7rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#64748b;margin-bottom:8px;">გაიმეორეთ პაროლი</label>
+            <div style="position:relative;">
+              <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+              <input id="fpc-confirm" type="password" class="form-input" placeholder="••••••" autocomplete="new-password"
+                     onkeydown="if(event.key==='Enter')window.submitForcePasswordChange()">
+              <button type="button" class="pw-toggle-btn" onclick="window.togglePwVisibility('fpc-confirm', this)"><i class="fas fa-eye"></i></button>
+            </div>
+          </div>
+
+          <button class="btn-primary" id="fpc-btn" onclick="window.submitForcePasswordChange()">
+            <i class="fas fa-check mr-2"></i> პაროლის განახლება
+          </button>
+        </div>
+
+        <p style="margin-top:18px;text-align:center;">
+          <button onclick="location.reload()" style="background:none;border:none;color:#475569;font-size:0.8rem;cursor:pointer;text-decoration:underline;">
+            გაუქმება
+          </button>
+        </p>
+      </div>
+    </div>
+  `;
+  window._fpcMember = memberDoc;
+}
+
+function showFpcError(msg) {
+  const el = document.getElementById('fpc-error');
+  if (!el) return;
+  el.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);padding:12px 14px;border-radius:12px;">
+    <i class="fas fa-exclamation-circle" style="color:#f87171;margin-top:2px;"></i>
+    <span style="color:#f87171;font-size:0.85rem;font-weight:700;">${msg}</span></div>`;
+  el.style.display = 'block';
+}
+
+window.submitForcePasswordChange = async function () {
+  const m = window._fpcMember;
+  if (!m) return;
+  const otpEl = document.getElementById('fpc-otp');
+  const nw = document.getElementById('fpc-new')?.value?.trim();
+  const cf = document.getElementById('fpc-confirm')?.value?.trim();
+  const btn = document.getElementById('fpc-btn');
+
+  const invalid = validatePermanentPassword(nw);
+  if (invalid) { showFpcError(invalid); return; }
+  if (nw !== cf) { showFpcError('პაროლები არ ემთხვევა'); return; }
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> ინახება...';
+
+  try {
+    // Re-verify the code at submit time — the field is editable, and it may
+    // have expired or been superseded while this screen was open.
+    if (otpEl) {
+      const fresh = await getDoc(doc(db, 'members', m.id));
+      const data = fresh.exists() ? fresh.data() : {};
+      const hash = await sha256Hex(otpEl.value.trim().toUpperCase());
+      const valid = data.tempPasswordHash === hash &&
+        data.tempPasswordExpiresAt && new Date(data.tempPasswordExpiresAt) > new Date();
+      if (!valid) {
+        showFpcError('ერთჯერადი პაროლი არასწორია ან ვადაგასულია');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-check mr-2"></i> პაროლის განახლება';
+        return;
+      }
+    }
+
+    await updateDoc(doc(db, 'members', m.id), {
+      password: nw,
+      // Burn the code so it cannot be reused.
+      tempPasswordHash: null,
+      tempPasswordExpiresAt: null,
+      mustChangePassword: false,
+      passwordSetAt: new Date().toISOString(),
+    });
+
+    session = { memberId: m.id, email: m.email, firstName: m.firstName, lastName: m.lastName, ts: Date.now() };
+    try {
+      const sres = await fetch(`${API_BASE}/auth/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: m.email, password: nw }),
+      });
+      if (sres.ok) {
+        const sdata = await sres.json();
+        session.token = sdata.token;
+        flittEnabled = Boolean(sdata.flitt_enabled);
+        flittMode = sdata.flitt_mode || null;
+        session.flittEnabled = flittEnabled;
+        session.flittMode = flittMode;
+      }
+    } catch (_) { /* portal still works without online payment */ }
+
+    localStorage.setItem('fh_member_session', JSON.stringify(session));
+    window._fpcMember = null;
+    startDashboard('overview');
+  } catch (e) {
+    console.error(e);
+    showFpcError('შენახვა ვერ მოხერხდა. სცადეთ ხელახლა.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-check mr-2"></i> პაროლის განახლება';
+  }
+};
+
+function showLoginError(msg) {
     const el = document.getElementById('login-error');
     el.innerHTML = `<i class="fas fa-exclamation-circle" style="color:#f87171;font-size:1.1rem;flex-shrink:0;margin-top:2px;"></i><span style="color:#f87171;">${msg}</span>`;
     el.style.cssText = 'display:flex;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);margin-bottom:20px;padding:14px;border-radius:12px;';

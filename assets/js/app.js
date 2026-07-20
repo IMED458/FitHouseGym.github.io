@@ -964,7 +964,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
             ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
-            <button class="btn bg-teal-600 hover:bg-teal-700 text-sm px-6 py-2" onclick="window.resetMemberPassword('${member.id}', '${member.firstName} ${member.lastName}')"><i class="fas fa-key"></i> პაროლი</button>
+            <button class="btn bg-teal-600 hover:bg-teal-700 text-sm px-6 py-2" onclick="window.resetMemberPassword('${member.id}')"><i class="fas fa-key"></i> ერთჯერადი პაროლი</button>
             ${member.trainerServiceEnabled && member.trainerId ? `<button class="btn bg-orange-600 hover:bg-orange-700 text-sm px-6 py-2" onclick="window.removeTrainerFromMember('${member.id}')"><i class="fas fa-user-minus"></i> ტრენერი ამოხსნა</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
@@ -1660,20 +1660,159 @@ ${portalUrl}
       showToast(`კაბინეტის ლინკი გაიგზავნა: ${success} წარმატებით, ${failed} შეცდომით`);
     };
 
-    window.resetMemberPassword = async function(memberId, memberName) {
-      const newPass = prompt(`პაროლის შეცვლა — ${memberName}\n\nახალი პაროლი:`);
-      if (newPass === null) return; // cancelled
-      if (!newPass.trim()) { showToast('პაროლი ცარიელი არ უნდა იყოს', 'error'); return; }
-      const confirm2 = prompt(`დაადასტურეთ ახალი პაროლი — ${memberName}\n\nგაიმეორეთ პაროლი:`);
-      if (confirm2 === null) return;
-      if (newPass.trim() !== confirm2.trim()) { showToast('პაროლები არ ემთხვევა', 'error'); return; }
+    // ═══════════════════════════════════════════════════════════════════════
+    // MEMBER ONE-TIME PASSWORD
+    //
+    // Staff never choose a member's permanent password — they can only issue a
+    // system-generated one-time code. It is stored hashed, expires, works once,
+    // and forces the member to set their own password on next login.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const MEMBER_OTP_TTL_MS = 24 * 60 * 60 * 1000;
+    // No 0/O/1/I/L — they are the characters people mishear or mistype when a
+    // code is read out loud over the counter.
+    const OTP_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+    function generateMemberOtp() {
+      const bytes = new Uint32Array(8);
+      crypto.getRandomValues(bytes);
+      const chars = Array.from(bytes, (n) => OTP_ALPHABET[n % OTP_ALPHABET.length]);
+      // Grouped so it reads naturally: "K7M2 - 9QX4"
+      return `${chars.slice(0, 4).join('')}-${chars.slice(4).join('')}`;
+    }
+
+    let currentMemberOtp = null;
+
+    window.resetMemberPassword = async function(memberId) {
+      const member = window.members.find((m) => m.id === memberId);
+      if (!member) { showToast('წევრი ვერ მოიძებნა', 'error'); return; }
+
+      const otp = generateMemberOtp();
+      currentMemberOtp = otp;
+
+      document.getElementById('memberOtpMemberId').value = memberId;
+      document.getElementById('memberOtpName').textContent =
+        `${member.firstName || ''} ${member.lastName || ''}`.trim() || '—';
+      document.getElementById('memberOtpPersonalId').textContent =
+        member.personalId ? `პირადი: ${member.personalId}` : '';
+      document.getElementById('memberOtpEmail').textContent =
+        member.email ? `მეილი: ${member.email}` : 'მეილი მითითებული არ არის';
+      document.getElementById('memberOtpCode').textContent = otp;
+
+      const sendBtn = document.getElementById('memberOtpSendBtn');
+      sendBtn.disabled = !member.email;
+      sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> პაროლის მეილზე გაგზავნა';
+      setMemberOtpStatus(
+        member.email ? '' : 'ამ წევრს მეილი არ აქვს — კოდი უკარნახეთ.',
+        member.email ? null : 'warn'
+      );
+
+      document.getElementById('memberOtpModal').style.display = 'flex';
+
+      // Persist immediately: a dictated code must work even if no email is sent.
+      // Writing a fresh hash also invalidates any previous code.
       try {
-        await updateMemberFields(memberId, { password: newPass.trim() });
-        showToast(`✅ პაროლი განახლდა: ${memberName}`);
-      } catch(e) {
-        console.error(e);
-        showToast('პაროლის შეცვლა ვერ მოხერხდა', 'error');
+        await updateMemberFields(memberId, {
+          tempPasswordHash: await sha256Hex(otp),
+          tempPasswordExpiresAt: new Date(Date.now() + MEMBER_OTP_TTL_MS).toISOString(),
+          mustChangePassword: true,
+        });
+      } catch (e) {
+        console.error('otp save failed', e);
+        setMemberOtpStatus('კოდის შენახვა ვერ მოხერხდა. სცადეთ ხელახლა.', 'error');
       }
+    };
+
+    function setMemberOtpStatus(text, kind) {
+      const el = document.getElementById('memberOtpStatus');
+      if (!el) return;
+      if (!text) { el.style.display = 'none'; return; }
+      const palette = {
+        error: ['rgba(239,68,68,0.12)', 'rgba(239,68,68,0.35)', '#f87171'],
+        warn: ['rgba(245,158,11,0.12)', 'rgba(245,158,11,0.35)', '#fbbf24'],
+        ok: ['rgba(16,185,129,0.12)', 'rgba(16,185,129,0.35)', '#34d399'],
+      }[kind || 'ok'];
+      el.style.cssText =
+        `display:block;margin-bottom:14px;padding:11px 14px;border-radius:12px;font-size:0.85rem;font-weight:700;` +
+        `background:${palette[0]};border:1px solid ${palette[1]};color:${palette[2]};`;
+      el.textContent = text;
+    }
+
+    window.copyMemberOtp = async function() {
+      if (!currentMemberOtp) return;
+      const btn = document.getElementById('memberOtpCopyBtn');
+      try {
+        await navigator.clipboard.writeText(currentMemberOtp);
+      } catch (_) {
+        // Clipboard API needs a secure context; fall back to a temp selection.
+        const ta = document.createElement('textarea');
+        ta.value = currentMemberOtp;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (__) {}
+        ta.remove();
+      }
+      if (btn) {
+        btn.innerHTML = '<i class="fas fa-check"></i>';
+        setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy"></i>'; }, 1400);
+      }
+    };
+
+    window.sendMemberOtpEmail = async function() {
+      const memberId = document.getElementById('memberOtpMemberId').value;
+      const member = window.members.find((m) => m.id === memberId);
+      if (!member || !currentMemberOtp) return;
+      if (!member.email) { setMemberOtpStatus('ამ წევრს მეილი არ აქვს.', 'error'); return; }
+
+      const btn = document.getElementById('memberOtpSendBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> იგზავნება...';
+
+      const subject = '🔐 ერთჯერადი პაროლი — Fit House Gym';
+      const message = `გამარჯობა ${member.firstName || ''}!
+
+თქვენი ერთჯერადი პაროლია:
+
+${currentMemberOtp}
+
+შესვლა: https://fithouse.imed.com.ge/member
+📧 მეილი: ${member.email}
+
+⚠️ კოდი მოქმედებს 24 საათი და მხოლოდ ერთხელ.
+შესვლის შემდეგ სისტემა მოგთხოვთ ახალი მუდმივი პაროლის დაყენებას.
+
+თუ პაროლის აღდგენა თქვენ არ მოგითხოვიათ, დაგვიკავშირდით.
+
+📍 Fit House Gym | +995 511 77 63 37`;
+
+      const htmlMessage = `<div style="text-align:center;padding:16px 0;">
+        <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:12px;">თქვენი ერთჯერადი პაროლი:</p>
+        <div style="display:inline-block;font-family:monospace;font-size:1.8rem;font-weight:800;letter-spacing:0.15em;padding:16px 28px;border-radius:14px;background:#f0fdf4;border:2px dashed #10b981;color:#059669;">${currentMemberOtp}</div>
+        <p style="color:#64748b;font-size:0.8rem;margin-top:14px;">მოქმედებს 24 საათი • მხოლოდ ერთხელ</p>
+        <p style="margin-top:18px;"><a href="https://fithouse.imed.com.ge/member" style="display:inline-block;padding:12px 26px;background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;text-decoration:none;border-radius:12px;font-weight:800;">პირად კაბინეტში შესვლა →</a></p>
+      </div>`;
+
+      const sent = await sendEmail(member.email, member.firstName, subject, message, {
+        html_message: htmlMessage,
+      });
+
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-paper-plane"></i> ხელახლა გაგზავნა';
+
+      if (sent) {
+        // The code deliberately stays on screen so staff can still dictate it.
+        setMemberOtpStatus(`✅ გაიგზავნა: ${member.email}`, 'ok');
+        showToast(`ერთჯერადი პაროლი გაიგზავნა: ${member.firstName} ${member.lastName}`);
+      } else {
+        setMemberOtpStatus('მეილის გაგზავნა ვერ მოხერხდა. კოდი უკარნახეთ.', 'error');
+      }
+    };
+
+    window.closeMemberOtpModal = function() {
+      document.getElementById('memberOtpModal').style.display = 'none';
+      document.getElementById('memberOtpCode').textContent = '————';
+      currentMemberOtp = null;
+      setMemberOtpStatus('');
     };
 
     // ავტომატური შეტყობინება განახლებისთვის
@@ -2719,7 +2858,7 @@ ${memberPortalUrl}
           <td>
             <div class="admin-action-row">
               <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openUserForm('${user.id}')"><i class="fas fa-pen"></i> რედაქტირება</button>
-              <button class="btn bg-amber-600 hover:bg-amber-700 compact-btn" onclick="window.openResetUserPasswordModal('${user.id}')"><i class="fas fa-key"></i> პაროლი</button>
+              <button class="btn bg-amber-600 hover:bg-amber-700 compact-btn" onclick="window.openResetUserPasswordModal('${user.id}')"><i class="fas fa-key"></i> ერთჯერადი პაროლი</button>
             </div>
           </td>
         </tr>
@@ -5721,48 +5860,6 @@ ${memberPortalUrl}
       renderProductCart();
     };
 
-    window.productCartKeypadPress = function(digit) {
-      if (!window.activeProductCartItemId) {
-        const first = window.productSaleCart[0];
-        if (!first) return;
-        window.activeProductCartItemId = first.productId;
-      }
-      const nextBuffer = `${window.productCartQuantityBuffer || ''}${digit}`.replace(/^0+(?=\d)/, '');
-      window.productCartQuantityBuffer = nextBuffer.slice(0, 3);
-      window.productCartApplyKeypadQuantity();
-    };
-
-    window.productCartKeypadBackspace = function() {
-      if (!window.activeProductCartItemId) return;
-      window.productCartQuantityBuffer = String(window.productCartQuantityBuffer || '').slice(0, -1);
-      window.productCartApplyKeypadQuantity(true);
-    };
-
-    window.productCartKeypadClear = function() {
-      if (!window.activeProductCartItemId) return;
-      window.productCartQuantityBuffer = '';
-      renderProductCart();
-    };
-
-    window.productCartApplyKeypadQuantity = function(allowEmpty = false) {
-      if (!window.activeProductCartItemId) return;
-      const cartItem = window.productSaleCart.find((item) => item.productId === window.activeProductCartItemId);
-      const product = window.products.find((item) => item.id === window.activeProductCartItemId);
-      if (!cartItem || !product) return;
-      const parsed = Number(window.productCartQuantityBuffer || 0);
-      if (!parsed && allowEmpty) {
-        renderProductCart();
-        return;
-      }
-      const nextQuantity = Math.max(1, Math.min(parsed || cartItem.quantity || 1, Number(product.stock || 0)));
-      window.productSaleCart = window.productSaleCart.map((item) =>
-        item.productId === window.activeProductCartItemId ? { ...item, quantity: nextQuantity } : item
-      );
-      window.productCartQuantityBuffer = String(nextQuantity);
-      renderProductCart();
-      updateProductsTab();
-    };
-
     window.changeActiveProductCartQuantity = function(delta) {
       if (!window.activeProductCartItemId) return;
       window.changeProductCartQuantity(window.activeProductCartItemId, delta);
@@ -6216,7 +6313,7 @@ ${memberPortalUrl}
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
             ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> პირ. კაბინეტის ლინკი</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
-            <button class="btn bg-teal-600 hover:bg-teal-700 px-5 py-2" onclick="window.resetMemberPassword('${m.id}', '${m.firstName} ${m.lastName}')"><i class="fas fa-key"></i> პაროლი</button>
+            <button class="btn bg-teal-600 hover:bg-teal-700 px-5 py-2" onclick="window.resetMemberPassword('${m.id}')"><i class="fas fa-key"></i> ერთჯერადი პაროლი</button>
             <button class="btn bg-red-600 hover:bg-red-700 px-5 py-2" onclick="window.deleteMember('${m.id}')">წაშლა</button>
           </div></div>`;
       }).join('');

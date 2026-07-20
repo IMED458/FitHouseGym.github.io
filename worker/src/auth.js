@@ -112,6 +112,11 @@ async function verifyMemberCredentials(db, email, password) {
     const expected = data.password ? data.password : data.personalId;
     if (typeof expected !== 'string' || expected.length === 0) continue;
     if (safeEqualString(expected, String(password))) {
+      // A member still owing a password change must not get a payment token.
+      // The portal blocks this path in the UI; this is the server-side backstop.
+      if (data.mustChangePassword) {
+        throw new AuthError('Password change required', 403);
+      }
       return { id: doc.id, ...data };
     }
   }
