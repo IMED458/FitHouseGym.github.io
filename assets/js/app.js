@@ -1669,16 +1669,15 @@ ${portalUrl}
     // ═══════════════════════════════════════════════════════════════════════
 
     const MEMBER_OTP_TTL_MS = 24 * 60 * 60 * 1000;
-    // No 0/O/1/I/L — they are the characters people mishear or mistype when a
-    // code is read out loud over the counter.
-    const OTP_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    // Latin letters only, no digits and no separator — easiest to dictate.
+    // O/I/L are left out because they are misheard as 0/1 when read aloud.
+    const OTP_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+    const OTP_LENGTH = 6;
 
     function generateMemberOtp() {
-      const bytes = new Uint32Array(8);
+      const bytes = new Uint32Array(OTP_LENGTH);
       crypto.getRandomValues(bytes);
-      const chars = Array.from(bytes, (n) => OTP_ALPHABET[n % OTP_ALPHABET.length]);
-      // Grouped so it reads naturally: "K7M2 - 9QX4"
-      return `${chars.slice(0, 4).join('')}-${chars.slice(4).join('')}`;
+      return Array.from(bytes, (n) => OTP_ALPHABET[n % OTP_ALPHABET.length]).join('');
     }
 
     let currentMemberOtp = null;
@@ -1769,11 +1768,24 @@ ${portalUrl}
       btn.innerHTML = '<div class="spinner"></div> იგზავნება...';
 
       const subject = '🔐 ერთჯერადი პაროლი — Fit House Gym';
+      // Plain-text clients cannot do bold, so the code gets a drawn box and
+      // spaced letters to make it unmissable and easy to read off. Padding is
+      // computed rather than hand-counted so the box stays square.
+      const spaced = currentMemberOtp.split('').join(' ');
+      const boxWidth = 22;
+      const padLeft = ' '.repeat(Math.floor((boxWidth - spaced.length) / 2));
+      const padRight = ' '.repeat(boxWidth - spaced.length - padLeft.length);
+      const bar = '═'.repeat(boxWidth);
+      const blank = ' '.repeat(boxWidth);
       const message = `გამარჯობა ${member.firstName || ''}!
 
 თქვენი ერთჯერადი პაროლია:
 
-${currentMemberOtp}
+╔${bar}╗
+║${blank}║
+║${padLeft}${spaced}${padRight}║
+║${blank}║
+╚${bar}╝
 
 შესვლა: https://fithouse.imed.com.ge/member
 📧 მეილი: ${member.email}
@@ -1785,11 +1797,11 @@ ${currentMemberOtp}
 
 📍 Fit House Gym | +995 511 77 63 37`;
 
-      const htmlMessage = `<div style="text-align:center;padding:16px 0;">
-        <p style="color:#94a3b8;font-size:0.9rem;margin-bottom:12px;">თქვენი ერთჯერადი პაროლი:</p>
-        <div style="display:inline-block;font-family:monospace;font-size:1.8rem;font-weight:800;letter-spacing:0.15em;padding:16px 28px;border-radius:14px;background:#f0fdf4;border:2px dashed #10b981;color:#059669;">${currentMemberOtp}</div>
-        <p style="color:#64748b;font-size:0.8rem;margin-top:14px;">მოქმედებს 24 საათი • მხოლოდ ერთხელ</p>
-        <p style="margin-top:18px;"><a href="https://fithouse.imed.com.ge/member" style="display:inline-block;padding:12px 26px;background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;text-decoration:none;border-radius:12px;font-weight:800;">პირად კაბინეტში შესვლა →</a></p>
+      const htmlMessage = `<div style="text-align:center;padding:20px 0;">
+        <p style="color:#64748b;font-size:0.95rem;margin:0 0 16px;">თქვენი ერთჯერადი პაროლი:</p>
+        <div style="display:inline-block;font-family:ui-monospace,'Courier New',monospace;font-size:2.6rem;font-weight:900;letter-spacing:0.32em;text-indent:0.32em;padding:26px 40px;border-radius:18px;background:#f0fdf4;border:3px solid #10b981;color:#047857;">${currentMemberOtp}</div>
+        <p style="color:#64748b;font-size:0.85rem;margin:16px 0 0;">მოქმედებს <strong>24 საათი</strong> • მხოლოდ <strong>ერთხელ</strong></p>
+        <p style="margin-top:22px;"><a href="https://fithouse.imed.com.ge/member" style="display:inline-block;padding:14px 30px;background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;text-decoration:none;border-radius:12px;font-weight:800;">პირად კაბინეტში შესვლა →</a></p>
       </div>`;
 
       const sent = await sendEmail(member.email, member.firstName, subject, message, {
