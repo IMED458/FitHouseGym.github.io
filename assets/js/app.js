@@ -1244,6 +1244,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         safeUiUpdate('stats', updateStatsTab);
       }
       recordUserActivity('login', matchedUser);
+      // Email goes through the Worker (the Brevo key must stay server-side), so
+      // pick up a staff token. Non-fatal: sending falls back to EmailJS.
+      fetchStaffEmailToken(username, input);
       startExpiringNotificationsScheduler();
       // Real-time listener; it falls back to polling on its own if it fails.
       startCheckInListener();
@@ -1588,6 +1591,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       const ok = await sendEmail(member.email, member.firstName, subject, message, {
         ...extraParams,
+        _memberId: member.id,
         _silent: true, // bulk callers report their own totals
       });
 
@@ -1596,9 +1600,71 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return 'failed';
     };
 
+    // ── Transport ──────────────────────────────────────────────────────────
+    // Brevo is the primary sender: higher quota, and its webhooks tell us about
+    // bounces that EmailJS cannot report. Its API key is a real secret, so the
+    // send is proxied through the Worker. EmailJS stays as a fallback so
+    // nothing breaks before Brevo is configured.
+
+    const WORKER_API_BASE = 'https://fithouse-payments.gymfithouse1.workers.dev';
+    let staffEmailToken = null;
+
+    async function fetchStaffEmailToken(username, password) {
+      try {
+        const res = await fetch(`${WORKER_API_BASE}/auth/staff/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (res.ok) staffEmailToken = (await res.json()).token;
+      } catch (_) { /* offline — EmailJS fallback still works */ }
+    }
+
+    /** Returns true if sent, false to fall through to EmailJS. */
+    async function sendViaBrevo(toEmail, toName, subject, message, params) {
+      if (!staffEmailToken) return false;
+      try {
+        const res = await fetch(`${WORKER_API_BASE}/email/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${staffEmailToken}`,
+          },
+          body: JSON.stringify({
+            to: toEmail,
+            to_name: toName,
+            subject,
+            text: message,
+            html: params.html_message || null,
+            member_id: params._memberId || null,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && (data.sent || data.skipped)) return true;
+        // Not configured yet → let EmailJS handle it. A real rejection should
+        // not silently double-send, so treat everything else as handled.
+        if (res.status === 503 || res.status === 401) return false;
+        window._lastEmailError = data.error || `http_${res.status}`;
+        return 'failed';
+      } catch (_) {
+        return false;
+      }
+    }
+
     // ფუნქცია ემეილის გასაგზავნად
     window.sendEmail = async function(toEmail, toName, subject, message, extraParams = {}) {
-      const { _silent, ...params } = extraParams;
+      const { _silent, _memberId, ...params } = extraParams;
+
+      const viaBrevo = await sendViaBrevo(toEmail, toName, subject, message, {
+        ...params,
+        _memberId,
+      });
+      if (viaBrevo === true) { window._lastEmailError = null; return true; }
+      if (viaBrevo === 'failed') {
+        if (!_silent) showToast('მეილი ვერ გაიგზავნა', 'error');
+        return false;
+      }
+
       try {
         const templateParams = {
           to_email: toEmail,

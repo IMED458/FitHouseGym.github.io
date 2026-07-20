@@ -5,10 +5,12 @@ import { FirestoreRest } from './firestore.js';
 import { FlittClient } from './flittClient.js';
 import { PaymentService, PaymentError } from './paymentService.js';
 import { verifyCallbackSignature } from './signature.js';
+import { BrevoClient, classifyWebhookEvent } from './brevo.js';
 import {
   issueToken,
   verifyToken,
   verifyMemberCredentials,
+  verifyStaffCredentials,
   getSessionSecret,
   bearerFrom,
   isFlittAllowed,
@@ -226,6 +228,138 @@ async function handleCallback(request, env, config, db) {
   }
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// EMAIL (Brevo)
+//
+// The API key is a real secret, so sending moves server-side. Bounces arrive
+// as webhooks and mark the address so we stop spending quota on it.
+// ───────────────────────────────────────────────────────────────────────────
+
+function buildBrevo(env) {
+  return new BrevoClient({
+    apiKey: env.BREVO_API_KEY,
+    senderEmail: env.BREVO_SENDER_EMAIL || 'noreply@fithouse.imed.com.ge',
+    senderName: env.BREVO_SENDER_NAME || 'Fit House Gym',
+  });
+}
+
+/** POST /auth/staff/session — admin/operator credentials for an email token. */
+async function handleStaffSession(request, env, db, cors) {
+  const body = await request.json().catch(() => ({}));
+  const staff = await verifyStaffCredentials(db, body.username, body.password);
+  const token = await issueToken(`staff:${staff.id}`, getSessionSecret(env));
+  return json({ token, role: staff.role, user_id: staff.id }, 200, cors);
+}
+
+async function authenticateStaff(request, env, db) {
+  const subject = await verifyToken(bearerFrom(request), getSessionSecret(env));
+  if (!String(subject).startsWith('staff:')) throw new AuthError('Not authorised', 403);
+  const id = String(subject).slice('staff:'.length);
+  const snap = await db.collection('users').doc(id).get();
+  if (!snap.exists) throw new AuthError('User not found');
+  const data = snap.data();
+  if (String(data.status || 'active') === 'disabled') throw new AuthError('Account disabled', 403);
+  return { id: snap.id, ...data };
+}
+
+/** POST /email/send — staff-only. */
+async function handleEmailSend(request, env, db, cors) {
+  await authenticateStaff(request, env, db);
+
+  const body = await request.json().catch(() => ({}));
+  const { to, to_name: toName, subject, text, html, member_id: memberId, tags } = body;
+
+  if (!to || !subject || !text) {
+    return json({ error: 'to, subject და text სავალდებულოა' }, 400, cors);
+  }
+
+  // Never send to an address already known to be bad, whatever the caller says.
+  if (memberId) {
+    const snap = await db.collection('members').doc(memberId).get();
+    if (snap.exists) {
+      const m = snap.data();
+      if (m.emailBlocked || Number(m.emailFailCount || 0) >= 2) {
+        return json({ error: 'blocked', skipped: true }, 200, cors);
+      }
+    }
+  }
+
+  try {
+    const result = await buildBrevo(env).send({ to, toName, subject, text, html, tags });
+    console.info(JSON.stringify({ event: 'email.sent', to, memberId: memberId || null }));
+    return json({ sent: true, message_id: result.messageId }, 200, cors);
+  } catch (error) {
+    console.error(JSON.stringify({
+      event: 'email.failed', to, code: error.code || null, detail: error.detail || null,
+    }));
+    // A rejection at send time is already a signal the address is bad.
+    if (memberId && error.code === 'send_rejected') {
+      await bumpEmailFailure(db, memberId, error.detail || 'rejected');
+    }
+    const status = error.code === 'rate_limited' ? 429 : 502;
+    return json({ error: error.code === 'rate_limited' ? 'დღიური ლიმიტი ამოიწურა' : 'გაგზავნა ვერ მოხერხდა' }, status, cors);
+  }
+}
+
+async function bumpEmailFailure(db, memberId, reason) {
+  try {
+    const ref = db.collection('members').doc(memberId);
+    const snap = await ref.get();
+    if (!snap.exists) return;
+    const count = Number(snap.data().emailFailCount || 0) + 1;
+    await ref.update({
+      emailFailCount: count,
+      emailLastError: String(reason).slice(0, 200),
+      emailLastFailedAt: new Date().toISOString(),
+    });
+  } catch (_) { /* bookkeeping must never break a send */ }
+}
+
+/**
+ * POST /email/webhook/:secret — Brevo delivery events.
+ * Brevo does not sign webhooks, so the shared secret lives in the path.
+ */
+async function handleBrevoWebhook(request, env, db, secret) {
+  if (!env.BREVO_WEBHOOK_SECRET || secret !== env.BREVO_WEBHOOK_SECRET) {
+    return json({ error: 'Not found' }, 404);
+  }
+
+  const payload = await request.json().catch(() => null);
+  if (!payload || typeof payload !== 'object') return json({ error: 'Invalid payload' }, 400);
+
+  const events = Array.isArray(payload) ? payload : [payload];
+
+  for (const evt of events) {
+    const kind = classifyWebhookEvent(evt.event);
+    const address = String(evt.email || '').trim().toLowerCase();
+    if (!address || !kind || kind === 'ok') continue;
+
+    const snap = await db.collection('members').where('email', '==', address).limit(5).get();
+    if (snap.empty) continue;
+
+    for (const docSnap of snap.docs) {
+      const ref = db.collection('members').doc(docSnap.id);
+      const patch = {
+        emailLastError: `${evt.event}${evt.reason ? `: ${evt.reason}` : ''}`.slice(0, 200),
+        emailLastFailedAt: new Date().toISOString(),
+      };
+      if (kind === 'hard') {
+        // A hard bounce is final — stop sending immediately.
+        patch.emailBlocked = true;
+      } else {
+        patch.emailFailCount = Number(docSnap.data().emailFailCount || 0) + 1;
+      }
+      await ref.update(patch);
+
+      console.info(JSON.stringify({
+        event: 'email.bounce', kind, brevoEvent: evt.event, memberId: docSnap.id,
+      }));
+    }
+  }
+
+  return new Response('', { status: 200 });
+}
+
 // ── router ─────────────────────────────────────────────────────────────────
 
 export default {
@@ -260,6 +394,19 @@ export default {
 
       if (path === '/auth/session' && request.method === 'POST') {
         return await handleSession(request, env, config, db, cors);
+      }
+
+      if (path === '/auth/staff/session' && request.method === 'POST') {
+        return await handleStaffSession(request, env, db, cors);
+      }
+
+      if (path === '/email/send' && request.method === 'POST') {
+        return await handleEmailSend(request, env, db, cors);
+      }
+
+      const webhookMatch = path.match(/^\/email\/webhook\/(.+)$/);
+      if (webhookMatch && request.method === 'POST') {
+        return await handleBrevoWebhook(request, env, db, webhookMatch[1]);
       }
 
       if (path === '/payments/flitt/checkout' && request.method === 'POST') {

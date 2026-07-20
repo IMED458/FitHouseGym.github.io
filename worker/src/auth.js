@@ -123,6 +123,52 @@ async function verifyMemberCredentials(db, email, password) {
   throw new AuthError('Invalid credentials');
 }
 
+/**
+ * Verifies staff (admin/operator) credentials against the `users` collection.
+ *
+ * The admin panel hashes the password client-side and compares it there, which
+ * is fine for a UI gate but proves nothing to a server. This re-does the check
+ * server-side so the email endpoint can trust the caller.
+ */
+async function verifyStaffCredentials(db, username, password) {
+  const normalized = String(username || '').trim().toLowerCase();
+  if (!normalized || !password) throw new AuthError('Username and password are required');
+
+  const snap = await db.collection('users').where('username', '==', normalized).limit(5).get();
+  if (snap.empty) throw new AuthError('Invalid credentials');
+
+  const hash = await sha256Hex(String(password));
+
+  for (const doc of snap.docs) {
+    const data = doc.data();
+    if (String(data.status || 'active') === 'disabled') continue;
+
+    const permanentOk = data.passwordHash && safeEqualString(data.passwordHash, hash);
+
+    // A staff member on a temporary password may sign in, but only until it
+    // expires — same rule the panel applies.
+    const tempOk =
+      data.temporaryPasswordHash &&
+      safeEqualString(data.temporaryPasswordHash, hash) &&
+      data.temporaryPasswordExpiresAt &&
+      new Date(data.temporaryPasswordExpiresAt) > new Date();
+
+    if (permanentOk || tempOk) {
+      const role = String(data.role || '').toLowerCase();
+      if (role !== 'admin' && role !== 'operator') {
+        throw new AuthError('Not authorised', 403);
+      }
+      return { id: doc.id, ...data, role };
+    }
+  }
+  throw new AuthError('Invalid credentials');
+}
+
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 function bearerFrom(request) {
   const header = request.headers.get('authorization');
   if (!header || !/^Bearer\s+/i.test(header)) throw new AuthError('Missing bearer token');
@@ -139,6 +185,8 @@ export {
   issueToken,
   verifyToken,
   verifyMemberCredentials,
+  verifyStaffCredentials,
+  sha256Hex,
   getSessionSecret,
   bearerFrom,
   isFlittAllowed,
