@@ -141,7 +141,10 @@ function renderLogin(){
           </div>
           <div>
             <label style="display:block;font-size:.7rem;font-weight:800;text-transform:uppercase;color:#64748b;margin-bottom:8px;">პაროლი</label>
-            <input id="l-pass" type="password" required placeholder="••••••••" class="form-input" autocomplete="current-password">
+            <div style="position:relative;">
+              <input id="l-pass" type="password" required placeholder="••••••••" class="form-input" autocomplete="current-password">
+              <button type="button" onclick="window.togglePwVisibility('l-pass', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;cursor:pointer;padding:4px;font-size:0.85rem;z-index:1;"><i class="fas fa-eye"></i></button>
+            </div>
           </div>
           <button type="submit" class="btn-primary w-full" id="login-btn">შესვლა</button>
         </form>
@@ -618,6 +621,7 @@ function renderSettings(){
           <div style="position:relative;">
             <i class="fas fa-lock" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
             <input id="pw-cur" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+            <button type="button" onclick="window.togglePwVisibility('pw-cur', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;cursor:pointer;padding:4px;font-size:0.85rem;z-index:1;"><i class="fas fa-eye"></i></button>
           </div>
         </div>
         <div>
@@ -625,6 +629,7 @@ function renderSettings(){
           <div style="position:relative;">
             <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
             <input id="pw-new" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+            <button type="button" onclick="window.togglePwVisibility('pw-new', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;cursor:pointer;padding:4px;font-size:0.85rem;z-index:1;"><i class="fas fa-eye"></i></button>
           </div>
         </div>
         <div>
@@ -632,6 +637,7 @@ function renderSettings(){
           <div style="position:relative;">
             <i class="fas fa-key" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#475569;font-size:.8rem;"></i>
             <input id="pw-conf" type="password" placeholder="••••••••••" class="form-input" style="padding-left:36px;">
+            <button type="button" onclick="window.togglePwVisibility('pw-conf', this)" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#475569;cursor:pointer;padding:4px;font-size:0.85rem;z-index:1;"><i class="fas fa-eye"></i></button>
           </div>
         </div>
         <button onclick="changeTrainerPassword()" style="display:inline-flex;align-items:center;gap:8px;padding:11px 22px;background:linear-gradient(135deg,#dc2626,#e11d48);color:#fff;border:none;border-radius:12px;font-weight:800;font-size:.88rem;cursor:pointer;" id="pw-btn">
@@ -664,6 +670,7 @@ async function changeTrainerPassword(){
     const newHash=await sha256(nw);
     await updateDoc(doc(db,'trainers',session.trainerId),{passwordHash:newHash,updatedAt:new Date().toISOString()});
     showPwMsg('პაროლი წარმატებით შეიცვალა! ✅',true);
+    showPasswordSuccessOverlay();
     document.getElementById('pw-cur').value='';
     document.getElementById('pw-new').value='';
     document.getElementById('pw-conf').value='';
@@ -675,6 +682,36 @@ async function changeTrainerPassword(){
 async function sha256(str){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+window.togglePwVisibility = function(inputId, btn) {
+  const inp = document.getElementById(inputId);
+  if (!inp) return;
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.innerHTML = show ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+};
+
+function showPasswordSuccessOverlay() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+  overlay.innerHTML = `
+    <div style="background:#0f172a;border:1px solid rgba(16,185,129,0.4);border-radius:20px;padding:32px 40px;text-align:center;max-width:360px;animation:scaleIn 0.25s ease;">
+      <div style="width:64px;height:64px;background:rgba(16,185,129,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid #10b981;">
+        <i class="fas fa-check" style="color:#10b981;font-size:1.5rem;"></i>
+      </div>
+      <div style="font-size:1.2rem;font-weight:900;color:#f1f5f9;margin-bottom:8px;">პაროლი განახლდა!</div>
+      <div style="color:#94a3b8;font-size:0.88rem;margin-bottom:20px;">პაროლი წარმატებით შეიცვალა.</div>
+      <button onclick="this.closest('[style*=fixed]').remove()" style="padding:10px 28px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;font-weight:800;cursor:pointer;">OK</button>
+    </div>`;
+  if (!document.getElementById('pw-anim-style')) {
+    const s = document.createElement('style');
+    s.id = 'pw-anim-style';
+    s.textContent = '@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes scaleIn{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}';
+    document.head.appendChild(s);
+  }
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 2500);
 }
 
 window.trLogout=function(){

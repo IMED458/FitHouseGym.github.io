@@ -32,6 +32,19 @@
   <script type="module" src="/assets/js/app.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
+  <style>
+    .pw-toggle-btn { position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none; border:none; color:#475569; cursor:pointer; padding:4px; font-size:0.85rem; z-index:1; }
+    .pw-toggle-btn:hover { color:#94a3b8; }
+  </style>
+  <script>
+    function togglePwVisibility(inputId, btn) {
+      const inp = document.getElementById(inputId);
+      if (!inp) return;
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      btn.innerHTML = show ? '<i class="fas fa-eye-slash"></i>' : '<i class="fas fa-eye"></i>';
+    }
+  </script>
 </head>
 <body>
   <div id="loginScreen">
@@ -58,9 +71,10 @@
             <label for="adminPassword">PASSWORD</label>
             <button type="button" class="auth-helper-btn" onclick="window.showForgotPasswordInfo()">Forgot password?</button>
           </div>
-          <div class="auth-input-wrap">
+          <div class="auth-input-wrap" style="position:relative;">
             <i class="far fa-lock"></i>
             <input type="password" id="adminPassword" placeholder="••••••••" class="auth-input">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('adminPassword', this)"><i class="fas fa-eye"></i></button>
           </div>
         </div>
 
@@ -629,6 +643,14 @@
           </div>
         </div>
 
+        <div class="section-panel" id="subscriptionPlansPanel" style="display:none;margin-bottom:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <h3 class="panel-title" style="margin:0;">აბონემენტის პლანები</h3>
+            <button class="btn btn-success btn-sm" onclick="window.openPlanForm()"><i class="fas fa-plus"></i> პლანის დამატება</button>
+          </div>
+          <div id="subscriptionPlansTable"></div>
+        </div>
+
         <div class="settings-grid">
           <div class="section-panel">
             <h3 class="panel-title">მიმდინარე ანგარიში</h3>
@@ -640,15 +662,24 @@
               <div class="product-form-grid">
                 <div class="product-form-field product-form-field-full">
                   <label for="currentPassword">მიმდინარე პაროლი</label>
-                  <input type="password" id="currentPassword" class="form-input" autocomplete="current-password">
+                  <div style="position:relative;">
+                    <input type="password" id="currentPassword" class="form-input" autocomplete="current-password">
+                    <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('currentPassword', this)"><i class="fas fa-eye"></i></button>
+                  </div>
                 </div>
                 <div class="product-form-field">
                   <label for="newPassword">ახალი პაროლი</label>
-                  <input type="password" id="newPassword" class="form-input" autocomplete="new-password">
+                  <div style="position:relative;">
+                    <input type="password" id="newPassword" class="form-input" autocomplete="new-password">
+                    <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('newPassword', this)"><i class="fas fa-eye"></i></button>
+                  </div>
                 </div>
                 <div class="product-form-field">
                   <label for="confirmPassword">გაიმეორე პაროლი</label>
-                  <input type="password" id="confirmPassword" class="form-input" autocomplete="new-password">
+                  <div style="position:relative;">
+                    <input type="password" id="confirmPassword" class="form-input" autocomplete="new-password">
+                    <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('confirmPassword', this)"><i class="fas fa-eye"></i></button>
+                  </div>
                 </div>
               </div>
               <div class="email-actions">
@@ -1054,11 +1085,7 @@
         <div class="product-form-field product-form-field-full" id="membershipPaymentSubscriptionTypeField" style="display:none;">
           <label for="membershipPaymentSubscriptionType">აბონემენტის სახეობა</label>
           <select id="membershipPaymentSubscriptionType" class="form-input" onchange="window.updateMembershipPaymentSelection()">
-            <option value="12visits">12 ვარჯიში (70₾)</option>
-            <option value="morning">დილის ულიმიტო (90₾)</option>
-            <option value="unlimited">ულიმიტო (110₾)</option>
-            <option value="single_visit">ერთჯერადი ვიზიტი (15₾)</option>
-            <option value="other">სხვა</option>
+            <option value="">მიმდინარეობს ჩატვირთვა...</option>
           </select>
         </div>
         <div id="membershipPaymentCustomFields" class="product-form-field product-form-field-full" style="display:none;">
@@ -1135,7 +1162,10 @@
         </div>
         <div class="product-form-field">
           <label for="userPassword">პაროლი</label>
-          <input type="password" id="userPassword" class="form-input">
+          <div style="position:relative;">
+            <input type="password" id="userPassword" class="form-input">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('userPassword', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
         <div class="product-form-field">
           <label for="userStatus">სტატუსი</label>
@@ -1189,7 +1219,10 @@
         </div>
         <div class="product-form-field">
           <label for="trainerPassword">პაროლი</label>
-          <input type="password" id="trainerPassword" class="form-input">
+          <div style="position:relative;">
+            <input type="password" id="trainerPassword" class="form-input">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('trainerPassword', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
         <div class="product-form-field product-form-field-full">
           <label for="trainerPhotoUrl">ფოტოს URL (არასავალდებულო)</label>
@@ -1221,7 +1254,10 @@
       <div class="product-form-grid">
         <div class="product-form-field product-form-field-full">
           <label for="resetUserPassword">ახალი პაროლი</label>
-          <input type="password" id="resetUserPassword" class="form-input">
+          <div style="position:relative;">
+            <input type="password" id="resetUserPassword" class="form-input">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('resetUserPassword', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
       </div>
       <div class="email-actions">
@@ -1229,6 +1265,50 @@
           <i class="fas fa-key"></i> პაროლის შენახვა
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeResetUserPasswordModal()">
+          გაუქმება
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="planFormModal" class="modal">
+    <div class="modal-content" style="max-width:500px;">
+      <div class="modal-header">
+        <h3 id="planFormTitle">პლანის დამატება</h3>
+        <button class="modal-close" onclick="window.closePlanForm()">×</button>
+      </div>
+      <input type="hidden" id="planFormId">
+      <div class="product-form-grid">
+        <div class="product-form-field">
+          <label for="planName">სახელი</label>
+          <input type="text" id="planName" class="form-input" placeholder="მაგ: ულიმიტო">
+        </div>
+        <div class="product-form-field">
+          <label for="planType">ტიპი (key)</label>
+          <input type="text" id="planType" class="form-input" placeholder="მაგ: unlimited">
+        </div>
+        <div class="product-form-field">
+          <label for="planPrice">ფასი (₾)</label>
+          <input type="number" id="planPrice" class="form-input" min="0" step="1">
+        </div>
+        <div class="product-form-field">
+          <label for="planDurationDays">ვადა (დღე)</label>
+          <input type="number" id="planDurationDays" class="form-input" min="1" step="1" value="30">
+        </div>
+        <div class="product-form-field">
+          <label for="planRemainingVisits">ვიზიტები (ცარიელი = ულიმიტო)</label>
+          <input type="number" id="planRemainingVisits" class="form-input" min="1" step="1" placeholder="ულიმიტო">
+        </div>
+        <div class="product-form-field">
+          <label for="planOrder">თანმიმდევრობა</label>
+          <input type="number" id="planOrder" class="form-input" min="1" step="1" value="1">
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="window.savePlan()">
+          <i class="fas fa-save"></i> შენახვა
+        </button>
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closePlanForm()">
           გაუქმება
         </button>
       </div>

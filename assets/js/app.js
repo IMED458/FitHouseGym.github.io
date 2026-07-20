@@ -54,6 +54,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.productCartPaymentMethod = 'TBC';
     window.isCartCheckoutRunning = false;
     window.pendingMembershipPaymentContext = null;
+    window.subscriptionPlans = [];
 
     // ── QR Check-in globals ─────────────────────────────────────────────────
     let gymQrToken = null;
@@ -2562,6 +2563,13 @@ ${memberPortalUrl}
         <div class="settings-profile-meta">როლი: ${getRoleLabel(currentUser.role)}</div>
         <div class="settings-profile-meta">სტატუსი: ${(currentUser.status || 'active') === 'disabled' ? 'გამორთული' : 'აქტიური'}</div>
       `;
+      const plansPanel = document.getElementById('subscriptionPlansPanel');
+      if (plansPanel) {
+        plansPanel.style.display = isAdmin() ? 'block' : 'none';
+        if (isAdmin()) {
+          renderSubscriptionPlansTable();
+        }
+      }
     }
 
     function updateStatsTab() {
@@ -2768,7 +2776,7 @@ ${memberPortalUrl}
       if (!saved.ok) return;
       currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword) };
       document.getElementById('passwordChangeForm')?.reset();
-      showToast('პაროლი განახლდა');
+      showPasswordSuccessOverlay();
       hydrateUsersFromRest();
     };
 
@@ -3638,6 +3646,9 @@ ${memberPortalUrl}
     };
 
     function isStandardMembershipType(type) {
+      if (window.subscriptionPlans?.length) {
+        return window.subscriptionPlans.some(p => p.type === type);
+      }
       return ['12visits', 'morning', 'unlimited', 'single_visit'].includes(type);
     }
 
@@ -3661,18 +3672,28 @@ ${memberPortalUrl}
       let end = setToEndOfDay(addMonthsPreserveDay(start, 1));
       let visits = null;
 
-      if (selectedType === '12visits') {
-        price = 70;
-        visits = 12;
-      } else if (selectedType === 'morning') {
-        price = 90;
-      } else if (selectedType === 'unlimited') {
-        price = 110;
-      } else if (selectedType === 'single_visit') {
-        price = 15;
-        visits = 1;
-        end = setToEndOfDay(start);
-      } else if (selectedType === 'other') {
+      if (selectedType !== 'other') {
+        const plan = window.subscriptionPlans?.find(p => p.type === selectedType);
+        if (plan) {
+          price = plan.price;
+          visits = plan.remainingVisits;
+          displayName = plan.name;
+          if (plan.durationDays === 1) {
+            end = setToEndOfDay(start);
+          } else {
+            end = setToEndOfDay(addMonthsPreserveDay(start, Math.round(plan.durationDays / 30)));
+          }
+        } else if (selectedType === '12visits') {
+          price = 70; visits = 12;
+        } else if (selectedType === 'morning') {
+          price = 90;
+        } else if (selectedType === 'unlimited') {
+          price = 110;
+        } else if (selectedType === 'single_visit') {
+          price = 15; visits = 1; end = setToEndOfDay(start);
+        }
+      }
+      if (selectedType === 'other') {
         const description = document.getElementById('membershipPaymentCustomDescription').value.trim();
         const customPrice = Number(document.getElementById('membershipPaymentCustomPrice').value || 0);
         const customDuration = Number(document.getElementById('membershipPaymentCustomDuration').value || 0);
@@ -3707,7 +3728,8 @@ ${memberPortalUrl}
     }
 
     function resetMembershipPaymentSelectionFields() {
-      document.getElementById('membershipPaymentSubscriptionType')?.value && (document.getElementById('membershipPaymentSubscriptionType').value = '12visits');
+      const _defType = window.subscriptionPlans?.[0]?.type || '12visits';
+      document.getElementById('membershipPaymentSubscriptionType')?.value !== undefined && (document.getElementById('membershipPaymentSubscriptionType').value = _defType);
       document.getElementById('membershipPaymentCustomDescription')?.value !== undefined && (document.getElementById('membershipPaymentCustomDescription').value = '');
       document.getElementById('membershipPaymentCustomPrice')?.value !== undefined && (document.getElementById('membershipPaymentCustomPrice').value = '');
       document.getElementById('membershipPaymentCustomDuration')?.value !== undefined && (document.getElementById('membershipPaymentCustomDuration').value = '');
@@ -3778,6 +3800,9 @@ ${memberPortalUrl}
       document.getElementById('membershipPaymentMethod').value = 'CASH';
       document.getElementById('membershipPaymentNote').value = '';
       resetMembershipPaymentSelectionFields();
+      // Populate dynamic plan options
+      const renewSel = document.getElementById('membershipPaymentSubscriptionType');
+      if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
 
       if (isRenew) {
         const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
@@ -3957,11 +3982,7 @@ ${memberPortalUrl}
             <div class="edit-field">
               <label class="edit-field-label" for="e_subtype_${id}">აბონემენტის ტიპი</label>
               <select id="e_subtype_${id}" class="form-input" onchange="window.autoFillSubscription('${id}')">
-                <option value="12visits" ${m.subscriptionType==='12visits'?'selected':''}>12 ვარჯიში (70₾)</option>
-                <option value="morning" ${m.subscriptionType==='morning'?'selected':''}>დილის ულიმიტო (90₾)</option>
-                <option value="unlimited" ${m.subscriptionType==='unlimited'?'selected':''}>ულიმიტო (110₾)</option>
-                <option value="other" ${!['12visits','single_visit','morning','unlimited'].includes(m.subscriptionType)?'selected':''}>სხვა</option>
-                <option value="single_visit" ${m.subscriptionType==='single_visit'?'selected':''}>ერთჯერადი ვიზიტი (15₾)</option>
+                ${buildSubscriptionOptions(m.subscriptionType)}
               </select>
             </div>
             <div class="edit-field">
@@ -4010,21 +4031,22 @@ ${memberPortalUrl}
 
     window.autoFillSubscription = function(id) {
       const type = document.getElementById(`e_subtype_${id}`).value;
-      if (type === '12visits') { 
-        document.getElementById(`e_price_${id}`).value = 70; 
-        document.getElementById(`e_visits_${id}`).value = 12; 
-      }
-      else if (type === 'single_visit') {
+      const plan = window.subscriptionPlans?.find(p => p.type === type);
+      if (plan) {
+        document.getElementById(`e_price_${id}`).value = plan.price;
+        document.getElementById(`e_visits_${id}`).value = plan.remainingVisits ?? '';
+      } else if (type === '12visits') {
+        document.getElementById(`e_price_${id}`).value = 70;
+        document.getElementById(`e_visits_${id}`).value = 12;
+      } else if (type === 'single_visit') {
         document.getElementById(`e_price_${id}`).value = 15;
         document.getElementById(`e_visits_${id}`).value = 1;
-      }
-      else if (type === 'morning') { 
-        document.getElementById(`e_price_${id}`).value = 90; 
-        document.getElementById(`e_visits_${id}`).value = ''; 
-      }
-      else if (type === 'unlimited') { 
-        document.getElementById(`e_price_${id}`).value = 110; 
-        document.getElementById(`e_visits_${id}`).value = ''; 
+      } else if (type === 'morning') {
+        document.getElementById(`e_price_${id}`).value = 90;
+        document.getElementById(`e_visits_${id}`).value = '';
+      } else if (type === 'unlimited') {
+        document.getElementById(`e_price_${id}`).value = 110;
+        document.getElementById(`e_visits_${id}`).value = '';
       }
       // თარიღი აღარ შეიცვლება ავტომატურად - მომხმარებელი თვითონ შეცვლის
     };
@@ -5611,18 +5633,226 @@ ${memberPortalUrl}
       }).join('');
     }
 
-    function getSubscriptionName(t) { 
+    function getSubscriptionName(t) {
+      if (window.subscriptionPlans?.length) {
+        const plan = window.subscriptionPlans.find(p => p.type === t);
+        if (plan) return plan.name;
+      }
       const map = {
         '12visits':'12 ვარჯიში',
         'single_visit':'ერთჯერადი ვიზიტი',
         'morning':'დილის ულიმიტო',
         'unlimited':'ულიმიტო',
         'other':'სხვა'
-      }; 
-      return map[t] || t; 
+      };
+      return map[t] || t;
     }
     
-    function getStatusClass(s) { 
+    // ── Subscription Plans ────────────────────────────────────────────────────
+
+    function buildSubscriptionOptions(selectedType) {
+      const plans = window.subscriptionPlans || [];
+      let opts = plans.map(p => `<option value="${p.type}" ${p.type === selectedType ? 'selected' : ''}>${p.name} (${p.price}₾)</option>`).join('');
+      opts += `<option value="other" ${selectedType === 'other' ? 'selected' : ''}>სხვა (მომხმარებლის ველი)</option>`;
+      return opts;
+    }
+
+    function populateSubscriptionSelects(selectedType) {
+      const opts = buildSubscriptionOptions(selectedType || '');
+      const regSelect = document.getElementById('subscriptionType');
+      if (regSelect) regSelect.innerHTML = opts;
+      const renewSelect = document.getElementById('membershipPaymentSubscriptionType');
+      if (renewSelect) renewSelect.innerHTML = opts;
+    }
+
+    async function loadSubscriptionPlansFromRest() {
+      try {
+        const pid = 'fit-house-gym-d3595';
+        const res = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans?pageSize=50`);
+        const json = await res.json();
+        const docs = json.documents || [];
+        window.subscriptionPlans = docs.map(d => {
+          const f = d.fields || {};
+          const id = d.name.split('/').pop();
+          return {
+            id,
+            name: f.name?.stringValue || '',
+            type: f.type?.stringValue || id,
+            price: Number(f.price?.integerValue || f.price?.doubleValue || 0),
+            durationDays: Number(f.durationDays?.integerValue || 30),
+            remainingVisits: f.remainingVisits?.nullValue !== undefined ? null : Number(f.remainingVisits?.integerValue || 0),
+            active: f.active?.booleanValue !== false,
+            order: Number(f.order?.integerValue || 99)
+          };
+        }).filter(p => p.active).sort((a, b) => a.order - b.order);
+
+        if (window.subscriptionPlans.length === 0) {
+          await seedDefaultPlans();
+        }
+      } catch(e) {
+        console.error('loadSubscriptionPlansFromRest error', e);
+      }
+    }
+
+    async function seedDefaultPlans() {
+      const defaults = [
+        {name:'12 ვარჯიში', type:'12visits', price:70, durationDays:30, remainingVisits:12, active:true, order:1},
+        {name:'დილის ულიმიტო', type:'morning', price:90, durationDays:30, remainingVisits:null, active:true, order:2},
+        {name:'ულიმიტო', type:'unlimited', price:110, durationDays:30, remainingVisits:null, active:true, order:3},
+        {name:'ერთჯერადი ვიზიტი', type:'single_visit', price:15, durationDays:1, remainingVisits:1, active:true, order:4}
+      ];
+      const pid = 'fit-house-gym-d3595';
+      for (const p of defaults) {
+        const body = { fields: {
+          name: {stringValue: p.name},
+          type: {stringValue: p.type},
+          price: {integerValue: String(p.price)},
+          durationDays: {integerValue: String(p.durationDays)},
+          remainingVisits: p.remainingVisits === null ? {nullValue: null} : {integerValue: String(p.remainingVisits)},
+          active: {booleanValue: true},
+          order: {integerValue: String(p.order)}
+        }};
+        try {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans`, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+          });
+        } catch(_) {}
+      }
+      await loadSubscriptionPlansFromRest();
+    }
+
+    function renderSubscriptionPlansTable() {
+      const el = document.getElementById('subscriptionPlansTable');
+      if (!el) return;
+      if (!window.subscriptionPlans?.length) {
+        el.innerHTML = '<div style="color:#64748b;padding:16px;">პლანები ვერ მოიძებნა</div>';
+        return;
+      }
+      el.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:0.875rem;">
+            <thead>
+              <tr style="background:var(--surface,#1e293b);">
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">სახელი</th>
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">ტიპი</th>
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">ფასი</th>
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">ვადა</th>
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">ვიზიტები</th>
+                <th style="padding:10px 14px;text-align:left;color:var(--text-light,#64748b);font-size:0.7rem;text-transform:uppercase;">თანმ.</th>
+                <th style="padding:10px 14px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${window.subscriptionPlans.map(p => `
+                <tr style="border-top:1px solid var(--border,#334155);">
+                  <td style="padding:10px 14px;color:var(--text,#f1f5f9);font-weight:700;">${p.name}</td>
+                  <td style="padding:10px 14px;color:var(--text-light,#94a3b8);">${p.type}</td>
+                  <td style="padding:10px 14px;color:#10b981;font-weight:700;">${p.price}₾</td>
+                  <td style="padding:10px 14px;color:var(--text-light,#94a3b8);">${p.durationDays} დღე</td>
+                  <td style="padding:10px 14px;color:var(--text-light,#94a3b8);">${p.remainingVisits === null ? 'ულიმიტო' : p.remainingVisits}</td>
+                  <td style="padding:10px 14px;color:var(--text-light,#94a3b8);">${p.order}</td>
+                  <td style="padding:10px 14px;text-align:right;display:flex;gap:6px;justify-content:flex-end;">
+                    <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openPlanForm('${p.id}')"><i class="fas fa-pen"></i></button>
+                    <button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deletePlan('${p.id}')"><i class="fas fa-trash"></i></button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    window.openPlanForm = function(planId) {
+      if (!isAdmin()) return;
+      const plan = planId ? window.subscriptionPlans?.find(p => p.id === planId) : null;
+      document.getElementById('planFormTitle').textContent = plan ? 'პლანის რედაქტირება' : 'პლანის დამატება';
+      document.getElementById('planFormId').value = plan?.id || '';
+      document.getElementById('planName').value = plan?.name || '';
+      document.getElementById('planType').value = plan?.type || '';
+      document.getElementById('planPrice').value = plan?.price ?? '';
+      document.getElementById('planDurationDays').value = plan?.durationDays ?? 30;
+      document.getElementById('planRemainingVisits').value = plan?.remainingVisits ?? '';
+      document.getElementById('planOrder').value = plan?.order ?? 1;
+      document.getElementById('planFormModal').style.display = 'flex';
+    };
+
+    window.closePlanForm = function() {
+      document.getElementById('planFormModal').style.display = 'none';
+    };
+
+    window.savePlan = async function() {
+      if (!isAdmin()) return;
+      const id = document.getElementById('planFormId').value;
+      const name = document.getElementById('planName').value.trim();
+      const type = document.getElementById('planType').value.trim();
+      const price = Number(document.getElementById('planPrice').value);
+      const durationDays = Number(document.getElementById('planDurationDays').value);
+      const rvVal = document.getElementById('planRemainingVisits').value;
+      const remainingVisits = rvVal === '' ? null : Number(rvVal);
+      const order = Number(document.getElementById('planOrder').value) || 1;
+
+      if (!name || !type || !price || !durationDays) {
+        showToast('შეავსე სახელი, ტიპი, ფასი და ვადა', 'error');
+        return;
+      }
+
+      const pid = 'fit-house-gym-d3595';
+      const fields = {
+        name: {stringValue: name},
+        type: {stringValue: type},
+        price: {integerValue: String(price)},
+        durationDays: {integerValue: String(durationDays)},
+        remainingVisits: remainingVisits === null ? {nullValue: null} : {integerValue: String(remainingVisits)},
+        active: {booleanValue: true},
+        order: {integerValue: String(order)}
+      };
+
+      try {
+        if (id) {
+          const updateMask = Object.keys(fields).map(k => `updateMask.fieldPaths=${k}`).join('&');
+          await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans/${id}?${updateMask}`, {
+            method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({fields})
+          });
+        } else {
+          await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans`, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({fields})
+          });
+        }
+        window.closePlanForm();
+        await loadSubscriptionPlansFromRest();
+        renderSubscriptionPlansTable();
+        populateSubscriptionSelects('');
+        showToast(id ? 'პლანი განახლდა' : 'პლანი დაემატა');
+      } catch(e) {
+        console.error(e);
+        showToast('შენახვა ვერ მოხერხდა', 'error');
+      }
+    };
+
+    window.deletePlan = async function(planId) {
+      if (!isAdmin()) return;
+      const plan = window.subscriptionPlans?.find(p => p.id === planId);
+      if (!confirm(`წავშალოთ პლანი "${plan?.name}"?`)) return;
+      const pid = 'fit-house-gym-d3595';
+      try {
+        await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans/${planId}`, {
+          method: 'DELETE'
+        });
+        await loadSubscriptionPlansFromRest();
+        renderSubscriptionPlansTable();
+        populateSubscriptionSelects('');
+        showToast('პლანი წაიშალა');
+      } catch(e) {
+        showToast('წაშლა ვერ მოხერხდა', 'error');
+      }
+    };
+
+    window.loadAndRenderPlans = async function() {
+      await loadSubscriptionPlansFromRest();
+      renderSubscriptionPlansTable();
+    };
+
+    function getStatusClass(s) {
       return {
         active:'status-active',
         expired:'status-expired',
@@ -5636,6 +5866,28 @@ ${memberPortalUrl}
         expired:'ვადაგასული',
         paused:'შეჩერებული'
       }[s] || s; 
+    }
+
+    function showPasswordSuccessOverlay() {
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:99999;display:flex;align-items:center;justify-content:center;animation:fadeIn 0.2s ease;';
+      overlay.innerHTML = `
+        <div style="background:#0f172a;border:1px solid rgba(16,185,129,0.4);border-radius:20px;padding:32px 40px;text-align:center;max-width:360px;animation:scaleIn 0.25s ease;">
+          <div style="width:64px;height:64px;background:rgba(16,185,129,0.15);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;border:2px solid #10b981;">
+            <i class="fas fa-check" style="color:#10b981;font-size:1.5rem;"></i>
+          </div>
+          <div style="font-size:1.2rem;font-weight:900;color:#f1f5f9;margin-bottom:8px;">პაროლი განახლდა!</div>
+          <div style="color:#94a3b8;font-size:0.88rem;margin-bottom:20px;">პაროლი წარმატებით შეიცვალა.</div>
+          <button onclick="this.closest('[style*=fixed]').remove()" style="padding:10px 28px;background:linear-gradient(135deg,#10b981,#059669);color:white;border:none;border-radius:10px;font-weight:800;cursor:pointer;">OK</button>
+        </div>`;
+      if (!document.getElementById('pw-anim-style')) {
+        const s = document.createElement('style');
+        s.id = 'pw-anim-style';
+        s.textContent = '@keyframes fadeIn{from{opacity:0}to{opacity:1}}@keyframes scaleIn{from{opacity:0;transform:scale(0.85)}to{opacity:1;transform:scale(1)}}';
+        document.head.appendChild(s);
+      }
+      document.body.appendChild(overlay);
+      setTimeout(() => overlay.remove(), 2500);
     }
 
     function showToast(msg, type='success') {
@@ -5669,6 +5921,7 @@ ${memberPortalUrl}
     };
 
     document.addEventListener('DOMContentLoaded', () => {
+      loadSubscriptionPlansFromRest().then(() => populateSubscriptionSelects(''));
       checkPublicCheckinParam();
       checkAuth();
       applyRoleVisibility();
