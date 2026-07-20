@@ -1768,24 +1768,20 @@ ${portalUrl}
       btn.innerHTML = '<div class="spinner"></div> იგზავნება...';
 
       const subject = '🔐 ერთჯერადი პაროლი — Fit House Gym';
-      // Plain-text clients cannot do bold, so the code gets a drawn box and
-      // spaced letters to make it unmissable and easy to read off. Padding is
-      // computed rather than hand-counted so the box stays square.
-      const spaced = currentMemberOtp.split('').join(' ');
-      const boxWidth = 22;
-      const padLeft = ' '.repeat(Math.floor((boxWidth - spaced.length) / 2));
-      const padRight = ' '.repeat(boxWidth - spaced.length - padLeft.length);
-      const bar = '═'.repeat(boxWidth);
-      const blank = ' '.repeat(boxWidth);
+      // No drawn box: mail clients render plain text in a proportional font,
+      // so vertical borders never line up with the content. Horizontal rules
+      // and a spaced code hold their shape in any font.
+      const spaced = currentMemberOtp.split('').join('  ');
+      const rule = '━'.repeat(24);
       const message = `გამარჯობა ${member.firstName || ''}!
 
 თქვენი ერთჯერადი პაროლია:
 
-╔${bar}╗
-║${blank}║
-║${padLeft}${spaced}${padRight}║
-║${blank}║
-╚${bar}╝
+${rule}
+
+🔑   ${spaced}
+
+${rule}
 
 შესვლა: https://fithouse.imed.com.ge/member
 📧 მეილი: ${member.email}
