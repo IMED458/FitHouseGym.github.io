@@ -1769,6 +1769,7 @@ body.admin-mode .container {
   gap: 24px;
   align-items: start;
   padding: 24px;
+  padding-left: 308px;
 }
 
 body.admin-mode .theme-toggle {
@@ -1843,8 +1844,12 @@ body.admin-mode .header-logout-btn:hover {
 
 body.admin-mode .nav-tabs {
   grid-area: nav;
-  position: sticky;
-  top: 106px;
+  position: fixed;
+  top: 138px;
+  left: 24px;
+  width: 260px;
+  max-height: calc(100vh - 162px);
+  overflow-y: auto;
   margin-bottom: 0;
   padding: 18px;
   flex-direction: column;
@@ -1913,6 +1918,70 @@ body.admin-mode .tab-content {
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid #e2eaf4;
   box-shadow: 0 30px 60px rgba(15, 23, 42, 0.08);
+}
+
+body.admin-mode #stats .stats-loyal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+body.admin-mode #stats .stats-loyal-card {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 22px;
+  background: rgba(10, 14, 22, 0.88);
+  border: 1px solid #222836;
+}
+
+body.admin-mode #stats .stats-loyal-head,
+body.admin-mode #stats .stats-loyal-name-row,
+body.admin-mode #stats .stats-loyal-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+body.admin-mode #stats .stats-loyal-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
+  color: #fff;
+  font-weight: 900;
+}
+
+body.admin-mode #stats .stats-loyal-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+body.admin-mode #stats .stats-loyal-name {
+  color: #f8fbff;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+body.admin-mode #stats .stats-loyal-sub {
+  color: #81879a;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+body.admin-mode #stats .stats-loyal-head strong {
+  color: #f8fbff;
+  font-weight: 800;
+}
+
+body.admin-mode #stats .stats-loyal-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 body.admin-mode #dashboard.tab-content {
@@ -2737,10 +2806,14 @@ body.admin-mode .stats-rank-name-block {
       'header'
       'nav'
       'content';
+    padding-left: 24px;
   }
 
   body.admin-mode .nav-tabs {
     position: static;
+    width: auto;
+    max-height: none;
+    overflow: visible;
     flex-direction: row;
     flex-wrap: wrap;
   }
@@ -2751,6 +2824,10 @@ body.admin-mode .stats-rank-name-block {
 
   body.admin-mode .stats-insights-grid,
   body.admin-mode .stats-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  body.admin-mode #stats .stats-loyal-grid {
     grid-template-columns: 1fr;
   }
 
@@ -3193,6 +3270,20 @@ body.admin-mode.light-mode .gym-title {
 
 body.admin-mode.light-mode .nav-tab {
   color: #64748b;
+}
+
+body.admin-mode.light-mode #stats .stats-loyal-card {
+  background: #f8fbff;
+  border-color: #e4edf8;
+}
+
+body.admin-mode.light-mode #stats .stats-loyal-name,
+body.admin-mode.light-mode #stats .stats-loyal-head strong {
+  color: #17263f;
+}
+
+body.admin-mode.light-mode #stats .stats-loyal-sub {
+  color: #70809a;
 }
 
 body.admin-mode.light-mode .nav-tab-icon {

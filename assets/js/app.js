@@ -1269,13 +1269,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           subject: subject,
           message: message,
           from_name: 'Fit House Gym',
+          reply_to: 'noreply@fithousegym.local',
           ...extraParams
         };
-        
+
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
         return true;
       } catch (error) {
         console.error('Email error:', error);
+        showToast(`მეილი ვერ გაიგზავნა${error?.text ? `: ${error.text}` : ''}`, 'error');
         return false;
       }
     };
@@ -2119,6 +2121,56 @@ ${memberPortalUrl}
       return { monthlyLeaders, operatorsAggregate };
     }
 
+    function getLoyalMembersMonthlyStats() {
+      const membershipTransactions = getSortedTransactions().filter((tx) =>
+        tx.category === 'membership' && tx.memberId
+      );
+      const months = {};
+
+      membershipTransactions.forEach((tx) => {
+        const monthKey = getMonthKey(tx.createdAt);
+        const member = window.members.find((item) => item.id === tx.memberId);
+        const memberKey = tx.memberId;
+        const memberName = tx.memberName || (member ? `${member.firstName || ''} ${member.lastName || ''}`.trim() : 'უცნობი');
+
+        if (!months[monthKey]) months[monthKey] = {};
+        if (!months[monthKey][memberKey]) {
+          months[monthKey][memberKey] = {
+            memberId: memberKey,
+            memberName,
+            renewals: 0,
+            registrations: 0,
+            amount: 0,
+            visits: Number(member?.totalVisits || 0),
+            activeStatus: getEffectiveStatus(member || {}) || 'expired'
+          };
+        }
+
+        const row = months[monthKey][memberKey];
+        row.amount += Number(tx.amount || 0);
+        row.visits = Number(member?.totalVisits || row.visits || 0);
+        row.activeStatus = member ? getEffectiveStatus(member) : row.activeStatus;
+        if (tx.type === 'membership_renewal') row.renewals += 1;
+        if (tx.type === 'membership_registration') row.registrations += 1;
+      });
+
+      return Object.entries(months)
+        .map(([monthKey, membersMap]) => {
+          const members = Object.values(membersMap)
+            .map((item) => ({
+              ...item,
+              loyaltyScore: (item.renewals * 4) + (item.registrations * 2) + (Math.min(item.visits, 300) * 0.05)
+            }))
+            .sort((a, b) => (b.loyaltyScore - a.loyaltyScore) || (b.visits - a.visits) || (b.amount - a.amount));
+          return {
+            monthKey,
+            leader: members[0] || null,
+            members
+          };
+        })
+        .sort((a, b) => b.monthKey.localeCompare(a.monthKey));
+    }
+
     function getNameInitials(name) {
       const words = String(name || '')
         .trim()
@@ -2264,6 +2316,44 @@ ${memberPortalUrl}
               </div>
             </div>
           `).join('')}
+        </div>
+      `;
+    }
+
+    function renderStatsLoyalMembers(monthlyMembers) {
+      if (!monthlyMembers.length) {
+        return '<div class="empty-state">ერთგული მომხმარებლების სტატისტიკა ჯერ არ არის</div>';
+      }
+      return `
+        <div class="stats-loyal-grid">
+          ${monthlyMembers.slice(0, 6).map((item) => {
+            const leader = item.leader;
+            if (!leader) return '';
+            return `
+              <div class="stats-loyal-card">
+                <div class="stats-loyal-head">
+                  <strong>${formatMonthKey(item.monthKey)}</strong>
+                  <span class="status-badge ${leader.activeStatus === 'active' ? 'status-active' : 'status-expired'}">
+                    ${leader.activeStatus === 'active' ? 'აქტიური' : 'ვადაგასული'}
+                  </span>
+                </div>
+                <div class="stats-loyal-name-row">
+                  <div class="stats-loyal-avatar">${getNameInitials(leader.memberName)}</div>
+                  <div class="stats-loyal-main">
+                    <div class="stats-loyal-name">${leader.memberName}</div>
+                    <div class="stats-loyal-sub">ID: ${leader.memberId}</div>
+                  </div>
+                  <strong>${leader.loyaltyScore.toFixed(1)}</strong>
+                </div>
+                <div class="stats-loyal-badges">
+                  <span class="stats-badge"><i class="fas fa-repeat"></i> ${leader.renewals} განახლება</span>
+                  <span class="stats-badge"><i class="fas fa-user-plus"></i> ${leader.registrations} რეგისტრაცია</span>
+                  <span class="stats-badge"><i class="fas fa-dumbbell"></i> ${leader.visits} ვიზიტი</span>
+                  <span class="stats-badge stats-badge-strong"><i class="fas fa-sack-dollar"></i> ${formatCurrency(leader.amount)}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
         </div>
       `;
     }
@@ -2638,6 +2728,7 @@ ${memberPortalUrl}
       const summary = getFinancialSummary();
       const archiveRows = getFinanceArchiveRows();
       const { monthlyLeaders, operatorsAggregate } = getOperatorMonthlyStats();
+      const loyalMembers = getLoyalMembersMonthlyStats();
       const currentMonthKey = getMonthKey(new Date().toISOString());
       const currentMonthLeader = monthlyLeaders.find((item) => item.monthKey === currentMonthKey)?.leader || null;
       const bestMonth = [...archiveRows].sort((a, b) => b.totalAmount - a.totalAmount)[0] || null;
@@ -2666,6 +2757,11 @@ ${memberPortalUrl}
       const monthlyLeadersTable = document.getElementById('statsMonthlyLeadersTable');
       if (monthlyLeadersTable) {
         monthlyLeadersTable.innerHTML = renderStatsMonthlyLeaders(monthlyLeaders);
+      }
+
+      const loyalMembersTable = document.getElementById('statsLoyalMembersTable');
+      if (loyalMembersTable) {
+        loyalMembersTable.innerHTML = renderStatsLoyalMembers(loyalMembers);
       }
 
       const operatorsTable = document.getElementById('statsOperatorsTable');
@@ -2789,7 +2885,7 @@ ${memberPortalUrl}
       if (!saved.ok) return;
 
       if (password) {
-        await sendEmail(
+        const sent = await sendEmail(
           email,
           `${firstName} ${lastName}`.trim(),
           'Gym Manager - ერთჯერადი პაროლი',
@@ -2808,6 +2904,7 @@ ${memberPortalUrl}
             personal_id: personalId
           }
         );
+        if (!sent) return;
       }
 
       showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
