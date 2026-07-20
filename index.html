@@ -70,7 +70,7 @@
         <div class="auth-field">
           <div class="auth-field-head">
             <label for="adminPassword">PASSWORD</label>
-            <button type="button" class="auth-helper-btn" onclick="window.showForgotPasswordInfo()">Forgot password?</button>
+            <button type="button" class="auth-helper-btn" onclick="window.openForgotPasswordModal()">Forgot password?</button>
           </div>
           <div class="auth-input-wrap" style="position:relative;">
             <i class="far fa-lock"></i>
@@ -86,6 +86,39 @@
       </div>
 
       <div class="auth-footer">SECURE ADMIN ACCESS</div>
+    </div>
+  </div>
+
+  <div id="forgotPasswordModal" class="modal">
+    <div class="modal-content" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>პაროლის აღდგენა</h3>
+        <button class="modal-close" onclick="window.closeForgotPasswordModal()">×</button>
+      </div>
+      <div class="sale-product-summary">
+        <div class="sale-product-name">ერთჯერადი პაროლის გაგზავნა</div>
+        <div class="sale-product-meta">შეიყვანე იუზერი, პირადი ნომერი ან Email და სისტემა გამოგიგზავნის ერთჯერად პაროლს.</div>
+      </div>
+      <div class="product-form-grid">
+        <div class="product-form-field product-form-field-full">
+          <label for="forgotPasswordIdentifier">იდენტიფიკატორი</label>
+          <input type="text" id="forgotPasswordIdentifier" class="form-input" placeholder="იუზერი / პირადი ნომერი / Email">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="forgotPasswordInfo">ინფორმაცია</label>
+          <div id="forgotPasswordInfo" class="sale-product-meta" style="padding:12px 16px;border-radius:14px;border:1px solid var(--border);background:rgba(59,130,246,0.08);font-size:0.92rem;">
+            ერთჯერადი პაროლი გაიგზავნება მომხმარებლის Email-ზე და შემდეგ სისტემაში შესვლისას მოეთხოვება მუდმივი პაროლის დაყენება.
+          </div>
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" id="forgotPasswordSendBtn" onclick="window.submitForgotPassword()">
+          <i class="fas fa-paper-plane"></i> მეილზე გაგზავნა
+        </button>
+        <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeForgotPasswordModal()">
+          გაუქმება
+        </button>
+      </div>
     </div>
   </div>
   
@@ -1355,7 +1388,6 @@
       </div>
       <div class="product-form-grid">
         <div class="product-form-field product-form-field-full">
-        <div class="product-form-field product-form-field-full">
           <label for="resetUserPassword">ერთჯერადი პაროლი</label>
           <div style="position:relative;">
             <input type="password" id="resetUserPassword" class="form-input">
@@ -1454,9 +1486,6 @@
       </div>
     </div>
   </div>
-        </button>
-      </div>
-    </div>
   </div>
 
 </body>

@@ -1128,12 +1128,22 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       applyRoleVisibility();
     }
 
-    window.showForgotPasswordInfo = function() {
-      showToast('პაროლის აღდგენა ხდება ადმინისტრატორის პანელიდან', 'warning');
+    window.openForgotPasswordModal = function() {
+      document.getElementById('forgotPasswordIdentifier').value = '';
+      document.getElementById('forgotPasswordInfo').textContent = 'ერთჯერადი პაროლი გაიგზავნება მომხმარებლის Email-ზე და შემდეგ სისტემაში შესვლისას მოეთხოვება მუდმივი პაროლის დაყენება.';
+      document.getElementById('forgotPasswordModal').style.display = 'flex';
     };
 
-    function shouldForcePasswordReset(user) {
-      return Boolean(user?.mustChangePassword);
+    window.closeForgotPasswordModal = function() {
+      document.getElementById('forgotPasswordModal').style.display = 'none';
+      document.getElementById('forgotPasswordIdentifier').value = '';
+    };
+
+    function shouldForcePasswordReset(user, options = {}) {
+      if (!user) return false;
+      if (user.mustChangePassword) return true;
+      if (options.usedPersonalId && !user.passwordUpdatedAt) return true;
+      return false;
     }
 
     function openForcedPasswordResetModal(user) {
@@ -1183,6 +1193,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       isAuthenticated = true;
       currentUser = matchedUser;
       currentUserRole = matchedUser.role === 'admin' ? 'admin' : 'operator';
+      const usedPersonalId = normalizeUsername(matchedUser.personalId) === username;
       checkAuth();
       if (!dataStreamsStarted) {
         loadUsers();
@@ -1202,8 +1213,98 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       startExpiringNotificationsScheduler();
       startCheckInListenerPolling();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
-      if (shouldForcePasswordReset(matchedUser)) {
+      if (shouldForcePasswordReset(matchedUser, { usedPersonalId })) {
         openForcedPasswordResetModal(matchedUser);
+      }
+    };
+
+    window.submitForgotPassword = async function() {
+      const identifierRaw = document.getElementById('forgotPasswordIdentifier')?.value || '';
+      const identifier = identifierRaw.trim();
+      if (!identifier) {
+        showToast('შეიყვანე იუზერი, პირადი ნომერი ან Email', 'error');
+        return;
+      }
+
+      if (!usersLoadedOnce && window.users.length === 0) {
+        try {
+          await ensureDefaultUsers();
+        } catch (e) {
+          console.error('forgot password users bootstrap failed', e);
+          showToast('იუზერების ჩატვირთვა ვერ მოხერხდა', 'error');
+          return;
+        }
+      }
+
+      const normalized = normalizeUsername(identifier);
+      const user = window.users.find((item) =>
+        normalizeUsername(item.username) === normalized ||
+        normalizeUsername(item.personalId) === normalized ||
+        normalizeUsername(item.email) === normalized
+      );
+
+      if (!user) {
+        showToast('მომხმარებელი ვერ მოიძებნა', 'error');
+        return;
+      }
+      if (!user.email || !isValidEmail(user.email)) {
+        showToast('მომხმარებელს სწორი Email არ აქვს', 'error');
+        return;
+      }
+
+      const btn = document.getElementById('forgotPasswordSendBtn');
+      const info = document.getElementById('forgotPasswordInfo');
+      const temporaryPassword = generateTemporaryPassword(8);
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div>';
+      }
+      if (info) {
+        info.textContent = `ერთჯერადი პაროლი გენერირდა: ${temporaryPassword}. მიმდინარეობს გაგზავნა ${user.email}-ზე...`;
+      }
+
+      try {
+        const passwordHash = await sha256Hex(temporaryPassword);
+        const sent = await sendEmail(
+          user.email,
+          getCurrentUserDisplayName(user),
+          'Gym Manager - ერთჯერადი პაროლი',
+          `გამარჯობა ${user.firstName || ''},
+
+თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
+
+ერთჯერადი პაროლი: ${temporaryPassword}
+იუზერი: ${user.username || ''}
+პირადი ნომერი: ${user.personalId || ''}
+
+გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
+          {
+            temporary_password: temporaryPassword,
+            username: user.username || '',
+            personal_id: user.personalId || ''
+          }
+        );
+        if (!sent) return;
+
+        const saved = await saveUserRecord({
+          id: user.id,
+          passwordHash,
+          mustChangePassword: true,
+          temporaryPasswordIssuedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        });
+        if (!saved.ok) return;
+
+        if (info) {
+          info.textContent = `ერთჯერადი პაროლი გაიგზავნა: ${user.email}. დროებითი პაროლი: ${temporaryPassword}`;
+        }
+        showToast('ერთჯერადი პაროლი გაიგზავნა');
+        hydrateUsersFromRest();
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-paper-plane"></i> მეილზე გაგზავნა';
+        }
       }
     };
 
