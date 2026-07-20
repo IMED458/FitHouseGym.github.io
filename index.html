@@ -410,82 +410,46 @@
 
             <div id="productCartList" class="product-cart-list"></div>
 
-            <div class="product-cart-console">
-              <div class="product-cart-summary">
-                <div class="product-cart-total-row">
-                  <span>სულ ერთეული</span>
-                  <strong id="productCartUnits">0</strong>
-                </div>
-                <div class="product-cart-total-row product-cart-total-strong">
-                  <span>სულ გადასახდელი</span>
-                  <strong id="productCartTotal">0.00₾</strong>
-                </div>
+            <div class="product-cart-summary">
+              <div class="product-cart-total-row">
+                <span>სულ ერთეული</span>
+                <strong id="productCartUnits">0</strong>
               </div>
-
-              <div class="product-cart-selected-line">
-                <span>არჩეული პროდუქტი</span>
-                <strong id="productCartSelectedLabel">—</strong>
-              </div>
-
-              <div class="product-cart-keypad-shell">
-                <div class="product-cart-payment">
-                  <span class="product-cart-label">გადახდის მეთოდი</span>
-                  <div class="product-cart-payment-tabs">
-                    <button type="button" class="product-payment-pill active" data-payment-method="TBC" onclick="window.selectCartPaymentMethod('TBC')">TBC</button>
-                    <button type="button" class="product-payment-pill" data-payment-method="BOG" onclick="window.selectCartPaymentMethod('BOG')">BOG</button>
-                    <button type="button" class="product-payment-pill" data-payment-method="CASH" onclick="window.selectCartPaymentMethod('CASH')">CASH</button>
-                    <button type="button" class="product-payment-pill" data-payment-method="TRANSFER" onclick="window.selectCartPaymentMethod('TRANSFER')">გადარიცხვა</button>
-                  </div>
-                </div>
-
-                <div class="product-cart-keypad-panel">
-                  <div id="productCartKeypadDisplay" class="product-cart-keypad-display">0</div>
-                  <div class="product-cart-keypad-grid">
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('1')">1</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('2')">2</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('3')">3</button>
-                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.productCartKeypadBackspace()"><i class="fas fa-delete-left"></i></button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('4')">4</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('5')">5</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('6')">6</button>
-                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.changeActiveProductCartQuantity(-1)">−</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('7')">7</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('8')">8</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('9')">9</button>
-                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.changeActiveProductCartQuantity(1)">+</button>
-                    <button type="button" class="product-keypad-btn product-keypad-btn-clear" onclick="window.productCartKeypadClear()">C</button>
-                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('0')">0</button>
-                    <button type="button" class="product-keypad-btn product-keypad-btn-confirm" onclick="window.productCartApplyKeypadQuantity()"><i class="fas fa-check"></i></button>
-                    <button class="btn btn-success product-cart-checkout-btn product-keypad-btn-checkout" id="checkoutProductCartBtn" onclick="window.checkoutProductCart()">
-                      <i class="fas fa-bag-shopping"></i> გაყიდვა
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              <div class="product-cart-note">
-                <label class="product-cart-label" for="productCartNote">შენიშვნა</label>
-                <input type="text" id="productCartNote" class="form-input" placeholder="მაგ: საერთო გადახდა">
+              <div class="product-cart-total-row product-cart-total-strong">
+                <span>სულ გადასახდელი</span>
+                <strong id="productCartTotal">0.00₾</strong>
               </div>
             </div>
+
+            <div class="product-cart-payment">
+              <span class="product-cart-label">გადახდის მეთოდი</span>
+              <div class="product-cart-payment-tabs">
+                <button type="button" class="product-payment-pill active" data-payment-method="TBC" onclick="window.selectCartPaymentMethod('TBC')">TBC</button>
+                <button type="button" class="product-payment-pill" data-payment-method="BOG" onclick="window.selectCartPaymentMethod('BOG')">BOG</button>
+                <button type="button" class="product-payment-pill" data-payment-method="CASH" onclick="window.selectCartPaymentMethod('CASH')">CASH</button>
+                <button type="button" class="product-payment-pill" data-payment-method="TRANSFER" onclick="window.selectCartPaymentMethod('TRANSFER')">გადარიცხვა</button>
+              </div>
+            </div>
+
+            <div class="product-cart-note">
+              <label class="product-cart-label" for="productCartNote">შენიშვნა</label>
+              <input type="text" id="productCartNote" class="form-input" placeholder="მაგ: საერთო გადახდა">
+            </div>
+
+            <button class="btn btn-success product-cart-checkout-btn" id="checkoutProductCartBtn" onclick="window.checkoutProductCart()">
+              <i class="fas fa-bag-shopping"></i> გაყიდვა
+            </button>
           </div>
 
           <div class="product-catalog-panel">
-            <div class="product-catalog-topbar">
-              <div class="products-kpi-grid products-kpi-grid-compact">
-                <div class="mini-stat-card">
-                  <div class="mini-stat-value" id="productsCount">0</div>
-                  <div class="mini-stat-label">სულ პროდუქტები</div>
-                </div>
-                <div class="mini-stat-card">
-                  <div class="mini-stat-value" id="todayProductUnits">0</div>
-                  <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
-                </div>
+            <div class="products-kpi-grid products-kpi-grid-compact">
+              <div class="mini-stat-card">
+                <div class="mini-stat-value" id="productsCount">0</div>
+                <div class="mini-stat-label">სულ პროდუქტები</div>
               </div>
-              <div class="product-filter-tabs">
-                <button type="button" class="product-filter-tab active" data-filter="all" onclick="window.setProductCatalogFilter('all')">მთავარი</button>
-                <button type="button" class="product-filter-tab" data-filter="in_stock" onclick="window.setProductCatalogFilter('in_stock')">მარაგში</button>
-                <button type="button" class="product-filter-tab" data-filter="low_stock" onclick="window.setProductCatalogFilter('low_stock')">დაბალი მარაგი</button>
+              <div class="mini-stat-card">
+                <div class="mini-stat-value" id="todayProductUnits">0</div>
+                <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
               </div>
             </div>
 
@@ -1465,18 +1429,27 @@
         <div class="sale-product-name" id="forcePasswordResetName">მომხმარებელი</div>
         <div class="sale-product-meta">პირველი შესვლა ან ერთჯერადი პაროლით ავტორიზაცია</div>
       </div>
-      <div class="product-form-grid">
+        <div class="product-form-grid">
         <div class="product-form-field product-form-field-full">
           <label for="forcePasswordCurrent">მიმდინარე ერთჯერადი პაროლი</label>
-          <input type="password" id="forcePasswordCurrent" class="form-input" autocomplete="current-password">
+          <div style="position:relative;">
+            <input type="password" id="forcePasswordCurrent" class="form-input" autocomplete="current-password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('forcePasswordCurrent', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
         <div class="product-form-field product-form-field-full">
           <label for="forcePasswordNew">ახალი მუდმივი პაროლი</label>
-          <input type="password" id="forcePasswordNew" class="form-input" autocomplete="new-password">
+          <div style="position:relative;">
+            <input type="password" id="forcePasswordNew" class="form-input" autocomplete="new-password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('forcePasswordNew', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
         <div class="product-form-field product-form-field-full">
           <label for="forcePasswordConfirm">გაიმეორე ახალი პაროლი</label>
-          <input type="password" id="forcePasswordConfirm" class="form-input" autocomplete="new-password">
+          <div style="position:relative;">
+            <input type="password" id="forcePasswordConfirm" class="form-input" autocomplete="new-password">
+            <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('forcePasswordConfirm', this)"><i class="fas fa-eye"></i></button>
+          </div>
         </div>
       </div>
       <div class="email-actions">

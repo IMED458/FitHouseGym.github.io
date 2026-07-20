@@ -59,6 +59,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.productCatalogFilter = 'all';
     window.activeProductCartItemId = null;
     window.productCartQuantityBuffer = '';
+    let pendingPasswordDelivery = null;
+    const TEMP_PASSWORD_TTL_MS = 30 * 60 * 1000;
     const restRateLimitUntil = {};
     let subscriptionPlansSeedAttempted = false;
     const DEFAULT_LOCAL_USERS = [
@@ -400,6 +402,46 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     function markRestRateLimited(key, ms = 60000) {
       restRateLimitUntil[key] = Date.now() + ms;
+    }
+
+    function getTemporaryPasswordExpiryIso() {
+      return new Date(Date.now() + TEMP_PASSWORD_TTL_MS).toISOString();
+    }
+
+    function isTemporaryPasswordExpired(user) {
+      if (!user?.temporaryPasswordExpiresAt) return true;
+      return new Date(user.temporaryPasswordExpiresAt).getTime() <= Date.now();
+    }
+
+    function getValidTemporaryPasswordHash(user) {
+      if (!user?.temporaryPasswordHash) return null;
+      if (isTemporaryPasswordExpired(user)) return null;
+      return user.temporaryPasswordHash;
+    }
+
+    function getTemporaryPasswordFields(passwordHash) {
+      return {
+        temporaryPasswordHash: passwordHash,
+        temporaryPasswordIssuedAt: new Date().toISOString(),
+        temporaryPasswordExpiresAt: getTemporaryPasswordExpiryIso(),
+        mustChangePassword: true
+      };
+    }
+
+    function getClearedTemporaryPasswordFields() {
+      return {
+        temporaryPasswordHash: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        mustChangePassword: false
+      };
+    }
+
+    function validatePermanentPassword(password) {
+      if (!password || password.length < 8) return 'ახალი პაროლი უნდა შეიცავდეს მინიმუმ 8 სიმბოლოს';
+      if (!/[A-Za-z]/.test(password)) return 'ახალი პაროლი უნდა შეიცავდეს მინიმუმ ერთ ასოს';
+      if (!/[0-9]/.test(password)) return 'ახალი პაროლი უნდა შეიცავდეს მინიმუმ ერთ ციფრს';
+      return '';
     }
 
     async function fetchCollectionViaRest(collectionName) {
@@ -936,26 +978,14 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       syncProductCart();
       const items = getDetailedCartItems();
-      if (!items.length) {
-        window.activeProductCartItemId = null;
-        window.productCartQuantityBuffer = '';
-      } else if (!items.some((item) => item.productId === window.activeProductCartItemId)) {
-        window.activeProductCartItemId = items[0].productId;
-        window.productCartQuantityBuffer = String(items[0].quantity);
-      }
       const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
       const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
-      const activeItem = items.find((item) => item.productId === window.activeProductCartItemId) || null;
 
       const unitsEl = document.getElementById('productCartUnits');
       const totalEl = document.getElementById('productCartTotal');
       const checkoutBtn = document.getElementById('checkoutProductCartBtn');
-      const selectedLabelEl = document.getElementById('productCartSelectedLabel');
-      const keypadDisplayEl = document.getElementById('productCartKeypadDisplay');
       if (unitsEl) unitsEl.textContent = String(totalUnits);
       if (totalEl) totalEl.textContent = formatCurrency(totalAmount);
-      if (selectedLabelEl) selectedLabelEl.textContent = activeItem ? `${activeItem.product.name} × ${activeItem.quantity}` : '—';
-      if (keypadDisplayEl) keypadDisplayEl.textContent = window.productCartQuantityBuffer || (activeItem ? String(activeItem.quantity) : '0');
       if (checkoutBtn) {
         checkoutBtn.disabled = window.isCartCheckoutRunning || items.length === 0;
         if (!window.isCartCheckoutRunning) {
@@ -977,35 +1007,24 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         return;
       }
 
-      container.innerHTML = `
-        <div class="product-cart-table-head">
-          <span>დასახელება</span>
-          <span>ფასი</span>
-          <span>რაოდ.</span>
-          <span>ჯამი</span>
-          <span></span>
+      container.innerHTML = items.map((item) => `
+        <div class="product-cart-item">
+          <div class="product-cart-item-main">
+            <div class="product-cart-item-name">${item.product.name}</div>
+            <div class="product-cart-item-code">კოდი: ${item.product.code}</div>
+          </div>
+          <div class="product-cart-item-price">${formatCurrency(item.product.price)}</div>
+          <div class="product-cart-item-qty">
+            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', -1)">−</button>
+            <span>${item.quantity}</span>
+            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', 1)">+</button>
+          </div>
+          <div class="product-cart-item-line-total">${formatCurrency(item.lineTotal)}</div>
+          <button type="button" class="cart-remove-btn" onclick="window.removeProductFromCart('${item.productId}')">
+            <i class="fas fa-trash"></i>
+          </button>
         </div>
-        <div class="product-cart-rows">
-          ${items.map((item) => `
-            <div class="product-cart-item ${item.productId === window.activeProductCartItemId ? 'selected' : ''}" onclick="window.selectProductCartItem('${item.productId}')">
-              <div class="product-cart-item-main">
-                <div class="product-cart-item-name">${item.product.name}</div>
-                <div class="product-cart-item-code">${item.product.code}</div>
-              </div>
-              <div class="product-cart-item-price">${formatCurrency(item.product.price)}</div>
-              <div class="product-cart-item-qty">
-                <button type="button" class="cart-qty-btn" onclick="event.stopPropagation(); window.changeProductCartQuantity('${item.productId}', -1)">−</button>
-                <span>${item.quantity}</span>
-                <button type="button" class="cart-qty-btn" onclick="event.stopPropagation(); window.changeProductCartQuantity('${item.productId}', 1)">+</button>
-              </div>
-              <div class="product-cart-item-line-total">${formatCurrency(item.lineTotal)}</div>
-              <button type="button" class="cart-remove-btn" onclick="event.stopPropagation(); window.removeProductFromCart('${item.productId}')">
-                <i class="fas fa-trash"></i>
-              </button>
-            </div>
-          `).join('')}
-        </div>
-      `;
+      `).join('');
     }
 
     function renderInventoryRestockList() {
@@ -1182,13 +1201,25 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
 
       const inputHash = await sha256Hex(input);
-      const matchedUser = window.users.find((item) =>
-        (normalizeUsername(item.username) === username || normalizeUsername(item.personalId) === username) &&
-        item.passwordHash === inputHash &&
-        (item.status || 'active') === 'active'
-      );
+      const matchedUser = window.users.find((item) => {
+        if ((item.status || 'active') !== 'active') return false;
+        if (!(normalizeUsername(item.username) === username || normalizeUsername(item.personalId) === username)) return false;
+        const permanentMatch = item.passwordHash && item.passwordHash === inputHash;
+        const temporaryHash = getValidTemporaryPasswordHash(item);
+        const temporaryMatch = temporaryHash && temporaryHash === inputHash;
+        return Boolean(permanentMatch || temporaryMatch);
+      });
 
       if (!matchedUser) {
+        const possibleExpiredTempUser = window.users.find((item) =>
+          (normalizeUsername(item.username) === username || normalizeUsername(item.personalId) === username) &&
+          item.temporaryPasswordHash &&
+          isTemporaryPasswordExpired(item)
+        );
+        if (possibleExpiredTempUser) {
+          showToast('ერთჯერადი პაროლის ვადა ამოიწურა. მოითხოვე ახალი პაროლი.', 'error');
+          return;
+        }
         showToast("იუზერი ან პაროლი არასწორია!", "error");
         return;
       }
@@ -1292,9 +1323,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
         const saved = await saveUserRecord({
           id: user.id,
-          passwordHash,
-          mustChangePassword: true,
-          temporaryPasswordIssuedAt: new Date().toISOString(),
+          ...getTemporaryPasswordFields(passwordHash),
           updatedAt: new Date().toISOString()
         });
         if (!saved.ok) return;
@@ -3047,6 +3076,7 @@ ${memberPortalUrl}
       document.getElementById('userPassword').value = '';
       document.getElementById('userRole').value = 'operator';
       document.getElementById('userStatus').value = 'active';
+      pendingPasswordDelivery = null;
     };
 
     window.saveUser = async function() {
@@ -3092,7 +3122,7 @@ ${memberPortalUrl}
 
       const existingUser = id ? window.users.find((item) => item.id === id) : null;
       const nowIso = new Date().toISOString();
-      const passwordHash = password ? await sha256Hex(password) : existingUser?.passwordHash || null;
+      const passwordHash = existingUser?.passwordHash || null;
       const payload = {
         firstName,
         lastName,
@@ -3102,38 +3132,39 @@ ${memberPortalUrl}
         passwordHash,
         role,
         status,
-        mustChangePassword: password ? true : (existingUser?.mustChangePassword || false),
+        mustChangePassword: existingUser?.mustChangePassword || false,
+        temporaryPasswordHash: existingUser?.temporaryPasswordHash || null,
+        temporaryPasswordIssuedAt: existingUser?.temporaryPasswordIssuedAt || null,
+        temporaryPasswordExpiresAt: existingUser?.temporaryPasswordExpiresAt || null,
+        passwordUpdatedAt: existingUser?.passwordUpdatedAt || null,
         updatedAt: nowIso,
         createdAt: existingUser?.createdAt || nowIso
       };
       if (existingUser?.isSystemDefault) payload.isSystemDefault = true;
       if (id) payload.id = id;
 
+      if (password) {
+        pendingPasswordDelivery = {
+          mode: 'save_user',
+          payload,
+          temporaryPassword: password,
+          userLabel: `${firstName} ${lastName}`.trim(),
+          username,
+          personalId,
+          email
+        };
+        document.getElementById('resetUserId').value = id || '';
+        document.getElementById('resetUserName').textContent = `${firstName} ${lastName}`.trim();
+        document.getElementById('resetUserUsername').textContent = `იუზერი: ${username}`;
+        document.getElementById('resetUserEmail').textContent = `Email: ${email}`;
+        document.getElementById('resetUserPassword').value = password;
+        document.getElementById('resetUserPasswordInfo').textContent = 'ეს პაროლი ჩაითვლება ერთჯერად პაროლად, გაიგზავნება მითითებულ Email-ზე და შემდეგ შესვლაზე მომხმარებელს პაროლის შეცვლა მოეთხოვება.';
+        document.getElementById('resetUserPasswordModal').style.display = 'flex';
+        return;
+      }
+
       const saved = await saveUserRecord(payload);
       if (!saved.ok) return;
-
-      if (password) {
-        const sent = await sendEmail(
-          email,
-          `${firstName} ${lastName}`.trim(),
-          'Gym Manager - ერთჯერადი პაროლი',
-          `გამარჯობა ${firstName},
-
-თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
-
-ერთჯერადი პაროლი: ${password}
-იუზერი: ${username}
-პირადი ნომერი: ${personalId}
-
-გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
-          {
-            temporary_password: password,
-            username,
-            personal_id: personalId
-          }
-        );
-        if (!sent) return;
-      }
 
       showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
       window.closeUserForm();
@@ -3144,6 +3175,12 @@ ${memberPortalUrl}
       const user = window.users.find((item) => item.id === userId);
       if (!user) return;
       const temporaryPassword = generateTemporaryPassword(8);
+      pendingPasswordDelivery = {
+        mode: 'reset_existing',
+        userId: user.id,
+        temporaryPassword,
+        user
+      };
       document.getElementById('resetUserId').value = user.id;
       document.getElementById('resetUserName').textContent = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       document.getElementById('resetUserUsername').textContent = `იუზერი: ${user.username || '—'}`;
@@ -3159,53 +3196,74 @@ ${memberPortalUrl}
       document.getElementById('resetUserPassword').value = '';
       document.getElementById('resetUserEmail').textContent = '';
       document.getElementById('resetUserPasswordInfo').textContent = 'ეს პაროლი გამოჩნდება აქ და გაიგზავნება მომხმარებლის მეილზე.';
+      pendingPasswordDelivery = null;
     };
 
     window.resetUserPassword = async function() {
       const id = document.getElementById('resetUserId').value;
       const password = document.getElementById('resetUserPassword').value;
-      const user = window.users.find((item) => item.id === id);
-      if (!id || !password) {
+      const user = pendingPasswordDelivery?.mode === 'reset_existing'
+        ? window.users.find((item) => item.id === id)
+        : null;
+      if (!password) {
         showToast('ახალი პაროლი სავალდებულოა', 'error');
         return;
       }
-      if (!user?.email || !isValidEmail(user.email)) {
+      const targetEmail = pendingPasswordDelivery?.mode === 'save_user'
+        ? pendingPasswordDelivery.email
+        : user?.email;
+      if (!targetEmail || !isValidEmail(targetEmail)) {
         showToast('მომხმარებელს სწორი Email არ აქვს', 'error');
         return;
       }
       const passwordHash = await sha256Hex(password);
       const sent = await sendEmail(
-        user.email,
-        getCurrentUserDisplayName(user),
+        targetEmail,
+        pendingPasswordDelivery?.mode === 'save_user'
+          ? pendingPasswordDelivery.userLabel
+          : getCurrentUserDisplayName(user),
         'Gym Manager - ერთჯერადი პაროლი',
-        `გამარჯობა ${user.firstName || ''},
+        `გამარჯობა ${(pendingPasswordDelivery?.mode === 'save_user' ? pendingPasswordDelivery.userLabel : (user?.firstName || ''))},
 
 თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
 
 ერთჯერადი პაროლი: ${password}
+ვადა: 30 წუთი
 
 გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
         {
           temporary_password: password,
-          username: user.username || '',
-          personal_id: user.personalId || ''
+          username: pendingPasswordDelivery?.mode === 'save_user' ? pendingPasswordDelivery.username : (user?.username || ''),
+          personal_id: pendingPasswordDelivery?.mode === 'save_user' ? pendingPasswordDelivery.personalId : (user?.personalId || '')
         }
       );
       if (!sent) {
         showToast('მეილზე გაგზავნა ვერ მოხერხდა', 'error');
         return;
       }
-      const saved = await saveUserRecord({
-        id,
-        passwordHash,
-        mustChangePassword: true,
-        temporaryPasswordIssuedAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      });
+
+      let savePayload;
+      if (pendingPasswordDelivery?.mode === 'save_user') {
+        savePayload = {
+          ...pendingPasswordDelivery.payload,
+          ...getTemporaryPasswordFields(passwordHash)
+        };
+      } else {
+        savePayload = {
+          id,
+          ...getTemporaryPasswordFields(passwordHash),
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      const saved = await saveUserRecord(savePayload);
       if (!saved.ok) return;
-      document.getElementById('resetUserPasswordInfo').textContent = `ერთჯერადი პაროლი გაიგზავნა: ${user.email}`;
+      document.getElementById('resetUserPasswordInfo').textContent = `ერთჯერადი პაროლი გაიგზავნა: ${targetEmail}`;
       showToast('ერთჯერადი პაროლი გაიგზავნა');
       window.closeResetUserPasswordModal();
+      if (pendingPasswordDelivery?.mode === 'save_user') {
+        window.closeUserForm();
+      }
       hydrateUsersFromRest();
     };
 
@@ -3223,6 +3281,11 @@ ${memberPortalUrl}
         showToast('ახალი პაროლები არ ემთხვევა', 'error');
         return;
       }
+      const passwordError = validatePermanentPassword(newPassword);
+      if (passwordError) {
+        showToast(passwordError, 'error');
+        return;
+      }
       const currentHash = await sha256Hex(currentPassword);
       if (currentHash !== currentUser.passwordHash) {
         showToast('მიმდინარე პაროლი არასწორია', 'error');
@@ -3232,11 +3295,12 @@ ${memberPortalUrl}
       const saved = await saveUserRecord({
         id: currentUser.id,
         passwordHash: await sha256Hex(newPassword),
-        mustChangePassword: false,
+        ...getClearedTemporaryPasswordFields(),
+        passwordUpdatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
       if (!saved.ok) return;
-      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword), mustChangePassword: false };
+      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword), ...getClearedTemporaryPasswordFields(), passwordUpdatedAt: new Date().toISOString() };
       document.getElementById('passwordChangeForm')?.reset();
       showPasswordSuccessOverlay();
       hydrateUsersFromRest();
@@ -3256,8 +3320,13 @@ ${memberPortalUrl}
         showToast('ახალი პაროლები არ ემთხვევა', 'error');
         return;
       }
+      const passwordError = validatePermanentPassword(newPassword);
+      if (passwordError) {
+        showToast(passwordError, 'error');
+        return;
+      }
       const currentHash = await sha256Hex(currentPassword);
-      if (currentHash !== currentUser.passwordHash) {
+      if (currentHash !== getValidTemporaryPasswordHash(currentUser) && currentHash !== currentUser.passwordHash) {
         showToast('ერთჯერადი პაროლი არასწორია', 'error');
         return;
       }
@@ -3266,7 +3335,7 @@ ${memberPortalUrl}
       const saved = await saveUserRecord({
         id: currentUser.id,
         passwordHash: newHash,
-        mustChangePassword: false,
+        ...getClearedTemporaryPasswordFields(),
         passwordUpdatedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
@@ -3275,7 +3344,7 @@ ${memberPortalUrl}
       currentUser = {
         ...currentUser,
         passwordHash: newHash,
-        mustChangePassword: false,
+        ...getClearedTemporaryPasswordFields(),
         passwordUpdatedAt: new Date().toISOString()
       };
       forcePasswordResetPending = false;
@@ -4718,23 +4787,11 @@ ${memberPortalUrl}
     function updateProductsTab() {
       const grid = document.getElementById('productsGrid');
       if (!grid) return;
-      const productsTab = document.getElementById('products');
-      if (productsTab) {
-        productsTab.classList.toggle('operator-products-shell', !isAdmin());
-      }
-
       const searchValue = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
       const filteredProducts = window.products.filter((product) => {
-        const matchesSearch = !searchValue ||
-          String(product.name || '').toLowerCase().includes(searchValue) ||
+        if (!searchValue) return true;
+        return String(product.name || '').toLowerCase().includes(searchValue) ||
           String(product.code || '').toLowerCase().includes(searchValue);
-        const stock = Number(product.stock || 0);
-        const matchesFilter = window.productCatalogFilter === 'all'
-          ? true
-          : window.productCatalogFilter === 'in_stock'
-            ? stock > 0
-            : stock > 0 && stock <= 5;
-        return matchesSearch && matchesFilter;
       });
 
       const todayProductUnits = window.transactions
@@ -4745,9 +4802,6 @@ ${memberPortalUrl}
       const todayUnitsEl = document.getElementById('todayProductUnits');
       if (productsCountEl) productsCountEl.textContent = window.products.length;
       if (todayUnitsEl) todayUnitsEl.textContent = todayProductUnits;
-      document.querySelectorAll('.product-filter-tab').forEach((tab) => {
-        tab.classList.toggle('active', tab.dataset.filter === window.productCatalogFilter);
-      });
 
       if (filteredProducts.length === 0) {
         grid.innerHTML = `<p class="empty-state">${window.products.length === 0 ? 'პროდუქტები ჯერ არ დამატებულა' : 'მითითებული პროდუქტები ვერ მოიძებნა'}</p>`;
@@ -4763,10 +4817,6 @@ ${memberPortalUrl}
       }
     }
 
-    window.setProductCatalogFilter = function(filter) {
-      window.productCatalogFilter = filter || 'all';
-      updateProductsTab();
-    };
 
     function renderFinanceBreakdown(summary) {
       const container = document.getElementById('financeBreakdownList');
