@@ -302,7 +302,10 @@ export class FirestoreRest {
 
   async _request(method, suffix, body) {
     const token = await getAccessToken(this.serviceAccount);
-    return this.fetchImpl(`${this.baseUrl}${suffix}`, {
+    // Detached call: invoking fetch as `this.fetchImpl(...)` binds `this` to
+    // this instance, which Workers rejects with "Illegal invocation".
+    const doFetch = this.fetchImpl;
+    return doFetch(`${this.baseUrl}${suffix}`, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,

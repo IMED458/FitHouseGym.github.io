@@ -4,6 +4,10 @@ compatibility_date = "2024-09-23"
 # Gives the Worker `crypto.randomUUID`, `atob/btoa` and Node-compatible globals.
 compatibility_flags = ["nodejs_compat"]
 
+workers_dev = true
+# No preview URLs: every extra public hostname is another callback surface.
+preview_urls = false
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Non-secret configuration. Safe to commit — nothing here identifies a merchant
 # beyond Flitt's public sandbox id.
@@ -25,9 +29,7 @@ FLITT_CANCEL_URL = "https://fithouse.imed.com.ge/member/payment-cancel.html"
 FLITT_HTTP_TIMEOUT_MS = "20000"
 FLITT_ALLOWED_EMAILS = "imedashviligio27@gmail.com"
 
-# Set after the first deploy, once the workers.dev hostname is known:
-#   FLITT_CALLBACK_URL = "https://fithouse-payments.<subdomain>.workers.dev/payments/flitt/callback"
-FLITT_CALLBACK_URL = "https://REPLACE-AFTER-FIRST-DEPLOY/payments/flitt/callback"
+FLITT_CALLBACK_URL = "https://fithouse-payments.gymfithouse1.workers.dev/payments/flitt/callback"
 
 [observability]
 enabled = true

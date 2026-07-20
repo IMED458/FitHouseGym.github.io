@@ -28,7 +28,10 @@ class FlittClient {
 
     let response;
     try {
-      response = await this.httpClient(url, {
+      // Detached call — see firestore.js: Workers rejects fetch invoked as a
+      // method ("Illegal invocation").
+      const doFetch = this.httpClient;
+      response = await doFetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ request: requestBody }),
