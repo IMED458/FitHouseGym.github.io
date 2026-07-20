@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
-    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+    import { initializeFirestore, collection, addDoc, setDoc, doc, onSnapshot, query, deleteDoc, orderBy, limit } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
 
     // TODO: გადაიტანე .env ფაილში production-ზე
     const ENV = window.__ENV__ || {};
@@ -456,14 +456,17 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
     }
 
+    /** Returns true on success — the REST fallback poller uses this to back off. */
     async function hydrateTransactionsFromRest() {
       try {
         window.transactions = await fetchTransactionsViaRest();
         transactionsLoadedOnce = true;
         updateAll();
         queueTodayMembershipTransactionReconcile();
+        return true;
       } catch (e) {
         console.warn('transactions rest hydrate failed', e);
+        return false;
       }
     }
 
@@ -1200,7 +1203,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
       recordUserActivity('login', matchedUser);
       startExpiringNotificationsScheduler();
-      startCheckInListenerPolling();
+      // Real-time listener; it falls back to polling on its own if it fails.
+      startCheckInListener();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
       if (shouldForcePasswordReset(matchedUser)) {
         openForcedPasswordResetModal(matchedUser);
@@ -1871,10 +1875,40 @@ ${memberPortalUrl}
         queueTodayMembershipTransactionReconcile();
       }, (error) => {
         console.warn('transactions snapshot failed, using rest fallback', error);
-        setInterval(() => {
-          if (isAuthenticated) hydrateTransactionsFromRest();
-        }, 15000);
+        startTransactionsRestFallback();
       });
+    }
+
+    // onSnapshot's error callback fires again on every retry. Creating the
+    // interval inline meant each failure stacked another poller, and each
+    // poller re-read the whole collection — a self-amplifying loop that
+    // burned the daily Firestore quota and caused more failures.
+    let transactionsFallbackInterval = null;
+    let transactionsFallbackDelay = 30000;
+    const TRANSACTIONS_FALLBACK_MAX_DELAY = 600000; // 10 min
+
+    function startTransactionsRestFallback() {
+      if (transactionsFallbackInterval) return; // only ever one poller
+      const tick = async () => {
+        if (!isAuthenticated) return;
+        const ok = await hydrateTransactionsFromRest();
+        if (ok) {
+          if (transactionsFallbackDelay !== 30000) {
+            transactionsFallbackDelay = 30000; // recovered — back to normal
+            clearInterval(transactionsFallbackInterval);
+            transactionsFallbackInterval = setInterval(tick, transactionsFallbackDelay);
+          }
+          return;
+        }
+        // Back off on repeated failure instead of hammering a failing backend.
+        transactionsFallbackDelay = Math.min(
+          transactionsFallbackDelay * 2,
+          TRANSACTIONS_FALLBACK_MAX_DELAY
+        );
+        clearInterval(transactionsFallbackInterval);
+        transactionsFallbackInterval = setInterval(tick, transactionsFallbackDelay);
+      };
+      transactionsFallbackInterval = setInterval(tick, transactionsFallbackDelay);
     }
 
     function loadUsers() {
@@ -3594,10 +3628,11 @@ ${memberPortalUrl}
     function startCheckInListener() {
       if (checkInListenerUnsubscribe) return;
       try {
-        const { collection: col, query: fsQuery, orderBy, limit, onSnapshot: fsOnSnapshot, where } = window._fsSDK || {};
-        if (!col) { startCheckInListenerPolling(); return; }
-        const q = fsQuery(col(db, QR_CHECKIN_COLLECTION), orderBy('checkInTime', 'desc'), limit(1));
-        checkInListenerUnsubscribe = fsOnSnapshot(q, snapshot => {
+        // Previously this read `window._fsSDK`, which nothing ever assigned, so
+        // it always fell through to 4-second polling — roughly 21k Firestore
+        // reads a day per open tab. Use the imported SDK directly.
+        const q = query(collection(db, QR_CHECKIN_COLLECTION), orderBy('checkInTime', 'desc'), limit(1));
+        checkInListenerUnsubscribe = onSnapshot(q, snapshot => {
           snapshot.docChanges().forEach(change => {
             if (change.type === 'added') {
               const d = change.doc.data();
@@ -3623,6 +3658,8 @@ ${memberPortalUrl}
       if (checkInPollingInterval) return;
       checkInPollingInterval = setInterval(async () => {
         if (!isAuthenticated) return;
+        // A background tab has nobody to show the popup to — skip the read.
+        if (document.visibilityState === 'hidden') return;
         try {
           const pid = firebaseConfig.projectId;
           const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=1`;
@@ -3650,7 +3687,7 @@ ${memberPortalUrl}
             }
           }
         } catch (_) {}
-      }, 4000);
+      }, 10000);
     }
 
     function showCheckInPopup(data) {
