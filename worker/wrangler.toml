@@ -1,0 +1,35 @@
+name = "fithouse-payments"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+# Gives the Worker `crypto.randomUUID`, `atob/btoa` and Node-compatible globals.
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = true
+# No preview URLs: every extra public hostname is another callback surface.
+preview_urls = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Non-secret configuration. Safe to commit — nothing here identifies a merchant
+# beyond Flitt's public sandbox id.
+#
+# Secrets are NOT here. Set them with `wrangler secret put`:
+#   FLITT_SECRET_KEY
+#   SESSION_SECRET
+#   FIREBASE_SERVICE_ACCOUNT
+# ─────────────────────────────────────────────────────────────────────────────
+[vars]
+FLITT_ENABLED = "true"
+FLITT_MODE = "test"
+FLITT_API_BASE_URL = "https://pay.flitt.com"
+FLITT_MERCHANT_ID = "1549901"
+FLITT_CURRENCY = "GEL"
+FLITT_LANGUAGE = "ka"
+FLITT_RESPONSE_URL = "https://fithouse.imed.com.ge/member/payment-result.html"
+FLITT_CANCEL_URL = "https://fithouse.imed.com.ge/member/payment-cancel.html"
+FLITT_HTTP_TIMEOUT_MS = "20000"
+FLITT_ALLOWED_EMAILS = "imedashviligio27@gmail.com"
+
+FLITT_CALLBACK_URL = "https://fithouse-payments.gymfithouse1.workers.dev/payments/flitt/callback"
+
+[observability]
+enabled = true

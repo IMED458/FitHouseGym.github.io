@@ -1,0 +1,19 @@
+{
+  "name": "fithouse-payments-worker",
+  "description": "FitHouse Gym — Cloudflare Worker (Flitt payment integration)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules ../node_modules/.bin/jest --runInBand",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {},
+    "testMatch": [
+      "**/test/**/*.test.js"
+    ]
+  }
+}
