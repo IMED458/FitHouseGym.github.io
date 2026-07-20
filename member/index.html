@@ -42,6 +42,9 @@
     .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
     .form-input { background: #020617; border: 1px solid #1e293b; border-radius: 12px; padding: 12px 12px 12px 42px; color: #f1f5f9; font-size: 16px; width: 100%; outline: none; transition: border-color 0.15s; }
     .form-input:focus { border-color: rgba(239,68,68,0.5); }
+    .pw-toggle-btn { position:absolute; right:12px; top:50%; transform:translateY(-50%); background:none;
+                     border:none; color:#475569; cursor:pointer; padding:6px; font-size:0.85rem; z-index:1; }
+    .pw-toggle-btn:hover { color:#94a3b8; }
     #qr-reader { border-radius: 12px; overflow: hidden; }
     #qr-reader video { border-radius: 12px; }
     .visit-card-approved { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2); border-radius: 12px; padding: 14px 16px; }
@@ -52,6 +55,71 @@
     .checkin-result-rejected { background: rgba(239,68,68,0.1); border: 2px solid #ef4444; border-radius: 20px; padding: 24px 16px; text-align: center; overflow: hidden; }
     .checkin-headline { font-size: clamp(1.2rem, 5vw, 1.8rem); font-weight: 900; line-height: 1.2; word-break: break-word; }
     ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+  
+    .nav-label-short { display: none; }
+    /* ── Mobile (≤767px) ────────────────────────────────────────────────────
+       The sidebar previously stacked above the content as a full-width column,
+       so on a phone you scrolled past every nav item before reaching anything.
+       It becomes a horizontal, snapping tab strip instead. */
+    @media (max-width: 767px) {
+      body { padding-bottom: env(safe-area-inset-bottom); }
+
+      /* Sidebar → sticky horizontal tab strip */
+      #sidebar-card, #trainer-sidebar-card {
+        position: sticky; top: 56px; z-index: 30;
+        padding: 10px 10px 8px !important; margin-bottom: 2px;
+        background: rgba(15,23,42,0.95); backdrop-filter: blur(10px);
+      }
+      #sidebar-nav {
+        display: flex !important; gap: 8px; overflow-x: auto; padding-bottom: 2px;
+        scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      #sidebar-nav::-webkit-scrollbar { display: none; }
+      #sidebar-nav .tab-btn {
+        width: auto !important; flex: 0 0 auto; white-space: nowrap;
+        scroll-snap-align: start; padding: 11px 15px; font-size: 0.83rem;
+        border: 1px solid #1e293b; min-height: 44px; /* comfortable tap target */
+      }
+      #sidebar-nav .tab-btn.active { border-color: rgba(239,68,68,0.5); }
+
+      /* Compact labels so several tabs fit the strip at once */
+      #sidebar-nav .nav-label-full { display: none; }
+      #sidebar-nav .nav-label-short { display: inline; }
+
+      /* Profile block: compact, and never pushes the tabs off-screen */
+      .sidebar-profile { padding: 10px 12px !important; margin-bottom: 10px !important; }
+      .sidebar-profile .avatar { width: 38px !important; height: 38px !important; font-size: 1rem !important; }
+
+      /* Content: no nested scroll container — let the page scroll naturally */
+      #tab-content-wrap, #tab-wrap {
+        max-height: none !important; overflow: visible !important;
+      }
+      #tab-content, #tab-body { padding: 16px 14px !important; }
+
+      /* Layout gaps */
+      .main-shell { gap: 12px !important; }
+      main { padding-left: 12px !important; padding-right: 12px !important; padding-top: 12px !important; }
+
+      /* Typography scales down a notch */
+      h2 { font-size: 1.15rem !important; }
+
+      /* Tables scroll inside their own box rather than breaking the page */
+      table { min-width: 520px; }
+      .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+      /* Full-width primary actions are far easier to hit */
+      .btn-primary { width: 100%; min-height: 48px; }
+
+      /* Cards breathe less on a narrow screen */
+      .card { border-radius: 14px; }
+    }
+
+    /* Respect users who ask for less motion */
+    @media (prefers-reduced-motion: reduce) {
+      .anim-in { animation: none !important; }
+      * { transition-duration: 0.01ms !important; }
+    }
   </style>
 </head>
 <body class="min-h-screen text-slate-100">
@@ -352,25 +420,26 @@ function renderDashboardShell() {
   `;
 
   document.getElementById('app').innerHTML = `
-    <div class="flex flex-col md:flex-row gap-6 items-start">
+    <div class="main-shell flex flex-col md:flex-row gap-6 items-start">
       <!-- Sidebar -->
-      <div class="w-full md:w-72 card p-4 flex-shrink-0">
-        <div class="flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
-          <div style="width:48px;height:48px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${initial}</div>
+      <div id="sidebar-card" class="w-full md:w-72 card p-4 flex-shrink-0">
+        <div class="sidebar-profile flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
+          <div class="avatar" style="width:48px;height:48px;background:rgba(239,68,68,0.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${initial}</div>
           <div>
             <div style="font-weight:900;color:white;font-size:0.95rem;">${firstName} ${lastName}</div>
             <div class="mt-1">${statusBadge}</div>
           </div>
         </div>
         <nav id="sidebar-nav" class="space-y-1">
-          ${navItem('overview','fas fa-user','მომხმარებლის გვერდი')}
-          ${navItem('sub','fas fa-calendar-check','ჩემი აბონემენტი')}
-          ${navItem('qr','fas fa-qrcode','QR სკანირება — შესვლა')}
-          ${navItem('visits','fas fa-history','ვიზიტების ისტორია')}
-          ${navItem('payments','fas fa-credit-card','გადახდები')}
-          ${navItem('workouts','fas fa-calendar-days','ჩემი ვარჯიშები')}
-          ${navItem('status','fas fa-circle-check','ჩემი სტატუსი')}
-          ${navItem('history','fas fa-clock-rotate-left','აბონემენტის ისტორია')}
+          ${navItem('overview','fas fa-user','მომხმარებლის გვერდი','მთავარი')}
+          ${navItem('sub','fas fa-calendar-check','ჩემი აბონემენტი','აბონემენტი')}
+          ${navItem('renew','fas fa-rotate','აბონემენტის განახლება','განახლება')}
+          ${navItem('qr','fas fa-qrcode','QR სკანირება — შესვლა','QR')}
+          ${navItem('visits','fas fa-history','ვიზიტების ისტორია','ვიზიტები')}
+          ${navItem('payments','fas fa-credit-card','გადახდები','გადახდები')}
+          ${navItem('workouts','fas fa-calendar-days','ჩემი ვარჯიშები','ვარჯიშები')}
+          ${navItem('status','fas fa-circle-check','ჩემი სტატუსი','სტატუსი')}
+          ${navItem('history','fas fa-clock-rotate-left','აბონემენტის ისტორია','ისტორია')}
         </nav>
       </div>
       <!-- Content -->
@@ -385,13 +454,18 @@ function renderDashboardShell() {
   });
 }
 
-function navItem(tab, icon, label) {
+function navItem(tab, icon, label, shortLabel) {
   const isActive = activeTab === tab;
+  // Long labels read better on desktop but only fit ~1.5 tabs on a phone,
+  // so each item carries a short form for the mobile strip.
   return `<button class="tab-btn${isActive ? ' active' : ''}" data-tab="${tab}">
-    <i class="${icon}" style="width:16px;text-align:center;"></i> ${label}
+    <i class="${icon}" style="width:16px;text-align:center;"></i>
+    <span class="nav-label-full">${label}</span>
+    <span class="nav-label-short">${shortLabel || label}</span>
   </button>`;
 }
 
+window.setTab = setTab;
 function setTab(tab) {
   if (tab !== 'qr') stopQrScanner();
   activeTab = tab;
@@ -562,9 +636,10 @@ function renderTabContent() {
   switch(activeTab) {
     case 'overview': el.innerHTML = renderOverview(); break;
     case 'sub': el.innerHTML = renderSubscription(); break;
+    case 'renew': el.innerHTML = renderRenew(); renderRenewBody(); break;
     case 'qr': el.innerHTML = renderQrTab(); startQrScanner(); break;
     case 'visits': el.innerHTML = renderVisits(); break;
-    case 'payments': el.innerHTML = renderPayments(); loadFlittPlans(); break;
+    case 'payments': el.innerHTML = renderPayments(); break;
     case 'workouts': el.innerHTML = renderWorkouts(); break;
     case 'status': el.innerHTML = renderStatus(); break;
     case 'history': el.innerHTML = renderHistory(); break;
@@ -692,12 +767,26 @@ function renderSubscription() {
             ${subDetailRow('ღირებულება', member.subscriptionPrice ? member.subscriptionPrice+'₾' : '—')}
           </div>
         </div>
-        ${!isActive ? `<div style="padding:16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:12px;text-align:center;font-size:0.9rem;color:#f87171;font-weight:700;">
-          თქვენი აბონემენტი ვადაგასულია. გთხოვთ მიმართოთ ადმინისტრატორს.
-        </div>` : ''}
-      ` : `<div style="text-align:center;padding:48px;color:#475569;">
-        <i class="fas fa-calendar-xmark" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
-        <p>ამჟამად არ გაქვთ აბონემენტი. გთხოვთ მიმართოთ Fit House Gym-ის ადმინისტრატორს.</p>
+        ${!isActive ? `<div style="padding:18px 16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:14px;text-align:center;">
+          <div style="font-size:0.9rem;color:#f87171;font-weight:800;margin-bottom:14px;">
+            თქვენი აბონემენტი ვადაგასულია
+          </div>
+          <button class="btn-primary" style="max-width:280px;margin:0 auto;" onclick="setTab('renew')">
+            <i class="fas fa-rotate mr-2"></i> განახლება
+          </button>
+        </div>` : `
+        <div style="text-align:center;">
+          <button onclick="setTab('renew')" style="width:100%;max-width:280px;padding:12px 20px;border-radius:12px;
+                  background:transparent;border:1px solid #334155;color:#94a3b8;font-weight:800;font-size:0.85rem;cursor:pointer;">
+            <i class="fas fa-rotate mr-2"></i> ვადამდე განახლება
+          </button>
+        </div>`}
+      ` : `<div style="text-align:center;padding:40px 20px;color:#475569;">
+        <i class="fas fa-calendar-xmark" style="font-size:2.6rem;margin-bottom:16px;display:block;"></i>
+        <p style="margin-bottom:18px;">ამჟამად არ გაქვთ აბონემენტი.</p>
+        <button class="btn-primary" style="max-width:280px;margin:0 auto;" onclick="setTab('renew')">
+          <i class="fas fa-plus mr-2"></i> აბონემენტის შეძენა
+        </button>
       </div>`}
     </div>
   `;
@@ -710,42 +799,139 @@ function subDetailRow(label, value) {
 let flittPlans = [];
 let flittSelectedPlanId = null;
 
-function renderFlittSection() {
-  // A session created before online payment shipped has no server token, so we
-  // cannot tell whether this member is allowed to pay. Say so instead of
-  // silently hiding the section — otherwise it looks like a bug.
-  if (session && !session.token) {
-    return `
-      <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;">
-        <h3 style="font-size:1rem;font-weight:900;color:white;margin-bottom:6px;">ონლაინ გადახდა</h3>
-        <p style="color:#64748b;font-size:0.85rem;margin-bottom:14px;">
-          ონლაინ გადახდის გასააქტიურებლად საჭიროა ხელახლა შესვლა.
-        </p>
-        <button class="btn-primary" onclick="window.doLogout()">
-          <i class="fas fa-right-from-bracket mr-2"></i> გასვლა და ხელახლა შესვლა
+// ── Tab: აბონემენტის განახლება ─────────────────────────────────────────────
+function renderRenew() {
+  const isActive = effectiveStatus(member) === 'active';
+  const rDays = member?.subscriptionEndDate ? remainingDays(member.subscriptionEndDate) : 0;
+
+  return `
+    <div class="space-y-5 anim-in">
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
+        <h2 style="font-size:1.35rem;font-weight:900;color:white;">აბონემენტის განახლება</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">აირჩიეთ პაკეტი და გადაიხადეთ ბარათით</p>
+      </div>
+
+      ${member?.subscriptionType ? `
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:14px;
+                    background:${isActive ? 'rgba(16,185,129,0.07)' : 'rgba(239,68,68,0.07)'};
+                    border:1px solid ${isActive ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'};">
+          <i class="fas ${isActive ? 'fa-circle-check' : 'fa-circle-exclamation'}"
+             style="color:${isActive ? '#10b981' : '#ef4444'};font-size:1.1rem;"></i>
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:800;color:#e2e8f0;font-size:0.9rem;">${subName(member.subscriptionType)}</div>
+            <div style="color:#64748b;font-size:0.78rem;margin-top:1px;">
+              ${isActive ? `აქტიურია — დარჩა ${rDays} დღე` : 'ვადაგასულია'}
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
+      ${flittMode === 'test' ? `
+        <div style="padding:8px 12px;border-radius:10px;background:rgba(245,158,11,0.12);
+                    border:1px solid rgba(245,158,11,0.3);color:#fbbf24;font-size:0.72rem;font-weight:800;text-align:center;">
+          სატესტო რეჟიმი — რეალური თანხა არ ჩამოიჭრება
+        </div>` : ''}
+
+      <div id="renew-body"></div>
+    </div>
+  `;
+}
+
+/**
+ * Sessions predating online payment have no server token. Rather than forcing a
+ * logout, ask for the password inline — one field, same page.
+ */
+function renderUnlockPrompt() {
+  return `
+    <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+        <i class="fas fa-lock" style="color:#ef4444;"></i>
+        <h3 style="font-size:0.95rem;font-weight:900;color:white;margin:0;">დაადასტურეთ ვინაობა</h3>
+      </div>
+      <p style="color:#64748b;font-size:0.83rem;margin-bottom:14px;line-height:1.5;">
+        უსაფრთხოებისთვის გადახდამდე ერთხელ შეიყვანეთ პაროლი.
+      </p>
+      <div style="position:relative;margin-bottom:12px;">
+        <i class="fas fa-lock" style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#475569;font-size:0.85rem;"></i>
+        <input id="unlock-pass" type="password" class="form-input" placeholder="პაროლი"
+               autocomplete="current-password" enterkeyhint="go"
+               onkeydown="if(event.key==='Enter')window.unlockPayments()">
+        <button type="button" class="pw-toggle-btn" onclick="window.togglePwVisibility('unlock-pass', this)">
+          <i class="fas fa-eye"></i>
         </button>
       </div>
-    `;
-  }
-  if (!flittEnabled) return '';
-  return `
-    <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
-        <div>
-          <h3 style="font-size:1rem;font-weight:900;color:white;">ონლაინ გადახდა</h3>
-          <p style="color:#64748b;font-size:0.8rem;margin-top:2px;">აირჩიეთ აბონემენტი და გადაიხადეთ ბარათით</p>
-        </div>
-        ${flittMode === 'test'
-          ? '<span style="background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);padding:3px 10px;border-radius:9999px;font-size:0.68rem;font-weight:900;letter-spacing:0.04em;">FLITT TEST MODE</span>'
-          : ''}
-      </div>
-      <div id="flitt-plans" style="display:grid;gap:10px;margin-bottom:14px;"></div>
-      <div id="flitt-error" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;font-size:0.82rem;font-weight:700;"></div>
-      <button id="flitt-pay-btn" class="btn-primary" onclick="window.startFlittPayment()" disabled>
-        <i class="fas fa-credit-card mr-2"></i> Flitt-ით გადახდა
+      <div id="unlock-error" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;
+           background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;font-size:0.82rem;font-weight:700;"></div>
+      <button id="unlock-btn" class="btn-primary" onclick="window.unlockPayments()">
+        <i class="fas fa-unlock mr-2"></i> გაგრძელება
       </button>
     </div>
   `;
+}
+
+window.unlockPayments = async function () {
+  const input = document.getElementById('unlock-pass');
+  const btn = document.getElementById('unlock-btn');
+  const err = document.getElementById('unlock-error');
+  const pass = input?.value?.trim();
+  if (!pass) return;
+
+  const showErr = (msg) => { if (err) { err.textContent = msg; err.style.display = 'block'; } };
+  if (err) err.style.display = 'none';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> მოწმდება...';
+
+  try {
+    const res = await fetch(`${API_BASE}/auth/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: session.email, password: pass }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showErr(data.error === 'Invalid credentials' ? 'პაროლი არასწორია' : (data.error || 'შეცდომა'));
+      return;
+    }
+    session.token = data.token;
+    flittEnabled = Boolean(data.flitt_enabled);
+    flittMode = data.flitt_mode || null;
+    session.flittEnabled = flittEnabled;
+    session.flittMode = flittMode;
+    localStorage.setItem('fh_member_session', JSON.stringify(session));
+    renderRenewBody();
+  } catch (_) {
+    showErr('კავშირის შეცდომა. სცადეთ ხელახლა.');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-unlock mr-2"></i> გაგრძელება';
+  }
+};
+
+function renderRenewBody() {
+  const wrap = document.getElementById('renew-body');
+  if (!wrap) return;
+
+  if (session && !session.token) { wrap.innerHTML = renderUnlockPrompt(); return; }
+
+  if (!flittEnabled) {
+    wrap.innerHTML = `
+      <div style="text-align:center;padding:40px 20px;color:#475569;">
+        <i class="fas fa-store-slash" style="font-size:2.4rem;margin-bottom:14px;display:block;"></i>
+        <p style="font-size:0.9rem;line-height:1.6;">ონლაინ გადახდა ამ ანგარიშზე ჯერ არ არის ხელმისაწვდომი.<br>
+        აბონემენტის განახლებისთვის მიმართეთ ადმინისტრატორს.</p>
+      </div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <div id="flitt-plans" style="display:grid;gap:10px;margin-bottom:16px;"></div>
+    <div id="flitt-error" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;
+         background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;font-size:0.82rem;font-weight:700;"></div>
+    <button id="flitt-pay-btn" class="btn-primary" onclick="window.startFlittPayment()" disabled>
+      <i class="fas fa-credit-card mr-2"></i> გადახდა
+    </button>
+  `;
+  loadFlittPlans();
 }
 
 async function loadFlittPlans() {
@@ -762,21 +948,42 @@ async function loadFlittPlans() {
   renderFlittPlans();
 }
 
+function planMeta(p) {
+  const bits = [];
+  if (p.remainingVisits != null) bits.push(`${p.remainingVisits} ვიზიტი`);
+  else bits.push('ულიმიტო');
+  if (p.durationDays) bits.push(p.durationDays === 1 ? '1 დღე' : `${p.durationDays} დღე`);
+  return bits.join(' • ');
+}
+
 function renderFlittPlans() {
   const wrap = document.getElementById('flitt-plans');
   if (!wrap) return;
   if (!flittPlans.length) {
-    wrap.innerHTML = '<div style="color:#475569;font-size:0.85rem;">ტარიფები ვერ ჩაიტვირთა.</div>';
+    wrap.innerHTML = '<div style="color:#475569;font-size:0.85rem;text-align:center;padding:20px;">ტარიფები ვერ ჩაიტვირთა.</div>';
     return;
   }
-  wrap.innerHTML = flittPlans.map(p => `
-    <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid ${flittSelectedPlanId === p.id ? '#ef4444' : '#1e293b'};border-radius:12px;cursor:pointer;background:${flittSelectedPlanId === p.id ? 'rgba(239,68,68,0.07)' : 'transparent'};">
-      <input type="radio" name="flitt-plan" value="${p.id}" ${flittSelectedPlanId === p.id ? 'checked' : ''}
-             onchange="window.selectFlittPlan('${p.id}')" style="accent-color:#ef4444;width:17px;height:17px;">
-      <span style="flex:1;font-weight:800;color:#e2e8f0;font-size:0.9rem;">${p.name}</span>
-      <span style="font-weight:900;color:#10b981;">${p.price}₾</span>
-    </label>
-  `).join('');
+  // Whole card is the tap target — small radio dots are painful on a phone.
+  wrap.innerHTML = flittPlans.map(p => {
+    const sel = flittSelectedPlanId === p.id;
+    return `
+      <button type="button" onclick="window.selectFlittPlan('${p.id}')"
+        style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:16px;
+             border:2px solid ${sel ? '#ef4444' : '#1e293b'};border-radius:14px;cursor:pointer;
+             background:${sel ? 'rgba(239,68,68,0.08)' : '#0b1220'};transition:all .15s;
+             -webkit-tap-highlight-color:transparent;">
+        <span style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;
+                     justify-content:center;border:2px solid ${sel ? '#ef4444' : '#334155'};
+                     background:${sel ? '#ef4444' : 'transparent'};">
+          ${sel ? '<i class="fas fa-check" style="color:#fff;font-size:0.65rem;"></i>' : ''}
+        </span>
+        <span style="flex:1;min-width:0;">
+          <span style="display:block;font-weight:800;color:#e2e8f0;font-size:0.95rem;">${p.name}</span>
+          <span style="display:block;color:#64748b;font-size:0.76rem;margin-top:2px;">${planMeta(p)}</span>
+        </span>
+        <span style="font-weight:900;color:#10b981;font-size:1.05rem;white-space:nowrap;">${p.price}₾</span>
+      </button>`;
+  }).join('');
 }
 
 window.selectFlittPlan = function (planId) {
@@ -1064,12 +1271,8 @@ function renderPayments() {
   return `
     <div class="space-y-6 anim-in">
       <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
-        <h2 style="font-size:1.4rem;font-weight:900;color:white;">გადახდები</h2>
-        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">აბონემენტის შეძენა და გადახდების ისტორია</p>
-      </div>
-      ${renderFlittSection()}
-      <div style="border-bottom:1px solid #1e293b;padding-bottom:12px;">
-        <h3 style="font-size:1rem;font-weight:900;color:#e2e8f0;">ისტორია</h3>
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">გადახდების ისტორია</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">დაფიქსირებული გადახდები</p>
       </div>
       ${payments.length === 0 ? `
         <div style="text-align:center;padding:48px;color:#475569;">

@@ -46,6 +46,71 @@
     @keyframes slideIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
     .anim-in { animation:slideIn .2s ease; }
     ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:4px; }
+  
+    .nav-label-short { display: none; }
+    /* ── Mobile (≤767px) ────────────────────────────────────────────────────
+       The sidebar previously stacked above the content as a full-width column,
+       so on a phone you scrolled past every nav item before reaching anything.
+       It becomes a horizontal, snapping tab strip instead. */
+    @media (max-width: 767px) {
+      body { padding-bottom: env(safe-area-inset-bottom); }
+
+      /* Sidebar → sticky horizontal tab strip */
+      #sidebar-card, #trainer-sidebar-card {
+        position: sticky; top: 56px; z-index: 30;
+        padding: 10px 10px 8px !important; margin-bottom: 2px;
+        background: rgba(15,23,42,0.95); backdrop-filter: blur(10px);
+      }
+      #sidebar-nav {
+        display: flex !important; gap: 8px; overflow-x: auto; padding-bottom: 2px;
+        scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      #sidebar-nav::-webkit-scrollbar { display: none; }
+      #sidebar-nav .tab-btn {
+        width: auto !important; flex: 0 0 auto; white-space: nowrap;
+        scroll-snap-align: start; padding: 11px 15px; font-size: 0.83rem;
+        border: 1px solid #1e293b; min-height: 44px; /* comfortable tap target */
+      }
+      #sidebar-nav .tab-btn.active { border-color: rgba(239,68,68,0.5); }
+
+      /* Compact labels so several tabs fit the strip at once */
+      #sidebar-nav .nav-label-full { display: none; }
+      #sidebar-nav .nav-label-short { display: inline; }
+
+      /* Profile block: compact, and never pushes the tabs off-screen */
+      .sidebar-profile { padding: 10px 12px !important; margin-bottom: 10px !important; }
+      .sidebar-profile .avatar { width: 38px !important; height: 38px !important; font-size: 1rem !important; }
+
+      /* Content: no nested scroll container — let the page scroll naturally */
+      #tab-content-wrap, #tab-wrap {
+        max-height: none !important; overflow: visible !important;
+      }
+      #tab-content, #tab-body { padding: 16px 14px !important; }
+
+      /* Layout gaps */
+      .main-shell { gap: 12px !important; }
+      main { padding-left: 12px !important; padding-right: 12px !important; padding-top: 12px !important; }
+
+      /* Typography scales down a notch */
+      h2 { font-size: 1.15rem !important; }
+
+      /* Tables scroll inside their own box rather than breaking the page */
+      table { min-width: 520px; }
+      .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+      /* Full-width primary actions are far easier to hit */
+      .btn-primary { width: 100%; min-height: 48px; }
+
+      /* Cards breathe less on a narrow screen */
+      .card { border-radius: 14px; }
+    }
+
+    /* Respect users who ask for less motion */
+    @media (prefers-reduced-motion: reduce) {
+      .anim-in { animation: none !important; }
+      * { transition-duration: 0.01ms !important; }
+    }
   </style>
 </head>
 <body class="min-h-screen text-slate-100">
@@ -195,21 +260,21 @@ function renderShell(){
       <i class="fas fa-sign-out-alt"></i> გასვლა
     </button>`;
   document.getElementById('app').innerHTML = `
-    <div class="flex flex-col md:flex-row gap-6 items-start">
-      <div class="w-full md:w-72 card p-4 flex-shrink-0">
-        <div class="flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
-          <div style="width:48px;height:48px;background:rgba(239,68,68,.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${(fn||'?').charAt(0)}</div>
+    <div class="main-shell flex flex-col md:flex-row gap-6 items-start">
+      <div id="trainer-sidebar-card" class="w-full md:w-72 card p-4 flex-shrink-0">
+        <div class="sidebar-profile flex items-center gap-3 mb-5 p-4 rounded-xl" style="background:#020617;">
+          <div class="avatar" style="width:48px;height:48px;background:rgba(239,68,68,.1);color:#ef4444;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.2rem;flex-shrink:0;">${(fn||'?').charAt(0)}</div>
           <div>
             <div style="font-weight:900;color:#fff;font-size:.95rem;">${fn} ${ln}</div>
             <div style="font-size:.7rem;color:#64748b;margin-top:2px;">${trainer?.specialization||'ტრენერი'}</div>
           </div>
         </div>
-        <nav class="space-y-1">
-          ${navItem('overview','fas fa-chart-pie','დეშბორდი')}
-          ${navItem('clients','fas fa-users','ჩემი კლიენტები')}
-          ${navItem('calendar','fas fa-calendar-days','კალენდარი')}
-          ${navItem('payments','fas fa-money-bill-wave','გადახდები')}
-          ${navItem('settings','fas fa-lock','პაროლის შეცვლა')}
+        <nav id="sidebar-nav" class="space-y-1">
+          ${navItem('overview','fas fa-chart-pie','დეშბორდი','დეშბორდი')}
+          ${navItem('clients','fas fa-users','ჩემი კლიენტები','კლიენტები')}
+          ${navItem('calendar','fas fa-calendar-days','კალენდარი','კალენდარი')}
+          ${navItem('payments','fas fa-money-bill-wave','გადახდები','გადახდები')}
+          ${navItem('settings','fas fa-lock','პაროლის შეცვლა','პაროლი')}
         </nav>
       </div>
       <div class="flex-1 w-full card" style="overflow-y:auto;max-height:calc(100vh - 120px);" id="tab-wrap">
@@ -218,7 +283,9 @@ function renderShell(){
     </div>`;
   document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
 }
-function navItem(tab,icon,label){ return `<button class="tab-btn${activeTab===tab?' active':''}" data-tab="${tab}"><i class="${icon}" style="width:16px;text-align:center;"></i> ${label}</button>`; }
+function navItem(tab,icon,label,shortLabel){
+  // Short form for the mobile tab strip; long labels only fit ~1.5 per screen.
+  return `<button class="tab-btn${activeTab===tab?' active':''}" data-tab="${tab}"><i class="${icon}" style="width:16px;text-align:center;"></i><span class="nav-label-full">${label}</span><span class="nav-label-short">${shortLabel||label}</span></button>`; }
 function setTab(tab){ activeTab=tab; document.querySelectorAll('.tab-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab)); renderTab(); }
 
 // ── Data ──
