@@ -40,6 +40,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let usersStreamStarted = false;
     let activityLogsStreamStarted = false;
     let dataStreamsStarted = false;
+    let forcePasswordResetPending = false;
     window.members = [];
     window.users = [];
     window.products = [];
@@ -212,6 +213,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     function normalizeUsername(value) {
       return String(value || '').trim().toLowerCase();
+    }
+
+    function normalizePersonalId(value) {
+      return String(value || '').trim();
+    }
+
+    function isValidEmail(value) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    }
+
+    function generateTemporaryPassword(length = 8) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      const bytes = new Uint8Array(length);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => chars[byte % chars.length]).join('');
     }
 
     function getCurrentUserDisplayName(user = currentUser) {
@@ -821,6 +837,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
             ${member.createdByFullName ? `<div><strong>რეგისტრავტორი:</strong> <span style="color:#94a3b8;">${member.createdByFullName}${member.createdByUsername ? ' (@'+member.createdByUsername+')' : ''}</span></div>` : ''}
             ${member.lastMembershipHandledByFullName && member.lastMembershipHandledByFullName !== member.createdByFullName ? `<div><strong>ბოლო განახლება:</strong> <span style="color:#94a3b8;">${member.lastMembershipHandledByFullName}</span></div>` : ''}
+            <div><strong>ტრენერი:</strong> ${member.trainerSessionIncluded ? (member.trainerSessionGifted ? `ერთჯერადი • საჩუქრად` : `ერთჯერადი • ${formatCurrency(member.trainerSessionPrice)}`) : 'არა'}</div>
           </div>
           ${member.trainerServiceEnabled && member.trainerId ? `
             <div style="margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(220,38,38,0.06));border:1px solid rgba(239,68,68,0.3);border-radius:14px;display:flex;align-items:center;gap:10px;">
@@ -1022,6 +1039,20 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       showToast('პაროლის აღდგენა ხდება ადმინისტრატორის პანელიდან', 'warning');
     };
 
+    function shouldForcePasswordReset(user) {
+      return Boolean(user?.mustChangePassword);
+    }
+
+    function openForcedPasswordResetModal(user) {
+      forcePasswordResetPending = true;
+      document.getElementById('forcePasswordResetName').textContent = getCurrentUserDisplayName(user);
+      document.getElementById('forcePasswordCurrent').value = '';
+      document.getElementById('forcePasswordNew').value = '';
+      document.getElementById('forcePasswordConfirm').value = '';
+      document.getElementById('forcePasswordResetModal').style.display = 'flex';
+      showToast('გაანახლე პაროლი მუდმივ პაროლზე', 'warning');
+    }
+
     window.login = async function() {
       const username = normalizeUsername(document.getElementById('loginUsername')?.value);
       const input = document.getElementById('adminPassword').value;
@@ -1046,7 +1077,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       const inputHash = await sha256Hex(input);
       const matchedUser = window.users.find((item) =>
-        normalizeUsername(item.username) === username &&
+        (normalizeUsername(item.username) === username || normalizeUsername(item.personalId) === username) &&
         item.passwordHash === inputHash &&
         (item.status || 'active') === 'active'
       );
@@ -1078,12 +1109,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       startExpiringNotificationsScheduler();
       startCheckInListenerPolling();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
+      if (shouldForcePasswordReset(matchedUser)) {
+        openForcedPasswordResetModal(matchedUser);
+      }
     };
 
     window.logout = function() {
       isAuthenticated = false;
       currentUserRole = null;
       currentUser = null;
+      forcePasswordResetPending = false;
       expandedSearchMemberId = null;
       window.selectedSubscription = null;
       window.productSaleCart = [];
@@ -2328,6 +2363,8 @@ ${memberPortalUrl}
         <tr>
           <td>${user.firstName || '—'} ${user.lastName || ''}</td>
           <td>${user.username || '—'}</td>
+          <td>${user.personalId || '—'}</td>
+          <td>${user.email || '—'}</td>
           <td><span class="status-badge ${user.role === 'admin' ? 'status-active' : 'status-paused'}">${getRoleLabel(user.role)}</span></td>
           <td><span class="status-badge ${user.status === 'disabled' ? 'status-expired' : 'status-active'}">${user.status === 'disabled' ? 'გამორთული' : 'აქტიური'}</span></td>
           <td>${formatDateTime(user.updatedAt || user.createdAt)}</td>
@@ -2341,7 +2378,7 @@ ${memberPortalUrl}
       `);
 
       container.innerHTML = buildAdminTable(
-        ['სახელი / გვარი', 'იუზერი', 'როლი', 'სტატუსი', 'განახლდა', 'ქმედება'],
+        ['სახელი / გვარი', 'იუზერი', 'პირადი ნომერი', 'Email', 'როლი', 'სტატუსი', 'განახლდა', 'ქმედება'],
         rows,
         'იუზერები ჯერ არ არის'
       );
@@ -2392,6 +2429,28 @@ ${memberPortalUrl}
       if (thumb) { thumb.style.transform = checked ? 'translateX(24px)' : 'none'; thumb.style.background = checked ? '#fff' : '#64748b'; }
       if (checked) {
         document.getElementById('regTrainerId').innerHTML = buildTrainerOptions('');
+      }
+    };
+
+    window.toggleRegisterTrainerSession = function() {
+      const checked = Boolean(document.getElementById('regTrainerSessionIncluded')?.checked);
+      const wrap = document.getElementById('regTrainerSessionWrap');
+      const track = document.getElementById('regTrainerSessionTrack');
+      const thumb = document.getElementById('regTrainerSessionThumb');
+      if (wrap) wrap.style.display = checked ? 'block' : 'none';
+      if (track) {
+        track.style.background = checked ? '#2563eb' : '#1e293b';
+        track.style.borderColor = checked ? '#3b82f6' : '#334155';
+      }
+      if (thumb) {
+        thumb.style.transform = checked ? 'translateX(24px)' : 'none';
+        thumb.style.background = checked ? '#fff' : '#64748b';
+      }
+      if (!checked) {
+        const price = document.getElementById('regTrainerSessionPrice');
+        const gift = document.getElementById('regTrainerSessionGift');
+        if (price) price.value = '';
+        if (gift) gift.checked = false;
       }
     };
 
@@ -2645,6 +2704,8 @@ ${memberPortalUrl}
       document.getElementById('userFirstName').value = user?.firstName || '';
       document.getElementById('userLastName').value = user?.lastName || '';
       document.getElementById('userUsername').value = user?.username || '';
+      document.getElementById('userPersonalId').value = user?.personalId || '';
+      document.getElementById('userEmail').value = user?.email || '';
       document.getElementById('userRole').value = user?.role || 'operator';
       document.getElementById('userPassword').value = '';
       document.getElementById('userStatus').value = user?.status || 'active';
@@ -2657,6 +2718,8 @@ ${memberPortalUrl}
       document.getElementById('userFirstName').value = '';
       document.getElementById('userLastName').value = '';
       document.getElementById('userUsername').value = '';
+      document.getElementById('userPersonalId').value = '';
+      document.getElementById('userEmail').value = '';
       document.getElementById('userPassword').value = '';
       document.getElementById('userRole').value = 'operator';
       document.getElementById('userStatus').value = 'active';
@@ -2667,12 +2730,18 @@ ${memberPortalUrl}
       const firstName = document.getElementById('userFirstName').value.trim();
       const lastName = document.getElementById('userLastName').value.trim();
       const username = normalizeUsername(document.getElementById('userUsername').value);
+      const personalId = normalizePersonalId(document.getElementById('userPersonalId').value);
+      const email = document.getElementById('userEmail').value.trim();
       const password = document.getElementById('userPassword').value;
       const role = document.getElementById('userRole').value === 'admin' ? 'admin' : 'operator';
       const status = document.getElementById('userStatus').value === 'disabled' ? 'disabled' : 'active';
 
-      if (!firstName || !lastName || !username) {
-        showToast('სახელი, გვარი და იუზერი სავალდებულოა', 'error');
+      if (!firstName || !lastName || !username || !personalId || !email) {
+        showToast('სახელი, გვარი, იუზერი, პირადი ნომერი და Email სავალდებულოა', 'error');
+        return;
+      }
+      if (!isValidEmail(email)) {
+        showToast('Email არასწორია', 'error');
         return;
       }
       if (!id && !password) {
@@ -2688,6 +2757,14 @@ ${memberPortalUrl}
         showToast('ეს იუზერი უკვე არსებობს', 'error');
         return;
       }
+      const personalIdTaken = window.users.some((item) =>
+        normalizePersonalId(item.personalId) === personalId &&
+        item.id !== id
+      );
+      if (personalIdTaken) {
+        showToast('ეს პირადი ნომერი უკვე გამოყენებულია', 'error');
+        return;
+      }
 
       const existingUser = id ? window.users.find((item) => item.id === id) : null;
       const nowIso = new Date().toISOString();
@@ -2696,9 +2773,12 @@ ${memberPortalUrl}
         firstName,
         lastName,
         username,
+        personalId,
+        email,
         passwordHash,
         role,
         status,
+        mustChangePassword: password ? true : (existingUser?.mustChangePassword || false),
         updatedAt: nowIso,
         createdAt: existingUser?.createdAt || nowIso
       };
@@ -2708,6 +2788,28 @@ ${memberPortalUrl}
       const saved = await saveUserRecord(payload);
       if (!saved.ok) return;
 
+      if (password) {
+        await sendEmail(
+          email,
+          `${firstName} ${lastName}`.trim(),
+          'Gym Manager - ერთჯერადი პაროლი',
+          `გამარჯობა ${firstName},
+
+თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
+
+ერთჯერადი პაროლი: ${password}
+იუზერი: ${username}
+პირადი ნომერი: ${personalId}
+
+გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
+          {
+            temporary_password: password,
+            username,
+            personal_id: personalId
+          }
+        );
+      }
+
       showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
       window.closeUserForm();
       hydrateUsersFromRest();
@@ -2716,10 +2818,13 @@ ${memberPortalUrl}
     window.openResetUserPasswordModal = function(userId) {
       const user = window.users.find((item) => item.id === userId);
       if (!user) return;
+      const temporaryPassword = generateTemporaryPassword(8);
       document.getElementById('resetUserId').value = user.id;
       document.getElementById('resetUserName').textContent = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       document.getElementById('resetUserUsername').textContent = `იუზერი: ${user.username || '—'}`;
-      document.getElementById('resetUserPassword').value = '';
+      document.getElementById('resetUserEmail').textContent = `Email: ${user.email || '—'}`;
+      document.getElementById('resetUserPassword').value = temporaryPassword;
+      document.getElementById('resetUserPasswordInfo').textContent = 'ერთჯერადი პაროლი ჯერ არ გაგზავნილა. გადაამოწმე და შემდეგ გააგზავნე მეილზე.';
       document.getElementById('resetUserPasswordModal').style.display = 'flex';
     };
 
@@ -2727,23 +2832,54 @@ ${memberPortalUrl}
       document.getElementById('resetUserPasswordModal').style.display = 'none';
       document.getElementById('resetUserId').value = '';
       document.getElementById('resetUserPassword').value = '';
+      document.getElementById('resetUserEmail').textContent = '';
+      document.getElementById('resetUserPasswordInfo').textContent = 'ეს პაროლი გამოჩნდება აქ და გაიგზავნება მომხმარებლის მეილზე.';
     };
 
     window.resetUserPassword = async function() {
       const id = document.getElementById('resetUserId').value;
       const password = document.getElementById('resetUserPassword').value;
+      const user = window.users.find((item) => item.id === id);
       if (!id || !password) {
         showToast('ახალი პაროლი სავალდებულოა', 'error');
         return;
       }
+      if (!user?.email || !isValidEmail(user.email)) {
+        showToast('მომხმარებელს სწორი Email არ აქვს', 'error');
+        return;
+      }
       const passwordHash = await sha256Hex(password);
+      const sent = await sendEmail(
+        user.email,
+        getCurrentUserDisplayName(user),
+        'Gym Manager - ერთჯერადი პაროლი',
+        `გამარჯობა ${user.firstName || ''},
+
+თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
+
+ერთჯერადი პაროლი: ${password}
+
+გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
+        {
+          temporary_password: password,
+          username: user.username || '',
+          personal_id: user.personalId || ''
+        }
+      );
+      if (!sent) {
+        showToast('მეილზე გაგზავნა ვერ მოხერხდა', 'error');
+        return;
+      }
       const saved = await saveUserRecord({
         id,
         passwordHash,
+        mustChangePassword: true,
+        temporaryPasswordIssuedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
       if (!saved.ok) return;
-      showToast('პაროლი განახლდა');
+      document.getElementById('resetUserPasswordInfo').textContent = `ერთჯერადი პაროლი გაიგზავნა: ${user.email}`;
+      showToast('ერთჯერადი პაროლი გაიგზავნა');
       window.closeResetUserPasswordModal();
       hydrateUsersFromRest();
     };
@@ -2771,12 +2907,58 @@ ${memberPortalUrl}
       const saved = await saveUserRecord({
         id: currentUser.id,
         passwordHash: await sha256Hex(newPassword),
+        mustChangePassword: false,
         updatedAt: new Date().toISOString()
       });
       if (!saved.ok) return;
-      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword) };
+      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword), mustChangePassword: false };
       document.getElementById('passwordChangeForm')?.reset();
       showPasswordSuccessOverlay();
+      hydrateUsersFromRest();
+    };
+
+    window.completeForcedPasswordReset = async function() {
+      if (!currentUser) return;
+      const currentPassword = document.getElementById('forcePasswordCurrent').value;
+      const newPassword = document.getElementById('forcePasswordNew').value;
+      const confirmPassword = document.getElementById('forcePasswordConfirm').value;
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        showToast('ყველა ველი სავალდებულოა', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToast('ახალი პაროლები არ ემთხვევა', 'error');
+        return;
+      }
+      const currentHash = await sha256Hex(currentPassword);
+      if (currentHash !== currentUser.passwordHash) {
+        showToast('ერთჯერადი პაროლი არასწორია', 'error');
+        return;
+      }
+
+      const newHash = await sha256Hex(newPassword);
+      const saved = await saveUserRecord({
+        id: currentUser.id,
+        passwordHash: newHash,
+        mustChangePassword: false,
+        passwordUpdatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      if (!saved.ok) return;
+
+      currentUser = {
+        ...currentUser,
+        passwordHash: newHash,
+        mustChangePassword: false,
+        passwordUpdatedAt: new Date().toISOString()
+      };
+      forcePasswordResetPending = false;
+      document.getElementById('forcePasswordResetModal').style.display = 'none';
+      document.getElementById('forcePasswordCurrent').value = '';
+      document.getElementById('forcePasswordNew').value = '';
+      document.getElementById('forcePasswordConfirm').value = '';
+      showToast('მუდმივი პაროლი წარმატებით განახლდა');
       hydrateUsersFromRest();
     };
 
@@ -3652,6 +3834,18 @@ ${memberPortalUrl}
       return ['12visits', 'morning', 'unlimited', 'single_visit'].includes(type);
     }
 
+    function getTrainerServiceSelection() {
+      const included = Boolean(document.getElementById('membershipTrainerIncluded')?.checked);
+      const gifted = Boolean(document.getElementById('membershipTrainerGift')?.checked);
+      const price = included ? Math.max(0, Number(document.getElementById('membershipTrainerPrice')?.value || 0)) : 0;
+      return {
+        included,
+        gifted,
+        price,
+        charge: included && !gifted ? price : 0
+      };
+    }
+
     function getMembershipDurationDays(startDateIso, endDateIso) {
       const start = new Date(startDateIso || new Date());
       const end = new Date(endDateIso || new Date());
@@ -3734,10 +3928,15 @@ ${memberPortalUrl}
       document.getElementById('membershipPaymentCustomPrice')?.value !== undefined && (document.getElementById('membershipPaymentCustomPrice').value = '');
       document.getElementById('membershipPaymentCustomDuration')?.value !== undefined && (document.getElementById('membershipPaymentCustomDuration').value = '');
       document.getElementById('membershipPaymentCustomVisits')?.value !== undefined && (document.getElementById('membershipPaymentCustomVisits').value = '');
+      document.getElementById('membershipTrainerIncluded')?.checked !== undefined && (document.getElementById('membershipTrainerIncluded').checked = false);
+      document.getElementById('membershipTrainerGift')?.checked !== undefined && (document.getElementById('membershipTrainerGift').checked = false);
+      document.getElementById('membershipTrainerPrice')?.value !== undefined && (document.getElementById('membershipTrainerPrice').value = '');
       const subscriptionTypeField = document.getElementById('membershipPaymentSubscriptionTypeField');
       const customFields = document.getElementById('membershipPaymentCustomFields');
+      const trainerFields = document.getElementById('membershipTrainerFields');
       if (subscriptionTypeField) subscriptionTypeField.style.display = 'none';
       if (customFields) customFields.style.display = 'none';
+      if (trainerFields) trainerFields.style.display = 'none';
     }
 
     window.updateMembershipPaymentSelection = function() {
@@ -3745,15 +3944,16 @@ ${memberPortalUrl}
       const isRenew = context?.mode === 'renew';
       const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
       const customFields = document.getElementById('membershipPaymentCustomFields');
+      const trainerFields = document.getElementById('membershipTrainerFields');
 
       if (!isRenew) {
         if (subscriptionField) subscriptionField.style.display = 'none';
         if (customFields) customFields.style.display = 'none';
-        return;
       }
 
       const selectedType = document.getElementById('membershipPaymentSubscriptionType').value;
-      customFields.style.display = selectedType === 'other' ? 'block' : 'none';
+      if (customFields) customFields.style.display = selectedType === 'other' ? 'block' : 'none';
+      if (trainerFields) trainerFields.style.display = document.getElementById('membershipTrainerIncluded')?.checked ? 'block' : 'none';
 
       const selection = getMembershipPaymentSelection();
       if (!selection?.valid) {
@@ -3762,22 +3962,31 @@ ${memberPortalUrl}
         return;
       }
 
+      const trainerSelection = getTrainerServiceSelection();
+      const trainerMeta = trainerSelection.included
+        ? ` • ტრენერი ${trainerSelection.gifted ? 'საჩუქრად' : formatCurrency(trainerSelection.price)}`
+        : '';
+
       document.getElementById('membershipPaymentMeta').textContent =
-        `${selection.displayName} • ვადა ${formatDate(selection.subscriptionEndDate)}`;
+        `${selection.displayName} • ვადა ${formatDate(selection.subscriptionEndDate)}${trainerMeta}`;
       document.getElementById('membershipPaymentAmount').textContent =
-        `თანხა: ${formatCurrency(selection.subscriptionPrice)}`;
+        `თანხა: ${formatCurrency(selection.subscriptionPrice + trainerSelection.charge)}`;
     };
 
-    function buildMembershipRenewalPayload(member, paymentMethod, note, selection) {
+    function buildMembershipRenewalPayload(member, paymentMethod, note, selection, trainerSelection) {
       return {
         ...member,
         subscriptionType: selection.subscriptionType,
-        subscriptionPrice: selection.subscriptionPrice,
+        subscriptionPrice: selection.subscriptionPrice + trainerSelection.charge,
+        baseSubscriptionPrice: selection.subscriptionPrice,
         subscriptionStartDate: selection.subscriptionStartDate,
         subscriptionEndDate: selection.subscriptionEndDate,
         remainingVisits: selection.remainingVisits,
         status: 'active',
         expiringEmailSent: false,
+        trainerSessionIncluded: trainerSelection.included,
+        trainerSessionGifted: trainerSelection.included ? trainerSelection.gifted : false,
+        trainerSessionPrice: trainerSelection.included ? trainerSelection.price : 0,
         lastMembershipPaymentMethod: paymentMethod,
         lastMembershipPaymentNote: note || null,
         lastMembershipHandledByUserId: currentUser?.id || null,
@@ -3800,27 +4009,39 @@ ${memberPortalUrl}
       document.getElementById('membershipPaymentMethod').value = 'CASH';
       document.getElementById('membershipPaymentNote').value = '';
       resetMembershipPaymentSelectionFields();
-      // Populate dynamic plan options
+
       const renewSel = document.getElementById('membershipPaymentSubscriptionType');
       if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
 
+      if (context.member?.trainerSessionIncluded) {
+        document.getElementById('membershipTrainerIncluded').checked = true;
+        document.getElementById('membershipTrainerGift').checked = Boolean(context.member.trainerSessionGifted);
+        document.getElementById('membershipTrainerPrice').value = Number(context.member.trainerSessionPrice || 0) || '';
+      }
+
       if (isRenew) {
         const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
-        subscriptionField.style.display = 'block';
+        if (subscriptionField) subscriptionField.style.display = 'block';
         if (member) {
           const isStandardType = isStandardMembershipType(member.subscriptionType);
           document.getElementById('membershipPaymentSubscriptionType').value = isStandardType ? member.subscriptionType : 'other';
           if (!isStandardType) {
             document.getElementById('membershipPaymentCustomDescription').value = member.subscriptionType || '';
-            document.getElementById('membershipPaymentCustomPrice').value = Number(member.subscriptionPrice || 0) || '';
+            document.getElementById('membershipPaymentCustomPrice').value = Number(member.baseSubscriptionPrice || member.subscriptionPrice || 0) || '';
             document.getElementById('membershipPaymentCustomDuration').value =
               getMembershipDurationDays(member.subscriptionStartDate, member.subscriptionEndDate);
             document.getElementById('membershipPaymentCustomVisits').value =
               member.remainingVisits == null ? '' : member.remainingVisits;
           }
+          if (member.trainerSessionIncluded) {
+            document.getElementById('membershipTrainerIncluded').checked = true;
+            document.getElementById('membershipTrainerGift').checked = Boolean(member.trainerSessionGifted);
+            document.getElementById('membershipTrainerPrice').value = Number(member.trainerSessionPrice || 0) || '';
+          }
         }
-        window.updateMembershipPaymentSelection();
       }
+
+      window.updateMembershipPaymentSelection();
 
       const btn = document.getElementById('confirmMembershipPaymentBtn');
       if (btn) {
@@ -3863,7 +4084,15 @@ ${memberPortalUrl}
 
       try {
         if (context.mode === 'register') {
-          const saved = await createMember(context.member, { paymentMethod, note });
+          const trainerSelection = getTrainerServiceSelection();
+          const registerMember = {
+            ...context.member,
+            subscriptionPrice: Number(context.member.baseSubscriptionPrice || context.member.subscriptionPrice || 0) + trainerSelection.charge,
+            trainerSessionIncluded: trainerSelection.included,
+            trainerSessionGifted: trainerSelection.included ? trainerSelection.gifted : false,
+            trainerSessionPrice: trainerSelection.included ? trainerSelection.price : 0
+          };
+          const saved = await createMember(registerMember, { paymentMethod, note });
           if (!saved) throw new Error('membership registration failed');
           document.getElementById('registrationForm')?.reset();
           window.selectedSubscription = null;
@@ -3871,11 +4100,18 @@ ${memberPortalUrl}
           document.getElementById('customSubscriptionFields').style.display = 'none';
           const regTrainerWrap = document.getElementById('regTrainerSelectWrap');
           if (regTrainerWrap) regTrainerWrap.style.display = 'none';
+          const regTrainerService = document.getElementById('regTrainerService');
+          if (regTrainerService) regTrainerService.checked = false;
+          window.toggleRegTrainer();
+          const regTrainerSessionIncluded = document.getElementById('regTrainerSessionIncluded');
+          if (regTrainerSessionIncluded) regTrainerSessionIncluded.checked = false;
+          window.toggleRegisterTrainerSession();
           showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } else if (context.mode === 'renew') {
           const existingMember = window.members.find((item) => item.id === context.memberId);
           if (!existingMember) throw new Error('member not found');
           const selection = getMembershipPaymentSelection();
+          const trainerSelection = getTrainerServiceSelection();
           if (!selection?.valid) {
             showToast(selection?.reason || 'შეავსე აბონემენტის მონაცემები', 'error');
             if (btn) {
@@ -3884,7 +4120,7 @@ ${memberPortalUrl}
             }
             return;
           }
-          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note, selection);
+          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note, selection, trainerSelection);
           const saved = await updateMember(updated);
           if (!saved) throw new Error('membership renewal failed');
           const membershipTransactionSaved = await recordMembershipTransaction('membership_renewal', updated, { paymentMethod, note });
@@ -6008,9 +6244,13 @@ ${memberPortalUrl}
             note: document.getElementById('note').value.trim() || null,
             subscriptionType: type,
             subscriptionPrice: price,
+            baseSubscriptionPrice: price,
             subscriptionStartDate: start.toISOString(),
             subscriptionEndDate: end.toISOString(),
             remainingVisits: visits,
+            trainerSessionIncluded: document.getElementById('regTrainerSessionIncluded')?.checked || false,
+            trainerSessionGifted: document.getElementById('regTrainerSessionIncluded')?.checked ? Boolean(document.getElementById('regTrainerSessionGift')?.checked) : false,
+            trainerSessionPrice: document.getElementById('regTrainerSessionIncluded')?.checked ? Math.max(0, Number(document.getElementById('regTrainerSessionPrice')?.value || 0)) : 0,
             totalVisits: 0,
             status: 'active',
             lastVisit: null,

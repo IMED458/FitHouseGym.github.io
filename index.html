@@ -59,10 +59,10 @@
 
       <div class="auth-panel">
         <div class="auth-field">
-          <label for="loginUsername">USERNAME</label>
+          <label for="loginUsername">USERNAME / PERSONAL ID</label>
           <div class="auth-input-wrap">
             <i class="far fa-user"></i>
-            <input type="text" id="loginUsername" placeholder="admin" class="auth-input">
+            <input type="text" id="loginUsername" placeholder="admin / პირადი ნომერი" class="auth-input">
           </div>
         </div>
 
@@ -278,6 +278,29 @@
             <div id="regTrainerSelectWrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(239,68,68,0.15);">
               <label style="display:block;font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#64748b;margin-bottom:8px;">ტრენერის არჩევა</label>
               <select id="regTrainerId" class="form-input"></select>
+            </div>
+          </div>
+
+          <div class="mt-6" style="border:2px dashed rgba(59,130,246,0.28);border-radius:20px;padding:20px;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(37,99,235,0.03));">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+              <div>
+                <div style="font-weight:800;font-size:1rem;color:#f1f5f9;">ტრენერის ერთჯერადი მომსახურება</div>
+                <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">რეგისტრაციიდანვე შეგიძლია მიუთითო ფასიანი ან საჩუქარი სესია</div>
+              </div>
+              <label style="position:relative;display:inline-block;width:52px;height:28px;cursor:pointer;">
+                <input type="checkbox" id="regTrainerSessionIncluded" onchange="window.toggleRegisterTrainerSession()" style="opacity:0;width:0;height:0;position:absolute;">
+                <span id="regTrainerSessionTrack" style="position:absolute;inset:0;background:#1e293b;border-radius:14px;transition:background 0.2s;border:2px solid #334155;"></span>
+                <span id="regTrainerSessionThumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#64748b;transition:all 0.2s;"></span>
+              </label>
+            </div>
+            <div id="regTrainerSessionWrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(59,130,246,0.16);">
+              <div class="form-grid">
+                <input type="number" id="regTrainerSessionPrice" placeholder="ტრენერის ფასი ₾" class="form-input" min="0" step="0.01">
+                <label style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:14px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;cursor:pointer;">
+                  <input type="checkbox" id="regTrainerSessionGift" style="width:18px;height:18px;accent-color:#3b82f6;">
+                  <span>საჩუქრად</span>
+                </label>
+              </div>
             </div>
           </div>
 
@@ -1118,6 +1141,26 @@
           </select>
         </div>
         <div class="product-form-field product-form-field-full">
+          <label class="checkbox-item" style="justify-content:flex-start;">
+            <input type="checkbox" id="membershipTrainerIncluded" onchange="window.updateMembershipPaymentSelection()">
+            <span>ტრენერის ერთჯერადი მომსახურება</span>
+          </label>
+        </div>
+        <div id="membershipTrainerFields" class="product-form-field product-form-field-full" style="display:none;">
+          <div class="product-form-grid">
+            <div class="product-form-field">
+              <label for="membershipTrainerPrice">ტრენერის ფასი (₾)</label>
+              <input type="number" id="membershipTrainerPrice" class="form-input" min="0" step="0.01" placeholder="მაგ: 20" oninput="window.updateMembershipPaymentSelection()">
+            </div>
+            <div class="product-form-field">
+              <label class="checkbox-item" style="justify-content:flex-start; min-height:54px;">
+                <input type="checkbox" id="membershipTrainerGift" onchange="window.updateMembershipPaymentSelection()">
+                <span>საჩუქრად</span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="product-form-field product-form-field-full">
           <label for="membershipPaymentNote">შენიშვნა</label>
           <input type="text" id="membershipPaymentNote" class="form-input" placeholder="არასავალდებულო">
         </div>
@@ -1152,6 +1195,14 @@
         <div class="product-form-field">
           <label for="userUsername">იუზერი</label>
           <input type="text" id="userUsername" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="userPersonalId">პირადი ნომერი</label>
+          <input type="text" id="userPersonalId" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="userEmail">Email</label>
+          <input type="email" id="userEmail" class="form-input">
         </div>
         <div class="product-form-field">
           <label for="userRole">როლი</label>
@@ -1241,7 +1292,7 @@
   </div>
 
   <div id="resetUserPasswordModal" class="modal">
-    <div class="modal-content" style="max-width:460px;">
+    <div class="modal-content" style="max-width:520px;">
       <div class="modal-header">
         <h3>პაროლის აღდგენა</h3>
         <button class="modal-close" onclick="window.closeResetUserPasswordModal()">×</button>
@@ -1250,19 +1301,27 @@
       <div class="sale-product-summary">
         <div class="sale-product-name" id="resetUserName">იუზერი</div>
         <div class="sale-product-meta" id="resetUserUsername"></div>
+        <div class="sale-product-meta" id="resetUserEmail"></div>
       </div>
       <div class="product-form-grid">
         <div class="product-form-field product-form-field-full">
-          <label for="resetUserPassword">ახალი პაროლი</label>
+        <div class="product-form-field product-form-field-full">
+          <label for="resetUserPassword">ერთჯერადი პაროლი</label>
           <div style="position:relative;">
             <input type="password" id="resetUserPassword" class="form-input">
             <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('resetUserPassword', this)"><i class="fas fa-eye"></i></button>
           </div>
         </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="resetUserPasswordInfo">ინფორმაცია</label>
+          <div id="resetUserPasswordInfo" class="sale-product-meta" style="padding:12px 16px;border-radius:14px;border:1px solid var(--border);background:rgba(59,130,246,0.08);font-size:0.92rem;">
+            ეს პაროლი გამოჩნდება აქ და გაიგზავნება მომხმარებლის მეილზე.
+          </div>
+        </div>
       </div>
       <div class="email-actions">
         <button class="btn btn-success" id="resetUserPasswordBtn" onclick="window.resetUserPassword()">
-          <i class="fas fa-key"></i> პაროლის შენახვა
+          <i class="fas fa-paper-plane"></i> მეილზე გაგზავნა
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeResetUserPasswordModal()">
           გაუქმება
@@ -1310,6 +1369,41 @@
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closePlanForm()">
           გაუქმება
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="forcePasswordResetModal" class="modal">
+    <div class="modal-content" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>პაროლის განახლება</h3>
+      </div>
+      <div class="sale-product-summary">
+        <div class="sale-product-name" id="forcePasswordResetName">მომხმარებელი</div>
+        <div class="sale-product-meta">პირველი შესვლა ან ერთჯერადი პაროლით ავტორიზაცია</div>
+      </div>
+      <div class="product-form-grid">
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordCurrent">მიმდინარე ერთჯერადი პაროლი</label>
+          <input type="password" id="forcePasswordCurrent" class="form-input" autocomplete="current-password">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordNew">ახალი მუდმივი პაროლი</label>
+          <input type="password" id="forcePasswordNew" class="form-input" autocomplete="new-password">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordConfirm">გაიმეორე ახალი პაროლი</label>
+          <input type="password" id="forcePasswordConfirm" class="form-input" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="window.completeForcedPasswordReset()">
+          <i class="fas fa-check"></i> პაროლის განახლება
+        </button>
+      </div>
+    </div>
+  </div>
         </button>
       </div>
     </div>
