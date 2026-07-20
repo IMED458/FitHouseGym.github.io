@@ -561,10 +561,10 @@ function renderTabContent() {
   if (!el) return;
   switch(activeTab) {
     case 'overview': el.innerHTML = renderOverview(); break;
-    case 'sub': el.innerHTML = renderSubscription(); loadFlittPlans(); break;
+    case 'sub': el.innerHTML = renderSubscription(); break;
     case 'qr': el.innerHTML = renderQrTab(); startQrScanner(); break;
     case 'visits': el.innerHTML = renderVisits(); break;
-    case 'payments': el.innerHTML = renderPayments(); break;
+    case 'payments': el.innerHTML = renderPayments(); loadFlittPlans(); break;
     case 'workouts': el.innerHTML = renderWorkouts(); break;
     case 'status': el.innerHTML = renderStatus(); break;
     case 'history': el.innerHTML = renderHistory(); break;
@@ -699,7 +699,6 @@ function renderSubscription() {
         <i class="fas fa-calendar-xmark" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
         <p>ამჟამად არ გაქვთ აბონემენტი. გთხოვთ მიმართოთ Fit House Gym-ის ადმინისტრატორს.</p>
       </div>`}
-      ${renderFlittSection()}
     </div>
   `;
 }
@@ -1065,8 +1064,12 @@ function renderPayments() {
   return `
     <div class="space-y-6 anim-in">
       <div style="border-bottom:1px solid #1e293b;padding-bottom:16px;">
-        <h2 style="font-size:1.4rem;font-weight:900;color:white;">გადახდების ისტორია</h2>
-        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">დაფიქსირებული გადახდები</p>
+        <h2 style="font-size:1.4rem;font-weight:900;color:white;">გადახდები</h2>
+        <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">აბონემენტის შეძენა და გადახდების ისტორია</p>
+      </div>
+      ${renderFlittSection()}
+      <div style="border-bottom:1px solid #1e293b;padding-bottom:12px;">
+        <h3 style="font-size:1rem;font-weight:900;color:#e2e8f0;">ისტორია</h3>
       </div>
       ${payments.length === 0 ? `
         <div style="text-align:center;padding:48px;color:#475569;">
