@@ -1,12 +1,12 @@
 'use strict';
 
-const {
+import {
   buildSignatureSource,
   generateSignature,
   generateCallbackSignature,
   verifyCallbackSignature,
   sha1Lower,
-} = require('../src/signature');
+} from '../src/signature.js';
 
 const SECRET = 'test';
 
@@ -40,11 +40,13 @@ describe('signature source construction (official fixture)', () => {
    * loudly if either ever changes, and MUST be re-validated against the Flitt
    * sandbox before any production rollout.
    */
-  test('documents the actual SHA-1 of the documented source string', () => {
-    expect(generateSignature(OFFICIAL_PARAMS, SECRET)).toBe(
+  test('documents the actual SHA-1 of the documented source string', async () => {
+    await expect(generateSignature(OFFICIAL_PARAMS, SECRET)).resolves.toBe(
       'cd0edb710cbbdb6c2a4d965cdb91fdfabc343215'
     );
-    expect(sha1Lower(OFFICIAL_SOURCE)).not.toBe('91ea7da493a8367410fe3d7f877fb5e0ed666490');
+    await expect(sha1Lower(OFFICIAL_SOURCE)).resolves.not.toBe(
+      '91ea7da493a8367410fe3d7f877fb5e0ed666490'
+    );
   });
 });
 
@@ -81,16 +83,18 @@ describe('signature algorithm rules', () => {
     expect(buildSignatureSource(withSig, SECRET)).toBe(OFFICIAL_SOURCE);
   });
 
-  test('produces lowercase hexadecimal SHA-1', () => {
-    const sig = generateSignature(OFFICIAL_PARAMS, SECRET);
+  test('produces lowercase hexadecimal SHA-1', async () => {
+    const sig = await generateSignature(OFFICIAL_PARAMS, SECRET);
     expect(sig).toMatch(/^[0-9a-f]{40}$/);
     expect(sig).toBe(sig.toLowerCase());
   });
 
-  test('handles UTF-8 (Georgian) values', () => {
+  test('handles UTF-8 (Georgian) values', async () => {
     const source = buildSignatureSource({ order_desc: 'აბონემენტი' }, SECRET);
     expect(source).toBe('test|აბონემენტი');
-    expect(generateSignature({ order_desc: 'აბონემენტი' }, SECRET)).toMatch(/^[0-9a-f]{40}$/);
+    await expect(generateSignature({ order_desc: 'აბონემენტი' }, SECRET)).resolves.toMatch(
+      /^[0-9a-f]{40}$/
+    );
   });
 
   test('requires a secret key', () => {
@@ -99,38 +103,40 @@ describe('signature algorithm rules', () => {
 });
 
 describe('callback signature verification', () => {
-  test('excludes response_signature_string from the calculation', () => {
+  test('excludes response_signature_string from the calculation', async () => {
     const base = { order_id: 'GYM-1', order_status: 'approved', amount: 1000 };
     const withEcho = { ...base, response_signature_string: 'test|1000|GYM-1|approved' };
-    expect(generateCallbackSignature(withEcho, SECRET)).toBe(
-      generateCallbackSignature(base, SECRET)
+    expect(await generateCallbackSignature(withEcho, SECRET)).toBe(
+      await generateCallbackSignature(base, SECRET)
     );
   });
 
-  test('accepts a valid callback signature', () => {
+  test('accepts a valid callback signature', async () => {
     const payload = { order_id: 'GYM-1', order_status: 'approved', amount: 1000, currency: 'GEL' };
-    payload.signature = generateCallbackSignature(payload, SECRET);
-    expect(verifyCallbackSignature(payload, SECRET)).toBe(true);
+    payload.signature = await generateCallbackSignature(payload, SECRET);
+    await expect(verifyCallbackSignature(payload, SECRET)).resolves.toBe(true);
   });
 
-  test('rejects a tampered callback signature', () => {
+  test('rejects a tampered callback signature', async () => {
     const payload = { order_id: 'GYM-1', order_status: 'approved', amount: 1000, currency: 'GEL' };
-    payload.signature = generateCallbackSignature(payload, SECRET);
+    payload.signature = await generateCallbackSignature(payload, SECRET);
     payload.amount = 1; // attacker lowers the amount after signing
-    expect(verifyCallbackSignature(payload, SECRET)).toBe(false);
+    await expect(verifyCallbackSignature(payload, SECRET)).resolves.toBe(false);
   });
 
-  test('rejects a missing signature', () => {
-    expect(verifyCallbackSignature({ order_id: 'GYM-1' }, SECRET)).toBe(false);
+  test('rejects a missing signature', async () => {
+    await expect(verifyCallbackSignature({ order_id: 'GYM-1' }, SECRET)).resolves.toBe(false);
   });
 
-  test('rejects a signature of the wrong length without throwing', () => {
-    expect(verifyCallbackSignature({ order_id: 'GYM-1', signature: 'abc' }, SECRET)).toBe(false);
+  test('rejects a signature of the wrong length without throwing', async () => {
+    await expect(
+      verifyCallbackSignature({ order_id: 'GYM-1', signature: 'abc' }, SECRET)
+    ).resolves.toBe(false);
   });
 
-  test('is case-insensitive on the received signature', () => {
+  test('is case-insensitive on the received signature', async () => {
     const payload = { order_id: 'GYM-1', order_status: 'approved' };
-    payload.signature = generateCallbackSignature(payload, SECRET).toUpperCase();
-    expect(verifyCallbackSignature(payload, SECRET)).toBe(true);
+    payload.signature = (await generateCallbackSignature(payload, SECRET)).toUpperCase();
+    await expect(verifyCallbackSignature(payload, SECRET)).resolves.toBe(true);
   });
 });

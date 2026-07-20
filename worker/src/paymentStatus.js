@@ -37,4 +37,4 @@ function grantsMembership(status) {
   return status === STATUS.PAID;
 }
 
-module.exports = { STATUS, PROVIDER_STATUS_MAP, mapProviderStatus, isTerminal, grantsMembership };
+export { STATUS, PROVIDER_STATUS_MAP, mapProviderStatus, isTerminal, grantsMembership };

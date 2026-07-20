@@ -29,11 +29,11 @@ class ConfigurationError extends Error {
   }
 }
 
-function isEnabled(env = process.env) {
+function isEnabled(env) {
   return String(env.FLITT_ENABLED || '').toLowerCase() === 'true';
 }
 
-function loadConfig(env = process.env) {
+function loadConfig(env) {
   const missing = REQUIRED_VARS.filter((key) => !env[key] || String(env[key]).trim() === '');
   if (missing.length > 0) {
     throw new ConfigurationError(
@@ -128,7 +128,7 @@ function isAllowedCheckoutUrl(url, config) {
   }
 }
 
-module.exports = {
+export {
   loadConfig,
   isEnabled,
   isAllowedCheckoutUrl,

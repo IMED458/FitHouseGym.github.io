@@ -1,13 +1,14 @@
 'use strict';
 
-const crypto = require('crypto');
-
 /**
  * Flitt signature algorithm (docs.flitt.com/api/building-signature/).
  *
  * SHA-1 over: secret_key + "|" + values of all parameters sorted by key name.
  * Excluded: `signature`, null, undefined and empty-string values.
  * Zero values ARE preserved — `0` is meaningful, `''` is not.
+ *
+ * Workers has no node:crypto, so hashing goes through WebCrypto and the
+ * digest-producing functions are async.
  */
 
 const ALWAYS_EXCLUDED = ['signature'];
@@ -16,7 +17,7 @@ const CALLBACK_EXCLUDED = ['signature', 'response_signature_string'];
 
 /**
  * Builds the pipe-joined source string that gets hashed.
- * Exported separately so tests can assert the string itself, independent of the digest.
+ * Synchronous and pure, so tests can assert it independently of the digest.
  */
 function buildSignatureSource(params, secretKey, excludedKeys = ALWAYS_EXCLUDED) {
   if (typeof secretKey !== 'string' || secretKey.length === 0) {
@@ -39,41 +40,49 @@ function buildSignatureSource(params, secretKey, excludedKeys = ALWAYS_EXCLUDED)
   return [secretKey, ...values].join('|');
 }
 
-function sha1Lower(input) {
-  return crypto.createHash('sha1').update(input, 'utf8').digest('hex').toLowerCase();
+async function sha1Lower(input) {
+  const bytes = new TextEncoder().encode(input);
+  const digest = await crypto.subtle.digest('SHA-1', bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 /** Signature for an outgoing request to Flitt. */
-function generateSignature(params, secretKey) {
+async function generateSignature(params, secretKey) {
   return sha1Lower(buildSignatureSource(params, secretKey, ALWAYS_EXCLUDED));
 }
 
 /** Expected signature for an inbound Flitt callback / status response. */
-function generateCallbackSignature(params, secretKey) {
+async function generateCallbackSignature(params, secretKey) {
   return sha1Lower(buildSignatureSource(params, secretKey, CALLBACK_EXCLUDED));
 }
 
-/**
- * Constant-time comparison. Returns false rather than throwing on malformed input
- * so callers can treat "bad signature" and "no signature" identically.
- */
-function verifyCallbackSignature(params, secretKey) {
-  const received = params && params.signature;
-  if (typeof received !== 'string' || received.length === 0) return false;
-
-  const expected = generateCallbackSignature(params, secretKey);
-
-  const a = Buffer.from(expected, 'utf8');
-  const b = Buffer.from(received.toLowerCase(), 'utf8');
+/** Length-safe, constant-time-ish comparison of two hex digests. */
+function safeEqualHex(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
   if (a.length !== b.length) return false;
-  return crypto.timingSafeEqual(a, b);
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
-module.exports = {
+/**
+ * Verifies an inbound callback signature.
+ * Returns false rather than throwing so callers can treat "bad signature"
+ * and "no signature" identically.
+ */
+async function verifyCallbackSignature(params, secretKey) {
+  const received = params && params.signature;
+  if (typeof received !== 'string' || received.length === 0) return false;
+  const expected = await generateCallbackSignature(params, secretKey);
+  return safeEqualHex(expected, received.toLowerCase());
+}
+
+export {
   buildSignatureSource,
   generateSignature,
   generateCallbackSignature,
   verifyCallbackSignature,
+  safeEqualHex,
   sha1Lower,
   ALWAYS_EXCLUDED,
   CALLBACK_EXCLUDED,

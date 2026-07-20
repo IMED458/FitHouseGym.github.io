@@ -101,7 +101,7 @@ function buildTransactionRecord({ member, plan, priceGel, isRenewal, orderId, no
   };
 }
 
-module.exports = {
+export {
   addMonthsPreserveDay,
   setToEndOfDay,
   computeSubscriptionPeriod,

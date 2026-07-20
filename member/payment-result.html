@@ -36,7 +36,7 @@
 <script type="module">
 // The browser is never trusted for payment status — we poll OUR backend, which
 // only ever reflects what the signed server-to-server callback told it.
-const API_BASE = 'https://us-central1-fit-house-gym-d3595.cloudfunctions.net/api';
+const API_BASE = 'https://fithouse-payments.REPLACE-AFTER-DEPLOY.workers.dev';
 
 let session = null;
 try { session = JSON.parse(localStorage.getItem('fh_member_session') || 'null'); } catch (_) {}

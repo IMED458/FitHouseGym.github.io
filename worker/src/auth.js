@@ -1,14 +1,14 @@
 'use strict';
 
-const crypto = require('crypto');
+import { safeEqualHex } from './signature.js';
 
 /**
  * Minimal server-side session tokens.
  *
  * The project has no Firebase Auth — logins are custom checks against Firestore.
- * Rather than rebuild authentication (invasive, and out of scope for stage 1),
- * this issues a short-lived HMAC token after the server re-verifies the member's
- * credentials. The token is the only thing the checkout endpoint trusts.
+ * Rather than rebuild authentication, this issues a short-lived HMAC token after
+ * the server re-verifies the member's credentials. The token is the only thing
+ * the checkout endpoint trusts.
  */
 
 const TOKEN_TTL_MS = 12 * 60 * 60 * 1000; // 12h
@@ -21,41 +21,61 @@ class AuthError extends Error {
   }
 }
 
-function getSessionSecret(env = process.env) {
-  const secret = env.SESSION_SECRET;
+function b64url(bytes) {
+  const bin = String.fromCharCode(...new Uint8Array(bytes));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function b64urlFromString(str) {
+  return btoa(unescape(encodeURIComponent(str)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function stringFromB64url(b64) {
+  const padded = b64.replace(/-/g, '+').replace(/_/g, '/');
+  return decodeURIComponent(escape(atob(padded)));
+}
+
+function getSessionSecret(env) {
+  const secret = env && env.SESSION_SECRET;
   if (!secret || secret.length < 16) {
     throw new Error('SESSION_SECRET is required and must be at least 16 characters');
   }
   return secret;
 }
 
-function sign(payloadB64, secret) {
-  return crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
+async function hmacHex(payloadB64, secret) {
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payloadB64));
+  return b64url(sig);
 }
 
-function issueToken(memberId, secret, now = Date.now()) {
-  const payload = { sub: memberId, exp: now + TOKEN_TTL_MS };
-  const payloadB64 = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-  return `${payloadB64}.${sign(payloadB64, secret)}`;
+async function issueToken(memberId, secret, now = Date.now()) {
+  const payloadB64 = b64urlFromString(JSON.stringify({ sub: memberId, exp: now + TOKEN_TTL_MS }));
+  return `${payloadB64}.${await hmacHex(payloadB64, secret)}`;
 }
 
-function verifyToken(token, secret, now = Date.now()) {
+async function verifyToken(token, secret, now = Date.now()) {
   if (typeof token !== 'string' || !token.includes('.')) {
     throw new AuthError('Invalid session token');
   }
   const [payloadB64, providedSig] = token.split('.');
   if (!payloadB64 || !providedSig) throw new AuthError('Invalid session token');
 
-  const expectedSig = sign(payloadB64, secret);
-  const a = Buffer.from(expectedSig, 'utf8');
-  const b = Buffer.from(providedSig, 'utf8');
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    throw new AuthError('Invalid session token');
-  }
+  const expectedSig = await hmacHex(payloadB64, secret);
+  if (!safeEqualHex(expectedSig, providedSig)) throw new AuthError('Invalid session token');
 
   let payload;
   try {
-    payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
+    payload = JSON.parse(stringFromB64url(payloadB64));
   } catch (_) {
     throw new AuthError('Invalid session token');
   }
@@ -64,6 +84,15 @@ function verifyToken(token, secret, now = Date.now()) {
     throw new AuthError('Session expired');
   }
   return payload.sub;
+}
+
+/** Constant-time-ish comparison for arbitrary strings (credentials). */
+function safeEqualString(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 /**
@@ -82,18 +111,15 @@ async function verifyMemberCredentials(db, email, password) {
     const data = doc.data();
     const expected = data.password ? data.password : data.personalId;
     if (typeof expected !== 'string' || expected.length === 0) continue;
-
-    const a = Buffer.from(expected, 'utf8');
-    const b = Buffer.from(String(password), 'utf8');
-    if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+    if (safeEqualString(expected, String(password))) {
       return { id: doc.id, ...data };
     }
   }
   throw new AuthError('Invalid credentials');
 }
 
-function bearerFrom(req) {
-  const header = req.get ? req.get('authorization') : req.headers?.authorization;
+function bearerFrom(request) {
+  const header = request.headers.get('authorization');
   if (!header || !/^Bearer\s+/i.test(header)) throw new AuthError('Missing bearer token');
   return header.replace(/^Bearer\s+/i, '').trim();
 }
@@ -104,13 +130,14 @@ function isFlittAllowed(member, config) {
   return config.allowedEmails.includes(email);
 }
 
-module.exports = {
+export {
   issueToken,
   verifyToken,
   verifyMemberCredentials,
   getSessionSecret,
   bearerFrom,
   isFlittAllowed,
+  safeEqualString,
   AuthError,
   TOKEN_TTL_MS,
 };

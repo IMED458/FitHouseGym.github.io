@@ -1,9 +1,9 @@
 'use strict';
 
-const { loadConfig, isAllowedCheckoutUrl, ConfigurationError } = require('../src/config');
-const { gelToTetri, tetriToGel } = require('../src/money');
-const { mapProviderStatus, isTerminal, grantsMembership, STATUS } = require('../src/paymentStatus');
-const { computeSubscriptionPeriod } = require('../src/membership');
+import { loadConfig, isAllowedCheckoutUrl, ConfigurationError } from '../src/config.js';
+import { gelToTetri, tetriToGel } from '../src/money.js';
+import { mapProviderStatus, isTerminal, grantsMembership, STATUS } from '../src/paymentStatus.js';
+import { computeSubscriptionPeriod } from '../src/membership.js';
 
 const VALID_ENV = {
   FLITT_ENABLED: 'true',
