@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" href="/fithause logo.png">
   <link rel="shortcut icon" type="image/png" href="/fithause logo.png">
   <link rel="manifest" href="/manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="FitHouse">
@@ -285,7 +286,7 @@
             <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
               <div>
                 <div style="font-weight:800;font-size:1rem;color:#f1f5f9;">ტრენერის ერთჯერადი მომსახურება</div>
-                <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">რეგისტრაციიდანვე შეგიძლია მიუთითო ფასიანი ან საჩუქარი სესია</div>
+                <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">  ტრენერის ერთჯერადი მომსახურება საჩუქრად </div>
               </div>
               <label style="position:relative;display:inline-block;width:52px;height:28px;cursor:pointer;">
                 <input type="checkbox" id="regTrainerSessionIncluded" onchange="window.toggleRegisterTrainerSession()" style="opacity:0;width:0;height:0;position:absolute;">
@@ -376,46 +377,82 @@
 
             <div id="productCartList" class="product-cart-list"></div>
 
-            <div class="product-cart-summary">
-              <div class="product-cart-total-row">
-                <span>სულ ერთეული</span>
-                <strong id="productCartUnits">0</strong>
+            <div class="product-cart-console">
+              <div class="product-cart-summary">
+                <div class="product-cart-total-row">
+                  <span>სულ ერთეული</span>
+                  <strong id="productCartUnits">0</strong>
+                </div>
+                <div class="product-cart-total-row product-cart-total-strong">
+                  <span>სულ გადასახდელი</span>
+                  <strong id="productCartTotal">0.00₾</strong>
+                </div>
               </div>
-              <div class="product-cart-total-row product-cart-total-strong">
-                <span>სულ გადასახდელი</span>
-                <strong id="productCartTotal">0.00₾</strong>
+
+              <div class="product-cart-selected-line">
+                <span>არჩეული პროდუქტი</span>
+                <strong id="productCartSelectedLabel">—</strong>
+              </div>
+
+              <div class="product-cart-keypad-shell">
+                <div class="product-cart-payment">
+                  <span class="product-cart-label">გადახდის მეთოდი</span>
+                  <div class="product-cart-payment-tabs">
+                    <button type="button" class="product-payment-pill active" data-payment-method="TBC" onclick="window.selectCartPaymentMethod('TBC')">TBC</button>
+                    <button type="button" class="product-payment-pill" data-payment-method="BOG" onclick="window.selectCartPaymentMethod('BOG')">BOG</button>
+                    <button type="button" class="product-payment-pill" data-payment-method="CASH" onclick="window.selectCartPaymentMethod('CASH')">CASH</button>
+                    <button type="button" class="product-payment-pill" data-payment-method="TRANSFER" onclick="window.selectCartPaymentMethod('TRANSFER')">გადარიცხვა</button>
+                  </div>
+                </div>
+
+                <div class="product-cart-keypad-panel">
+                  <div id="productCartKeypadDisplay" class="product-cart-keypad-display">0</div>
+                  <div class="product-cart-keypad-grid">
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('1')">1</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('2')">2</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('3')">3</button>
+                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.productCartKeypadBackspace()"><i class="fas fa-delete-left"></i></button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('4')">4</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('5')">5</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('6')">6</button>
+                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.changeActiveProductCartQuantity(-1)">−</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('7')">7</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('8')">8</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('9')">9</button>
+                    <button type="button" class="product-keypad-btn product-keypad-btn-wide" onclick="window.changeActiveProductCartQuantity(1)">+</button>
+                    <button type="button" class="product-keypad-btn product-keypad-btn-clear" onclick="window.productCartKeypadClear()">C</button>
+                    <button type="button" class="product-keypad-btn" onclick="window.productCartKeypadPress('0')">0</button>
+                    <button type="button" class="product-keypad-btn product-keypad-btn-confirm" onclick="window.productCartApplyKeypadQuantity()"><i class="fas fa-check"></i></button>
+                    <button class="btn btn-success product-cart-checkout-btn product-keypad-btn-checkout" id="checkoutProductCartBtn" onclick="window.checkoutProductCart()">
+                      <i class="fas fa-bag-shopping"></i> გაყიდვა
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="product-cart-note">
+                <label class="product-cart-label" for="productCartNote">შენიშვნა</label>
+                <input type="text" id="productCartNote" class="form-input" placeholder="მაგ: საერთო გადახდა">
               </div>
             </div>
-
-            <div class="product-cart-payment">
-              <span class="product-cart-label">გადახდის მეთოდი</span>
-              <div class="product-cart-payment-tabs">
-                <button type="button" class="product-payment-pill active" data-payment-method="TBC" onclick="window.selectCartPaymentMethod('TBC')">TBC</button>
-                <button type="button" class="product-payment-pill" data-payment-method="BOG" onclick="window.selectCartPaymentMethod('BOG')">BOG</button>
-                <button type="button" class="product-payment-pill" data-payment-method="CASH" onclick="window.selectCartPaymentMethod('CASH')">CASH</button>
-                <button type="button" class="product-payment-pill" data-payment-method="TRANSFER" onclick="window.selectCartPaymentMethod('TRANSFER')">გადარიცხვა</button>
-              </div>
-            </div>
-
-            <div class="product-cart-note">
-              <label class="product-cart-label" for="productCartNote">შენიშვნა</label>
-              <input type="text" id="productCartNote" class="form-input" placeholder="მაგ: საერთო გადახდა">
-            </div>
-
-            <button class="btn btn-success product-cart-checkout-btn" id="checkoutProductCartBtn" onclick="window.checkoutProductCart()">
-              <i class="fas fa-bag-shopping"></i> გაყიდვა
-            </button>
           </div>
 
           <div class="product-catalog-panel">
-            <div class="products-kpi-grid products-kpi-grid-compact">
-              <div class="mini-stat-card">
-                <div class="mini-stat-value" id="productsCount">0</div>
-                <div class="mini-stat-label">სულ პროდუქტები</div>
+            <div class="product-catalog-topbar">
+              <div class="products-kpi-grid products-kpi-grid-compact">
+                <div class="mini-stat-card">
+                  <div class="mini-stat-value" id="productsCount">0</div>
+                  <div class="mini-stat-label">სულ პროდუქტები</div>
+                </div>
+                <div class="mini-stat-card">
+                  <div class="mini-stat-value" id="todayProductUnits">0</div>
+                  <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
+                </div>
               </div>
-              <div class="mini-stat-card">
-                <div class="mini-stat-value" id="todayProductUnits">0</div>
-                <div class="mini-stat-label">დღეს გაყიდული ცალი</div>
+              <div class="product-filter-tabs">
+                <button type="button" class="product-filter-tab active" data-filter="all" onclick="window.setProductCatalogFilter('all')">მთავარი</button>
+                <button type="button" class="product-filter-tab" data-filter="in_stock" onclick="window.setProductCatalogFilter('in_stock')">მარაგში</button>
+                <button type="button" class="product-filter-tab" data-filter="low_stock" onclick="window.setProductCatalogFilter('low_stock')">დაბალი მარაგი</button>
               </div>
             </div>
 

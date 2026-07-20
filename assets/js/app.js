@@ -56,6 +56,39 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     window.isCartCheckoutRunning = false;
     window.pendingMembershipPaymentContext = null;
     window.subscriptionPlans = [];
+    window.productCatalogFilter = 'all';
+    window.activeProductCartItemId = null;
+    window.productCartQuantityBuffer = '';
+    const restRateLimitUntil = {};
+    let subscriptionPlansSeedAttempted = false;
+    const DEFAULT_LOCAL_USERS = [
+      {
+        id: 'local_admin_default',
+        firstName: 'მთავარი',
+        lastName: 'ადმინისტრატორი',
+        username: 'admin',
+        passwordHash: ADMIN_PASSWORD_HASH,
+        role: 'admin',
+        status: 'active',
+        isSystemDefault: true
+      },
+      {
+        id: 'local_operator_default',
+        firstName: 'მთავარი',
+        lastName: 'ოპერატორი',
+        username: 'operator',
+        passwordHash: STAFF_PASSWORD_HASH,
+        role: 'operator',
+        status: 'active',
+        isSystemDefault: true
+      }
+    ];
+    const DEFAULT_SUBSCRIPTION_PLANS = [
+      { id: 'local_12visits', name:'12 ვარჯიში', type:'12visits', price:70, durationDays:30, remainingVisits:12, active:true, order:1 },
+      { id: 'local_morning', name:'დილის ულიმიტო', type:'morning', price:90, durationDays:30, remainingVisits:null, active:true, order:2 },
+      { id: 'local_unlimited', name:'ულიმიტო', type:'unlimited', price:110, durationDays:30, remainingVisits:null, active:true, order:3 },
+      { id: 'local_single_visit', name:'ერთჯერადი ვიზიტი', type:'single_visit', price:15, durationDays:1, remainingVisits:1, active:true, order:4 }
+    ];
 
     // ── QR Check-in globals ─────────────────────────────────────────────────
     let gymQrToken = null;
@@ -361,12 +394,26 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return { id, ...fields };
     }
 
+    function isRestRateLimited(key) {
+      return Number(restRateLimitUntil[key] || 0) > Date.now();
+    }
+
+    function markRestRateLimited(key, ms = 60000) {
+      restRateLimitUntil[key] = Date.now() + ms;
+    }
+
     async function fetchCollectionViaRest(collectionName) {
+      if (isRestRateLimited(collectionName)) {
+        throw new Error(`${collectionName} fetch skipped during cooldown`);
+      }
       const items = [];
       let pageToken = '';
       do {
         const response = await fetch(getFirestoreCollectionUrl(collectionName, pageToken), { cache: 'no-store' });
         if (!response.ok) {
+          if (response.status === 429) {
+            markRestRateLimited(collectionName);
+          }
           throw new Error(`${collectionName} fetch failed with status ${response.status}`);
         }
         const data = await response.json();
@@ -494,7 +541,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     }
 
     async function ensureDefaultUsers() {
-      const existingUsers = await fetchUsersViaRest();
+      let existingUsers = [];
+      try {
+        existingUsers = await fetchUsersViaRest();
+      } catch (e) {
+        const message = String(e?.message || '');
+        if (message.includes('429') || message.includes('403') || message.includes('cooldown')) {
+          window.users = DEFAULT_LOCAL_USERS.map((item) => ({ ...item }));
+          usersLoadedOnce = true;
+          return window.users;
+        }
+        throw e;
+      }
       if (existingUsers.length > 0) {
         window.users = existingUsers;
         usersLoadedOnce = true;
@@ -531,7 +589,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         await addDoc(collection(db, "users"), item);
       }
 
-      const createdUsers = await fetchUsersViaRest();
+      let createdUsers = [];
+      try {
+        createdUsers = await fetchUsersViaRest();
+      } catch (e) {
+        createdUsers = defaults.map((item, index) => ({ id: `seeded_local_${index}`, ...item }));
+      }
       window.users = createdUsers;
       usersLoadedOnce = true;
       return createdUsers;
@@ -870,14 +933,26 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       syncProductCart();
       const items = getDetailedCartItems();
+      if (!items.length) {
+        window.activeProductCartItemId = null;
+        window.productCartQuantityBuffer = '';
+      } else if (!items.some((item) => item.productId === window.activeProductCartItemId)) {
+        window.activeProductCartItemId = items[0].productId;
+        window.productCartQuantityBuffer = String(items[0].quantity);
+      }
       const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
       const totalAmount = items.reduce((sum, item) => sum + item.lineTotal, 0);
+      const activeItem = items.find((item) => item.productId === window.activeProductCartItemId) || null;
 
       const unitsEl = document.getElementById('productCartUnits');
       const totalEl = document.getElementById('productCartTotal');
       const checkoutBtn = document.getElementById('checkoutProductCartBtn');
+      const selectedLabelEl = document.getElementById('productCartSelectedLabel');
+      const keypadDisplayEl = document.getElementById('productCartKeypadDisplay');
       if (unitsEl) unitsEl.textContent = String(totalUnits);
       if (totalEl) totalEl.textContent = formatCurrency(totalAmount);
+      if (selectedLabelEl) selectedLabelEl.textContent = activeItem ? `${activeItem.product.name} × ${activeItem.quantity}` : '—';
+      if (keypadDisplayEl) keypadDisplayEl.textContent = window.productCartQuantityBuffer || (activeItem ? String(activeItem.quantity) : '0');
       if (checkoutBtn) {
         checkoutBtn.disabled = window.isCartCheckoutRunning || items.length === 0;
         if (!window.isCartCheckoutRunning) {
@@ -899,24 +974,35 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         return;
       }
 
-      container.innerHTML = items.map((item) => `
-        <div class="product-cart-item">
-          <div class="product-cart-item-main">
-            <div class="product-cart-item-name">${item.product.name}</div>
-            <div class="product-cart-item-code">კოდი: ${item.product.code}</div>
-          </div>
-          <div class="product-cart-item-price">${formatCurrency(item.product.price)}</div>
-          <div class="product-cart-item-qty">
-            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', -1)">−</button>
-            <span>${item.quantity}</span>
-            <button type="button" class="cart-qty-btn" onclick="window.changeProductCartQuantity('${item.productId}', 1)">+</button>
-          </div>
-          <div class="product-cart-item-line-total">${formatCurrency(item.lineTotal)}</div>
-          <button type="button" class="cart-remove-btn" onclick="window.removeProductFromCart('${item.productId}')">
-            <i class="fas fa-trash"></i>
-          </button>
+      container.innerHTML = `
+        <div class="product-cart-table-head">
+          <span>დასახელება</span>
+          <span>ფასი</span>
+          <span>რაოდ.</span>
+          <span>ჯამი</span>
+          <span></span>
         </div>
-      `).join('');
+        <div class="product-cart-rows">
+          ${items.map((item) => `
+            <div class="product-cart-item ${item.productId === window.activeProductCartItemId ? 'selected' : ''}" onclick="window.selectProductCartItem('${item.productId}')">
+              <div class="product-cart-item-main">
+                <div class="product-cart-item-name">${item.product.name}</div>
+                <div class="product-cart-item-code">${item.product.code}</div>
+              </div>
+              <div class="product-cart-item-price">${formatCurrency(item.product.price)}</div>
+              <div class="product-cart-item-qty">
+                <button type="button" class="cart-qty-btn" onclick="event.stopPropagation(); window.changeProductCartQuantity('${item.productId}', -1)">−</button>
+                <span>${item.quantity}</span>
+                <button type="button" class="cart-qty-btn" onclick="event.stopPropagation(); window.changeProductCartQuantity('${item.productId}', 1)">+</button>
+              </div>
+              <div class="product-cart-item-line-total">${formatCurrency(item.lineTotal)}</div>
+              <button type="button" class="cart-remove-btn" onclick="event.stopPropagation(); window.removeProductFromCart('${item.productId}')">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+          `).join('')}
+        </div>
+      `;
     }
 
     function renderInventoryRestockList() {
@@ -4494,12 +4580,23 @@ ${memberPortalUrl}
     function updateProductsTab() {
       const grid = document.getElementById('productsGrid');
       if (!grid) return;
+      const productsTab = document.getElementById('products');
+      if (productsTab) {
+        productsTab.classList.toggle('operator-products-shell', !isAdmin());
+      }
 
       const searchValue = (document.getElementById('productSearchInput')?.value || '').trim().toLowerCase();
       const filteredProducts = window.products.filter((product) => {
-        if (!searchValue) return true;
-        return String(product.name || '').toLowerCase().includes(searchValue) ||
+        const matchesSearch = !searchValue ||
+          String(product.name || '').toLowerCase().includes(searchValue) ||
           String(product.code || '').toLowerCase().includes(searchValue);
+        const stock = Number(product.stock || 0);
+        const matchesFilter = window.productCatalogFilter === 'all'
+          ? true
+          : window.productCatalogFilter === 'in_stock'
+            ? stock > 0
+            : stock > 0 && stock <= 5;
+        return matchesSearch && matchesFilter;
       });
 
       const todayProductUnits = window.transactions
@@ -4510,6 +4607,9 @@ ${memberPortalUrl}
       const todayUnitsEl = document.getElementById('todayProductUnits');
       if (productsCountEl) productsCountEl.textContent = window.products.length;
       if (todayUnitsEl) todayUnitsEl.textContent = todayProductUnits;
+      document.querySelectorAll('.product-filter-tab').forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.filter === window.productCatalogFilter);
+      });
 
       if (filteredProducts.length === 0) {
         grid.innerHTML = `<p class="empty-state">${window.products.length === 0 ? 'პროდუქტები ჯერ არ დამატებულა' : 'მითითებული პროდუქტები ვერ მოიძებნა'}</p>`;
@@ -4524,6 +4624,11 @@ ${memberPortalUrl}
         renderDaySalesModal();
       }
     }
+
+    window.setProductCatalogFilter = function(filter) {
+      window.productCatalogFilter = filter || 'all';
+      updateProductsTab();
+    };
 
     function renderFinanceBreakdown(summary) {
       const container = document.getElementById('financeBreakdownList');
@@ -5365,6 +5470,9 @@ ${memberPortalUrl}
       } else {
         window.productSaleCart = [...window.productSaleCart, { productId, quantity: 1 }];
       }
+      const nextItem = window.productSaleCart.find((item) => item.productId === productId);
+      window.activeProductCartItemId = productId;
+      window.productCartQuantityBuffer = String(nextItem?.quantity || 1);
       renderProductCart();
       updateProductsTab();
     };
@@ -5383,18 +5491,28 @@ ${memberPortalUrl}
           };
         })
         .filter(Boolean);
+      const nextItem = window.productSaleCart.find((item) => item.productId === productId);
+      window.activeProductCartItemId = nextItem ? productId : (window.productSaleCart[0]?.productId || null);
+      window.productCartQuantityBuffer = nextItem ? String(nextItem.quantity) : '';
       renderProductCart();
       updateProductsTab();
     };
 
     window.removeProductFromCart = function(productId) {
       window.productSaleCart = window.productSaleCart.filter((item) => item.productId !== productId);
+      if (window.activeProductCartItemId === productId) {
+        window.activeProductCartItemId = window.productSaleCart[0]?.productId || null;
+        const nextItem = window.productSaleCart.find((item) => item.productId === window.activeProductCartItemId);
+        window.productCartQuantityBuffer = nextItem ? String(nextItem.quantity) : '';
+      }
       renderProductCart();
       updateProductsTab();
     };
 
     window.clearProductCart = function() {
       window.productSaleCart = [];
+      window.activeProductCartItemId = null;
+      window.productCartQuantityBuffer = '';
       const noteInput = document.getElementById('productCartNote');
       if (noteInput) noteInput.value = '';
       renderProductCart();
@@ -5404,6 +5522,61 @@ ${memberPortalUrl}
     window.selectCartPaymentMethod = function(method) {
       window.productCartPaymentMethod = method;
       renderProductCart();
+    };
+
+    window.selectProductCartItem = function(productId) {
+      const item = window.productSaleCart.find((entry) => entry.productId === productId);
+      if (!item) return;
+      window.activeProductCartItemId = productId;
+      window.productCartQuantityBuffer = String(item.quantity || 1);
+      renderProductCart();
+    };
+
+    window.productCartKeypadPress = function(digit) {
+      if (!window.activeProductCartItemId) {
+        const first = window.productSaleCart[0];
+        if (!first) return;
+        window.activeProductCartItemId = first.productId;
+      }
+      const nextBuffer = `${window.productCartQuantityBuffer || ''}${digit}`.replace(/^0+(?=\d)/, '');
+      window.productCartQuantityBuffer = nextBuffer.slice(0, 3);
+      window.productCartApplyKeypadQuantity();
+    };
+
+    window.productCartKeypadBackspace = function() {
+      if (!window.activeProductCartItemId) return;
+      window.productCartQuantityBuffer = String(window.productCartQuantityBuffer || '').slice(0, -1);
+      window.productCartApplyKeypadQuantity(true);
+    };
+
+    window.productCartKeypadClear = function() {
+      if (!window.activeProductCartItemId) return;
+      window.productCartQuantityBuffer = '';
+      renderProductCart();
+    };
+
+    window.productCartApplyKeypadQuantity = function(allowEmpty = false) {
+      if (!window.activeProductCartItemId) return;
+      const cartItem = window.productSaleCart.find((item) => item.productId === window.activeProductCartItemId);
+      const product = window.products.find((item) => item.id === window.activeProductCartItemId);
+      if (!cartItem || !product) return;
+      const parsed = Number(window.productCartQuantityBuffer || 0);
+      if (!parsed && allowEmpty) {
+        renderProductCart();
+        return;
+      }
+      const nextQuantity = Math.max(1, Math.min(parsed || cartItem.quantity || 1, Number(product.stock || 0)));
+      window.productSaleCart = window.productSaleCart.map((item) =>
+        item.productId === window.activeProductCartItemId ? { ...item, quantity: nextQuantity } : item
+      );
+      window.productCartQuantityBuffer = String(nextQuantity);
+      renderProductCart();
+      updateProductsTab();
+    };
+
+    window.changeActiveProductCartQuantity = function(delta) {
+      if (!window.activeProductCartItemId) return;
+      window.changeProductCartQuantity(window.activeProductCartItemId, delta);
     };
 
     window.closeProductSaleModal = function() {
@@ -6007,8 +6180,26 @@ ${memberPortalUrl}
 
     async function loadSubscriptionPlansFromRest() {
       try {
+        if (isRestRateLimited('subscription_plans')) {
+          if (!window.subscriptionPlans.length) {
+            window.subscriptionPlans = DEFAULT_SUBSCRIPTION_PLANS.map((item) => ({ ...item }));
+          }
+          populateSubscriptionSelects('');
+          return;
+        }
         const pid = 'fit-house-gym-d3595';
         const res = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans?pageSize=50`);
+        if (!res.ok) {
+          if (res.status === 429) {
+            markRestRateLimited('subscription_plans');
+            if (!window.subscriptionPlans.length) {
+              window.subscriptionPlans = DEFAULT_SUBSCRIPTION_PLANS.map((item) => ({ ...item }));
+            }
+            populateSubscriptionSelects('');
+            return;
+          }
+          throw new Error(`subscription_plans fetch failed with status ${res.status}`);
+        }
         const json = await res.json();
         const docs = json.documents || [];
         window.subscriptionPlans = docs.map(d => {
@@ -6027,20 +6218,25 @@ ${memberPortalUrl}
         }).filter(p => p.active).sort((a, b) => a.order - b.order);
 
         if (window.subscriptionPlans.length === 0) {
-          await seedDefaultPlans();
+          if (!subscriptionPlansSeedAttempted) {
+            subscriptionPlansSeedAttempted = true;
+            await seedDefaultPlans();
+          } else {
+            window.subscriptionPlans = DEFAULT_SUBSCRIPTION_PLANS.map((item) => ({ ...item }));
+          }
         }
+        populateSubscriptionSelects('');
       } catch(e) {
         console.error('loadSubscriptionPlansFromRest error', e);
+        if (!window.subscriptionPlans.length) {
+          window.subscriptionPlans = DEFAULT_SUBSCRIPTION_PLANS.map((item) => ({ ...item }));
+          populateSubscriptionSelects('');
+        }
       }
     }
 
     async function seedDefaultPlans() {
-      const defaults = [
-        {name:'12 ვარჯიში', type:'12visits', price:70, durationDays:30, remainingVisits:12, active:true, order:1},
-        {name:'დილის ულიმიტო', type:'morning', price:90, durationDays:30, remainingVisits:null, active:true, order:2},
-        {name:'ულიმიტო', type:'unlimited', price:110, durationDays:30, remainingVisits:null, active:true, order:3},
-        {name:'ერთჯერადი ვიზიტი', type:'single_visit', price:15, durationDays:1, remainingVisits:1, active:true, order:4}
-      ];
+      const defaults = DEFAULT_SUBSCRIPTION_PLANS;
       const pid = 'fit-house-gym-d3595';
       for (const p of defaults) {
         const body = { fields: {
@@ -6053,12 +6249,21 @@ ${memberPortalUrl}
           order: {integerValue: String(p.order)}
         }};
         try {
-          await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans`, {
+          const response = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans`, {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
           });
-        } catch(_) {}
+          if (response.status === 429) {
+            markRestRateLimited('subscription_plans');
+            break;
+          }
+        } catch(_) {
+          break;
+        }
       }
-      await loadSubscriptionPlansFromRest();
+      if (!window.subscriptionPlans.length) {
+        window.subscriptionPlans = DEFAULT_SUBSCRIPTION_PLANS.map((item) => ({ ...item }));
+      }
+      populateSubscriptionSelects('');
     }
 
     function renderSubscriptionPlansTable() {
