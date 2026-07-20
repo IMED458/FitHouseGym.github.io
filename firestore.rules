@@ -193,6 +193,44 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ─── subscription_plans (აბონემენტის ტარიფები) ────────────────────────
+    // Read: ყველა (რეგისტრაციის ფორმა და member portal ფასებს კითხულობს)
+    // Write: სტრუქტურის ვალიდაცია — admin-only UI-ს მხარეს
+    //
+    // ⚠️ ფასის შეცვლა მხოლოდ ახალ გადახდებზე მოქმედებს: members-სა და
+    //    transactions-ში ფასი snapshot-ად ინახება ჩაწერის მომენტში.
+
+    match /subscription_plans/{planId} {
+      allow read: if true;
+
+      allow create, update: if hasRequiredFields(['name', 'type', 'price', 'durationDays'])
+        && isValidString('name')
+        && isValidString('type')
+        && request.resource.data.price is int
+        && request.resource.data.price >= 0
+        && request.resource.data.durationDays is int
+        && request.resource.data.durationDays > 0
+        && notTooLarge(15);
+
+      allow delete: if true;  // admin-only UI-ს მხარეს
+    }
+
+    // ─── payments (Flitt) — ᲑᲠᲐᲣᲖᲔᲠᲘᲓᲐᲜ ᲡᲠᲣᲚᲘᲐᲓ ᲓᲐᲮᲣᲠᲣᲚᲘ ────────────────
+    //
+    // აქ ფული ფიქსირდება, ამიტომ ბრაუზერს არც კითხვის და არც წერის უფლება
+    // არ აქვს. ყველა ოპერაცია გადის Cloud Function-ზე, რომელიც Admin SDK-ით
+    // წერს და rules-ს გვერდს უვლის.
+    //
+    // მომხმარებელი თავის გადახდის სტატუსს იღებს ავტორიზებული endpoint-ით:
+    //   GET /api/payments/{uuid}/status
+    //
+    // ეს კრიტიკულია: წინააღმდეგ შემთხვევაში წევრს შეეძლებოდა კონსოლიდან
+    // ჩაეწერა status:'paid' და უფასოდ გაეაქტიურებინა აბონემენტი.
+
+    match /payments/{paymentId} {
+      allow read, write: if false;
+    }
+
     // ─── ყველა სხვა collection-ი — DENY ──────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ka" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FitHouse — გადახდის შედეგი</title>
+  <link rel="apple-touch-icon" href="/fithause logo.png">
+  <meta name="theme-color" content="#020617">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#020617; color:#f1f5f9; font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+           margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .card { background:#0f172a; border:1px solid #1e293b; border-radius:20px; padding:36px 28px;
+            max-width:420px; width:100%; text-align:center; }
+    .icon-wrap { width:72px; height:72px; border-radius:50%; display:flex; align-items:center;
+                 justify-content:center; margin:0 auto 20px; font-size:1.8rem; }
+    h1 { font-size:1.3rem; font-weight:900; margin:0 0 10px; }
+    p { color:#94a3b8; font-size:0.9rem; line-height:1.5; margin:0 0 22px; }
+    .btn { display:inline-block; padding:12px 26px; background:linear-gradient(135deg,#dc2626,#e11d48);
+           color:#fff; text-decoration:none; border:none; border-radius:12px; font-weight:800;
+           font-size:0.9rem; cursor:pointer; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .spin { animation:spin 1s linear infinite; }
+  </style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="icon-wrap" style="background:rgba(148,163,184,0.12);border:2px solid #334155;color:#94a3b8;">
+      <i class="fas fa-spinner spin"></i>
+    </div>
+    <h1>გადახდის სტატუსი მოწმდება</h1>
+    <p>გთხოვთ დაელოდოთ, ვამოწმებთ გადახდის შედეგს...</p>
+  </div>
+
+<script type="module">
+// The browser is never trusted for payment status — we poll OUR backend, which
+// only ever reflects what the signed server-to-server callback told it.
+const API_BASE = 'https://us-central1-fit-house-gym-d3595.cloudfunctions.net/api';
+
+let session = null;
+try { session = JSON.parse(localStorage.getItem('fh_member_session') || 'null'); } catch (_) {}
+const paymentId = localStorage.getItem('fh_flitt_pending');
+
+const VIEWS = {
+  paid: {
+    color: '#10b981', bg: 'rgba(16,185,129,0.12)', icon: 'fa-check',
+    title: 'გადახდა წარმატებულია',
+    text: 'თქვენი აბონემენტი გააქტიურდა. კარგ ვარჯიშს გისურვებთ!',
+    button: 'პირად კაბინეტში დაბრუნება',
+  },
+  failed: {
+    color: '#ef4444', bg: 'rgba(239,68,68,0.12)', icon: 'fa-xmark',
+    title: 'გადახდა უარყოფილია',
+    text: 'თანხა არ ჩამოიჭრა. სცადეთ ხელახლა ან სხვა ბარათით.',
+    button: 'ხელახლა ცდა',
+  },
+  expired: {
+    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: 'fa-clock',
+    title: 'გადახდის ვადა ამოიწურა',
+    text: 'გადახდა დროულად არ დასრულდა. დაიწყეთ ახალი გადახდა.',
+    button: 'ახალი გადახდა',
+  },
+  reversed: {
+    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', icon: 'fa-rotate-left',
+    title: 'გადახდა დაბრუნებულია',
+    text: 'თანხა დაბრუნდა. დამატებითი კითხვებისთვის მიმართეთ ადმინისტრატორს.',
+    button: 'პირად კაბინეტში დაბრუნება',
+  },
+  pending: {
+    color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: 'fa-hourglass-half',
+    title: 'გადახდა მუშავდება',
+    text: 'დამუშავება გრძელდება. სტატუსი მალე განახლდება — შეამოწმეთ პირად კაბინეტში.',
+    button: 'პირად კაბინეტში დაბრუნება',
+  },
+  unknown: {
+    color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', icon: 'fa-circle-question',
+    title: 'სტატუსი ვერ დადგინდა',
+    text: 'გადახდის შედეგი ვერ მოვიძიეთ. შეამოწმეთ პირად კაბინეტში ან მიმართეთ ადმინისტრატორს.',
+    button: 'პირად კაბინეტში დაბრუნება',
+  },
+};
+
+function render(key) {
+  const v = VIEWS[key] || VIEWS.unknown;
+  document.getElementById('card').innerHTML = `
+    <div class="icon-wrap" style="background:${v.bg};border:2px solid ${v.color};color:${v.color};">
+      <i class="fas ${v.icon}"></i>
+    </div>
+    <h1 style="color:${v.color};">${v.title}</h1>
+    <p>${v.text}</p>
+    <a class="btn" href="/member">${v.button}</a>
+  `;
+}
+
+const TERMINAL = new Set(['paid', 'failed', 'expired', 'reversed']);
+
+async function poll() {
+  if (!session || !session.token || !paymentId) { render('unknown'); return; }
+
+  // Bounded polling: the callback usually lands within a couple of seconds,
+  // but we never spin forever.
+  const DELAYS = [0, 1500, 2000, 2500, 3000, 4000, 5000, 6000];
+
+  for (const wait of DELAYS) {
+    if (wait) await new Promise(r => setTimeout(r, wait));
+    try {
+      const res = await fetch(`${API_BASE}/payments/${paymentId}/status`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (TERMINAL.has(data.status)) {
+        localStorage.removeItem('fh_flitt_pending');
+        render(data.status);
+        return;
+      }
+    } catch (_) { /* keep trying */ }
+  }
+  render('pending');
+}
+
+poll();
+</script>
+</body>
+</html>

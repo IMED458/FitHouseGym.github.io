@@ -113,6 +113,11 @@ let qrScanner = null;
 let qrScannerRunning = false;
 let pendingCheckinToken = null;
 
+// ── Flitt payments (backend-only; nothing secret ever lives here) ──────────
+const API_BASE = 'https://us-central1-fit-house-gym-d3595.cloudfunctions.net/api';
+let flittEnabled = false;
+let flittMode = null;
+
 const SUB_NAMES = {
   '12visits': '12 ვარჯიში', single_visit: '1 ვიზიტი',
   morning: 'დილის (09-16)', unlimited: 'ულიმიტო', other: 'სხვა'
@@ -262,6 +267,26 @@ function renderLogin() {
       if (!found) found = candidates.find(d => !d.password && d.personalId === pid);
       if (!found) { showLoginError('მეილი ან პაროლი არასწორია'); return; }
       session = { memberId: found.id, email: found.email, firstName: found.firstName, lastName: found.lastName, ts: Date.now() };
+
+      // Exchange credentials for a server-signed session token. The backend
+      // re-verifies them itself; the client-side check above is only for UX.
+      // Failure here is non-fatal — it just means no online payment this session.
+      try {
+        const sres = await fetch(`${API_BASE}/auth/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pid }),
+        });
+        if (sres.ok) {
+          const sdata = await sres.json();
+          session.token = sdata.token;
+          flittEnabled = Boolean(sdata.flitt_enabled);
+          flittMode = sdata.flitt_mode || null;
+          session.flittEnabled = flittEnabled;
+          session.flittMode = flittMode;
+        }
+      } catch (_) { /* offline / functions not deployed — portal still works */ }
+
       localStorage.setItem('fh_member_session', JSON.stringify(session));
       const token = pendingCheckinToken;
       window.history.replaceState({}, '', '/member');
@@ -287,6 +312,11 @@ function renderLogin() {
 // ── Dashboard bootstrap ────────────────────────────────────────────────────
 async function startDashboard(initialTab) {
   if (initialTab) activeTab = initialTab;
+  // Restore the payment gate for a session resumed from localStorage.
+  if (session) {
+    flittEnabled = Boolean(session.flittEnabled);
+    flittMode = session.flittMode || null;
+  }
   renderDashboardShell();
   await loadMemberData();
   if (pendingCheckinToken) {
@@ -531,7 +561,7 @@ function renderTabContent() {
   if (!el) return;
   switch(activeTab) {
     case 'overview': el.innerHTML = renderOverview(); break;
-    case 'sub': el.innerHTML = renderSubscription(); break;
+    case 'sub': el.innerHTML = renderSubscription(); loadFlittPlans(); break;
     case 'qr': el.innerHTML = renderQrTab(); startQrScanner(); break;
     case 'visits': el.innerHTML = renderVisits(); break;
     case 'payments': el.innerHTML = renderPayments(); break;
@@ -669,12 +699,123 @@ function renderSubscription() {
         <i class="fas fa-calendar-xmark" style="font-size:3rem;margin-bottom:16px;display:block;"></i>
         <p>ამჟამად არ გაქვთ აბონემენტი. გთხოვთ მიმართოთ Fit House Gym-ის ადმინისტრატორს.</p>
       </div>`}
+      ${renderFlittSection()}
     </div>
   `;
 }
 function subDetailRow(label, value) {
   return `<div><span style="color:#475569;font-size:0.75rem;display:block;">${label}</span><p style="color:#e2e8f0;font-weight:800;margin-top:2px;">${value}</p></div>`;
 }
+
+// ── Flitt online payment (stage 1 — test mode, allowlisted members only) ────
+let flittPlans = [];
+let flittSelectedPlanId = null;
+
+function renderFlittSection() {
+  if (!flittEnabled) return '';
+  return `
+    <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <h3 style="font-size:1rem;font-weight:900;color:white;">ონლაინ გადახდა</h3>
+          <p style="color:#64748b;font-size:0.8rem;margin-top:2px;">აირჩიეთ აბონემენტი და გადაიხადეთ ბარათით</p>
+        </div>
+        ${flittMode === 'test'
+          ? '<span style="background:rgba(245,158,11,0.15);color:#fbbf24;border:1px solid rgba(245,158,11,0.35);padding:3px 10px;border-radius:9999px;font-size:0.68rem;font-weight:900;letter-spacing:0.04em;">FLITT TEST MODE</span>'
+          : ''}
+      </div>
+      <div id="flitt-plans" style="display:grid;gap:10px;margin-bottom:14px;"></div>
+      <div id="flitt-error" style="display:none;margin-bottom:12px;padding:10px 14px;border-radius:10px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#f87171;font-size:0.82rem;font-weight:700;"></div>
+      <button id="flitt-pay-btn" class="btn-primary" onclick="window.startFlittPayment()" disabled>
+        <i class="fas fa-credit-card mr-2"></i> Flitt-ით გადახდა
+      </button>
+    </div>
+  `;
+}
+
+async function loadFlittPlans() {
+  if (!flittEnabled) return;
+  try {
+    const snap = await getDocs(collection(db, 'subscription_plans'));
+    flittPlans = snap.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(p => p.active !== false)
+      .sort((a, b) => (a.order || 99) - (b.order || 99));
+  } catch (_) {
+    flittPlans = [];
+  }
+  renderFlittPlans();
+}
+
+function renderFlittPlans() {
+  const wrap = document.getElementById('flitt-plans');
+  if (!wrap) return;
+  if (!flittPlans.length) {
+    wrap.innerHTML = '<div style="color:#475569;font-size:0.85rem;">ტარიფები ვერ ჩაიტვირთა.</div>';
+    return;
+  }
+  wrap.innerHTML = flittPlans.map(p => `
+    <label style="display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid ${flittSelectedPlanId === p.id ? '#ef4444' : '#1e293b'};border-radius:12px;cursor:pointer;background:${flittSelectedPlanId === p.id ? 'rgba(239,68,68,0.07)' : 'transparent'};">
+      <input type="radio" name="flitt-plan" value="${p.id}" ${flittSelectedPlanId === p.id ? 'checked' : ''}
+             onchange="window.selectFlittPlan('${p.id}')" style="accent-color:#ef4444;width:17px;height:17px;">
+      <span style="flex:1;font-weight:800;color:#e2e8f0;font-size:0.9rem;">${p.name}</span>
+      <span style="font-weight:900;color:#10b981;">${p.price}₾</span>
+    </label>
+  `).join('');
+}
+
+window.selectFlittPlan = function (planId) {
+  flittSelectedPlanId = planId;
+  const btn = document.getElementById('flitt-pay-btn');
+  if (btn) btn.disabled = false;
+  renderFlittPlans();
+};
+
+function showFlittError(message) {
+  const el = document.getElementById('flitt-error');
+  if (!el) return;
+  el.textContent = message;
+  el.style.display = 'block';
+}
+
+window.startFlittPayment = async function () {
+  const btn = document.getElementById('flitt-pay-btn');
+  const errEl = document.getElementById('flitt-error');
+  if (!btn || btn.disabled) return;
+  if (!flittSelectedPlanId) { showFlittError('აირჩიეთ აბონემენტი'); return; }
+  if (errEl) errEl.style.display = 'none';
+
+  // Guard against a double click creating two payment attempts.
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> მიმდინარეობს...';
+
+  try {
+    const res = await fetch(`${API_BASE}/payments/flitt/checkout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      // Only the plan id travels — the server decides the amount.
+      body: JSON.stringify({ membership_plan_id: flittSelectedPlanId }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showFlittError(data.error || 'გადახდის დაწყება ვერ მოხერხდა');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-credit-card mr-2"></i> Flitt-ით გადახდა';
+      return;
+    }
+
+    localStorage.setItem('fh_flitt_pending', data.payment_id);
+    window.location.href = data.checkout_url;
+  } catch (_) {
+    showFlittError('კავშირის შეცდომა. სცადეთ ხელახლა.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-credit-card mr-2"></i> Flitt-ით გადახდა';
+  }
+};
 
 // ── Tab: QR Check-in ──────────────────────────────────────────────────────
 function renderQrTab() {

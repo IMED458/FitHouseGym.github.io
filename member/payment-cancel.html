@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ka" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>FitHouse — გადახდა გაუქმდა</title>
+  <link rel="apple-touch-icon" href="/fithause logo.png">
+  <meta name="theme-color" content="#020617">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    * { box-sizing: border-box; }
+    body { background:#020617; color:#f1f5f9; font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+           margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+    .card { background:#0f172a; border:1px solid #1e293b; border-radius:20px; padding:36px 28px;
+            max-width:420px; width:100%; text-align:center; }
+    .icon-wrap { width:72px; height:72px; border-radius:50%; display:flex; align-items:center;
+                 justify-content:center; margin:0 auto 20px; font-size:1.8rem;
+                 background:rgba(148,163,184,0.12); border:2px solid #475569; color:#94a3b8; }
+    h1 { font-size:1.3rem; font-weight:900; margin:0 0 10px; color:#e2e8f0; }
+    p { color:#94a3b8; font-size:0.9rem; line-height:1.5; margin:0 0 22px; }
+    .btn { display:inline-block; padding:12px 26px; background:linear-gradient(135deg,#dc2626,#e11d48);
+           color:#fff; text-decoration:none; border-radius:12px; font-weight:800; font-size:0.9rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-wrap"><i class="fas fa-ban"></i></div>
+    <h1>გადახდა გაუქმდა</h1>
+    <p>თანხა არ ჩამოიჭრა. შეგიძლიათ ნებისმიერ დროს ხელახლა სცადოთ.</p>
+    <a class="btn" href="/member">პირად კაბინეტში დაბრუნება</a>
+  </div>
+  <script>
+    // The attempt was abandoned, not completed — drop the pending marker.
+    try { localStorage.removeItem('fh_flitt_pending'); } catch (e) {}
+  </script>
+</body>
+</html>
