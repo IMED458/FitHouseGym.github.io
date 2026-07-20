@@ -59,10 +59,10 @@
 
       <div class="auth-panel">
         <div class="auth-field">
-          <label for="loginUsername">USERNAME</label>
+          <label for="loginUsername">USERNAME / PERSONAL ID</label>
           <div class="auth-input-wrap">
             <i class="far fa-user"></i>
-            <input type="text" id="loginUsername" placeholder="admin" class="auth-input">
+            <input type="text" id="loginUsername" placeholder="admin / პირადი ნომერი" class="auth-input">
           </div>
         </div>
 
@@ -1154,6 +1154,14 @@
           <input type="text" id="userUsername" class="form-input">
         </div>
         <div class="product-form-field">
+          <label for="userPersonalId">პირადი ნომერი</label>
+          <input type="text" id="userPersonalId" class="form-input">
+        </div>
+        <div class="product-form-field">
+          <label for="userEmail">Email</label>
+          <input type="email" id="userEmail" class="form-input">
+        </div>
+        <div class="product-form-field">
           <label for="userRole">როლი</label>
           <select id="userRole" class="form-input">
             <option value="operator">ოპერატორი</option>
@@ -1241,7 +1249,7 @@
   </div>
 
   <div id="resetUserPasswordModal" class="modal">
-    <div class="modal-content" style="max-width:460px;">
+    <div class="modal-content" style="max-width:520px;">
       <div class="modal-header">
         <h3>პაროლის აღდგენა</h3>
         <button class="modal-close" onclick="window.closeResetUserPasswordModal()">×</button>
@@ -1250,19 +1258,27 @@
       <div class="sale-product-summary">
         <div class="sale-product-name" id="resetUserName">იუზერი</div>
         <div class="sale-product-meta" id="resetUserUsername"></div>
+        <div class="sale-product-meta" id="resetUserEmail"></div>
       </div>
       <div class="product-form-grid">
         <div class="product-form-field product-form-field-full">
-          <label for="resetUserPassword">ახალი პაროლი</label>
+        <div class="product-form-field product-form-field-full">
+          <label for="resetUserPassword">ერთჯერადი პაროლი</label>
           <div style="position:relative;">
             <input type="password" id="resetUserPassword" class="form-input">
             <button type="button" class="pw-toggle-btn" onclick="togglePwVisibility('resetUserPassword', this)"><i class="fas fa-eye"></i></button>
           </div>
         </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="resetUserPasswordInfo">ინფორმაცია</label>
+          <div id="resetUserPasswordInfo" class="sale-product-meta" style="padding:12px 16px;border-radius:14px;border:1px solid var(--border);background:rgba(59,130,246,0.08);font-size:0.92rem;">
+            ეს პაროლი გამოჩნდება აქ და გაიგზავნება მომხმარებლის მეილზე.
+          </div>
+        </div>
       </div>
       <div class="email-actions">
         <button class="btn btn-success" id="resetUserPasswordBtn" onclick="window.resetUserPassword()">
-          <i class="fas fa-key"></i> პაროლის შენახვა
+          <i class="fas fa-paper-plane"></i> მეილზე გაგზავნა
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closeResetUserPasswordModal()">
           გაუქმება
@@ -1310,6 +1326,41 @@
         </button>
         <button class="btn bg-gray-600 hover:bg-gray-700" onclick="window.closePlanForm()">
           გაუქმება
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="forcePasswordResetModal" class="modal">
+    <div class="modal-content" style="max-width:520px;">
+      <div class="modal-header">
+        <h3>პაროლის განახლება</h3>
+      </div>
+      <div class="sale-product-summary">
+        <div class="sale-product-name" id="forcePasswordResetName">მომხმარებელი</div>
+        <div class="sale-product-meta">პირველი შესვლა ან ერთჯერადი პაროლით ავტორიზაცია</div>
+      </div>
+      <div class="product-form-grid">
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordCurrent">მიმდინარე ერთჯერადი პაროლი</label>
+          <input type="password" id="forcePasswordCurrent" class="form-input" autocomplete="current-password">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordNew">ახალი მუდმივი პაროლი</label>
+          <input type="password" id="forcePasswordNew" class="form-input" autocomplete="new-password">
+        </div>
+        <div class="product-form-field product-form-field-full">
+          <label for="forcePasswordConfirm">გაიმეორე ახალი პაროლი</label>
+          <input type="password" id="forcePasswordConfirm" class="form-input" autocomplete="new-password">
+        </div>
+      </div>
+      <div class="email-actions">
+        <button class="btn btn-success" onclick="window.completeForcedPasswordReset()">
+          <i class="fas fa-check"></i> პაროლის განახლება
+        </button>
+      </div>
+    </div>
+  </div>
         </button>
       </div>
     </div>

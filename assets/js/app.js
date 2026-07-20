@@ -40,6 +40,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     let usersStreamStarted = false;
     let activityLogsStreamStarted = false;
     let dataStreamsStarted = false;
+    let forcePasswordResetPending = false;
     window.members = [];
     window.users = [];
     window.products = [];
@@ -212,6 +213,21 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
     function normalizeUsername(value) {
       return String(value || '').trim().toLowerCase();
+    }
+
+    function normalizePersonalId(value) {
+      return String(value || '').trim();
+    }
+
+    function isValidEmail(value) {
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+    }
+
+    function generateTemporaryPassword(length = 8) {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+      const bytes = new Uint8Array(length);
+      crypto.getRandomValues(bytes);
+      return Array.from(bytes, (byte) => chars[byte % chars.length]).join('');
     }
 
     function getCurrentUserDisplayName(user = currentUser) {
@@ -1022,6 +1038,20 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       showToast('პაროლის აღდგენა ხდება ადმინისტრატორის პანელიდან', 'warning');
     };
 
+    function shouldForcePasswordReset(user) {
+      return Boolean(user?.mustChangePassword);
+    }
+
+    function openForcedPasswordResetModal(user) {
+      forcePasswordResetPending = true;
+      document.getElementById('forcePasswordResetName').textContent = getCurrentUserDisplayName(user);
+      document.getElementById('forcePasswordCurrent').value = '';
+      document.getElementById('forcePasswordNew').value = '';
+      document.getElementById('forcePasswordConfirm').value = '';
+      document.getElementById('forcePasswordResetModal').style.display = 'flex';
+      showToast('გაანახლე პაროლი მუდმივ პაროლზე', 'warning');
+    }
+
     window.login = async function() {
       const username = normalizeUsername(document.getElementById('loginUsername')?.value);
       const input = document.getElementById('adminPassword').value;
@@ -1046,7 +1076,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 
       const inputHash = await sha256Hex(input);
       const matchedUser = window.users.find((item) =>
-        normalizeUsername(item.username) === username &&
+        (normalizeUsername(item.username) === username || normalizeUsername(item.personalId) === username) &&
         item.passwordHash === inputHash &&
         (item.status || 'active') === 'active'
       );
@@ -1078,12 +1108,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       startExpiringNotificationsScheduler();
       startCheckInListenerPolling();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
+      if (shouldForcePasswordReset(matchedUser)) {
+        openForcedPasswordResetModal(matchedUser);
+      }
     };
 
     window.logout = function() {
       isAuthenticated = false;
       currentUserRole = null;
       currentUser = null;
+      forcePasswordResetPending = false;
       expandedSearchMemberId = null;
       window.selectedSubscription = null;
       window.productSaleCart = [];
@@ -2328,6 +2362,8 @@ ${memberPortalUrl}
         <tr>
           <td>${user.firstName || '—'} ${user.lastName || ''}</td>
           <td>${user.username || '—'}</td>
+          <td>${user.personalId || '—'}</td>
+          <td>${user.email || '—'}</td>
           <td><span class="status-badge ${user.role === 'admin' ? 'status-active' : 'status-paused'}">${getRoleLabel(user.role)}</span></td>
           <td><span class="status-badge ${user.status === 'disabled' ? 'status-expired' : 'status-active'}">${user.status === 'disabled' ? 'გამორთული' : 'აქტიური'}</span></td>
           <td>${formatDateTime(user.updatedAt || user.createdAt)}</td>
@@ -2341,7 +2377,7 @@ ${memberPortalUrl}
       `);
 
       container.innerHTML = buildAdminTable(
-        ['სახელი / გვარი', 'იუზერი', 'როლი', 'სტატუსი', 'განახლდა', 'ქმედება'],
+        ['სახელი / გვარი', 'იუზერი', 'პირადი ნომერი', 'Email', 'როლი', 'სტატუსი', 'განახლდა', 'ქმედება'],
         rows,
         'იუზერები ჯერ არ არის'
       );
@@ -2645,6 +2681,8 @@ ${memberPortalUrl}
       document.getElementById('userFirstName').value = user?.firstName || '';
       document.getElementById('userLastName').value = user?.lastName || '';
       document.getElementById('userUsername').value = user?.username || '';
+      document.getElementById('userPersonalId').value = user?.personalId || '';
+      document.getElementById('userEmail').value = user?.email || '';
       document.getElementById('userRole').value = user?.role || 'operator';
       document.getElementById('userPassword').value = '';
       document.getElementById('userStatus').value = user?.status || 'active';
@@ -2657,6 +2695,8 @@ ${memberPortalUrl}
       document.getElementById('userFirstName').value = '';
       document.getElementById('userLastName').value = '';
       document.getElementById('userUsername').value = '';
+      document.getElementById('userPersonalId').value = '';
+      document.getElementById('userEmail').value = '';
       document.getElementById('userPassword').value = '';
       document.getElementById('userRole').value = 'operator';
       document.getElementById('userStatus').value = 'active';
@@ -2667,12 +2707,18 @@ ${memberPortalUrl}
       const firstName = document.getElementById('userFirstName').value.trim();
       const lastName = document.getElementById('userLastName').value.trim();
       const username = normalizeUsername(document.getElementById('userUsername').value);
+      const personalId = normalizePersonalId(document.getElementById('userPersonalId').value);
+      const email = document.getElementById('userEmail').value.trim();
       const password = document.getElementById('userPassword').value;
       const role = document.getElementById('userRole').value === 'admin' ? 'admin' : 'operator';
       const status = document.getElementById('userStatus').value === 'disabled' ? 'disabled' : 'active';
 
-      if (!firstName || !lastName || !username) {
-        showToast('სახელი, გვარი და იუზერი სავალდებულოა', 'error');
+      if (!firstName || !lastName || !username || !personalId || !email) {
+        showToast('სახელი, გვარი, იუზერი, პირადი ნომერი და Email სავალდებულოა', 'error');
+        return;
+      }
+      if (!isValidEmail(email)) {
+        showToast('Email არასწორია', 'error');
         return;
       }
       if (!id && !password) {
@@ -2688,6 +2734,14 @@ ${memberPortalUrl}
         showToast('ეს იუზერი უკვე არსებობს', 'error');
         return;
       }
+      const personalIdTaken = window.users.some((item) =>
+        normalizePersonalId(item.personalId) === personalId &&
+        item.id !== id
+      );
+      if (personalIdTaken) {
+        showToast('ეს პირადი ნომერი უკვე გამოყენებულია', 'error');
+        return;
+      }
 
       const existingUser = id ? window.users.find((item) => item.id === id) : null;
       const nowIso = new Date().toISOString();
@@ -2696,9 +2750,12 @@ ${memberPortalUrl}
         firstName,
         lastName,
         username,
+        personalId,
+        email,
         passwordHash,
         role,
         status,
+        mustChangePassword: password ? true : (existingUser?.mustChangePassword || false),
         updatedAt: nowIso,
         createdAt: existingUser?.createdAt || nowIso
       };
@@ -2708,6 +2765,28 @@ ${memberPortalUrl}
       const saved = await saveUserRecord(payload);
       if (!saved.ok) return;
 
+      if (password) {
+        await sendEmail(
+          email,
+          `${firstName} ${lastName}`.trim(),
+          'Gym Manager - ერთჯერადი პაროლი',
+          `გამარჯობა ${firstName},
+
+თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
+
+ერთჯერადი პაროლი: ${password}
+იუზერი: ${username}
+პირადი ნომერი: ${personalId}
+
+გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
+          {
+            temporary_password: password,
+            username,
+            personal_id: personalId
+          }
+        );
+      }
+
       showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
       window.closeUserForm();
       hydrateUsersFromRest();
@@ -2716,10 +2795,13 @@ ${memberPortalUrl}
     window.openResetUserPasswordModal = function(userId) {
       const user = window.users.find((item) => item.id === userId);
       if (!user) return;
+      const temporaryPassword = generateTemporaryPassword(8);
       document.getElementById('resetUserId').value = user.id;
       document.getElementById('resetUserName').textContent = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       document.getElementById('resetUserUsername').textContent = `იუზერი: ${user.username || '—'}`;
-      document.getElementById('resetUserPassword').value = '';
+      document.getElementById('resetUserEmail').textContent = `Email: ${user.email || '—'}`;
+      document.getElementById('resetUserPassword').value = temporaryPassword;
+      document.getElementById('resetUserPasswordInfo').textContent = 'ერთჯერადი პაროლი ჯერ არ გაგზავნილა. გადაამოწმე და შემდეგ გააგზავნე მეილზე.';
       document.getElementById('resetUserPasswordModal').style.display = 'flex';
     };
 
@@ -2727,23 +2809,54 @@ ${memberPortalUrl}
       document.getElementById('resetUserPasswordModal').style.display = 'none';
       document.getElementById('resetUserId').value = '';
       document.getElementById('resetUserPassword').value = '';
+      document.getElementById('resetUserEmail').textContent = '';
+      document.getElementById('resetUserPasswordInfo').textContent = 'ეს პაროლი გამოჩნდება აქ და გაიგზავნება მომხმარებლის მეილზე.';
     };
 
     window.resetUserPassword = async function() {
       const id = document.getElementById('resetUserId').value;
       const password = document.getElementById('resetUserPassword').value;
+      const user = window.users.find((item) => item.id === id);
       if (!id || !password) {
         showToast('ახალი პაროლი სავალდებულოა', 'error');
         return;
       }
+      if (!user?.email || !isValidEmail(user.email)) {
+        showToast('მომხმარებელს სწორი Email არ აქვს', 'error');
+        return;
+      }
       const passwordHash = await sha256Hex(password);
+      const sent = await sendEmail(
+        user.email,
+        getCurrentUserDisplayName(user),
+        'Gym Manager - ერთჯერადი პაროლი',
+        `გამარჯობა ${user.firstName || ''},
+
+თქვენთვის შეიქმნა ერთჯერადი პაროლი Gym Manager-ში ავტორიზაციისთვის.
+
+ერთჯერადი პაროლი: ${password}
+
+გთხოვთ, სისტემაში შესვლისთანავე შეცვალოთ ის მუდმივ პაროლზე.`,
+        {
+          temporary_password: password,
+          username: user.username || '',
+          personal_id: user.personalId || ''
+        }
+      );
+      if (!sent) {
+        showToast('მეილზე გაგზავნა ვერ მოხერხდა', 'error');
+        return;
+      }
       const saved = await saveUserRecord({
         id,
         passwordHash,
+        mustChangePassword: true,
+        temporaryPasswordIssuedAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       });
       if (!saved.ok) return;
-      showToast('პაროლი განახლდა');
+      document.getElementById('resetUserPasswordInfo').textContent = `ერთჯერადი პაროლი გაიგზავნა: ${user.email}`;
+      showToast('ერთჯერადი პაროლი გაიგზავნა');
       window.closeResetUserPasswordModal();
       hydrateUsersFromRest();
     };
@@ -2771,12 +2884,58 @@ ${memberPortalUrl}
       const saved = await saveUserRecord({
         id: currentUser.id,
         passwordHash: await sha256Hex(newPassword),
+        mustChangePassword: false,
         updatedAt: new Date().toISOString()
       });
       if (!saved.ok) return;
-      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword) };
+      currentUser = { ...currentUser, passwordHash: await sha256Hex(newPassword), mustChangePassword: false };
       document.getElementById('passwordChangeForm')?.reset();
       showPasswordSuccessOverlay();
+      hydrateUsersFromRest();
+    };
+
+    window.completeForcedPasswordReset = async function() {
+      if (!currentUser) return;
+      const currentPassword = document.getElementById('forcePasswordCurrent').value;
+      const newPassword = document.getElementById('forcePasswordNew').value;
+      const confirmPassword = document.getElementById('forcePasswordConfirm').value;
+
+      if (!currentPassword || !newPassword || !confirmPassword) {
+        showToast('ყველა ველი სავალდებულოა', 'error');
+        return;
+      }
+      if (newPassword !== confirmPassword) {
+        showToast('ახალი პაროლები არ ემთხვევა', 'error');
+        return;
+      }
+      const currentHash = await sha256Hex(currentPassword);
+      if (currentHash !== currentUser.passwordHash) {
+        showToast('ერთჯერადი პაროლი არასწორია', 'error');
+        return;
+      }
+
+      const newHash = await sha256Hex(newPassword);
+      const saved = await saveUserRecord({
+        id: currentUser.id,
+        passwordHash: newHash,
+        mustChangePassword: false,
+        passwordUpdatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      });
+      if (!saved.ok) return;
+
+      currentUser = {
+        ...currentUser,
+        passwordHash: newHash,
+        mustChangePassword: false,
+        passwordUpdatedAt: new Date().toISOString()
+      };
+      forcePasswordResetPending = false;
+      document.getElementById('forcePasswordResetModal').style.display = 'none';
+      document.getElementById('forcePasswordCurrent').value = '';
+      document.getElementById('forcePasswordNew').value = '';
+      document.getElementById('forcePasswordConfirm').value = '';
+      showToast('მუდმივი პაროლი წარმატებით განახლდა');
       hydrateUsersFromRest();
     };
 
