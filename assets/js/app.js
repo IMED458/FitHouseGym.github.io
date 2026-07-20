@@ -1714,24 +1714,25 @@ ${memberPortalUrl}
     }
 
     // ავტომატური შეტყობინება 3 დღეში ვადაგასულებისთვის
+    // Reminder goes out once, exactly 3 days before expiry — never at 2, 1 or
+    // 0 days. This used to match a 0–3 day range, so whichever day the
+    // scheduler first saw a member inside that range is the mail they got.
+    const EXPIRY_REMINDER_DAYS = 3;
+
     async function checkAndSendExpiringNotifications() {
       const now = new Date();
       now.setHours(0, 0, 0, 0);
-      
-      const threeDaysLater = new Date();
-      threeDaysLater.setDate(now.getDate() + 3);
-      threeDaysLater.setHours(23, 59, 59, 999);
-      
+
       for (const member of window.members) {
         if (member.status !== 'active' || !member.email) continue;
-        
+
         if (member.expiringEmailSent) continue;
-        
+
         const endDate = new Date(member.subscriptionEndDate);
         endDate.setHours(0, 0, 0, 0);
-        
-        if (endDate >= now && endDate <= threeDaysLater) {
-          const daysLeft = Math.ceil((endDate - now) / 86400000);
+
+        const daysLeft = Math.round((endDate - now) / 86400000);
+        if (daysLeft === EXPIRY_REMINDER_DAYS) {
           const subject = '💪 ⏰ თქვენი Fit House Gym-ის აბონემენტი მალე იწურება';
           
           const message = `გახსენებთ, რომ თქვენი Fit House Gym-ის აბონემენტის ვადა იწურება ${daysLeft} დღეში ⏳

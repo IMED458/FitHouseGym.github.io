@@ -70,6 +70,10 @@ function buildMembershipUpdate({ member, plan, priceGel, isRenewal, now = new Da
     subscriptionStartDate: startDate,
     subscriptionEndDate: endDate,
     remainingVisits: plan.remainingVisits === null ? null : Number(plan.remainingVisits),
+    // Re-arm the expiry reminder for the new period. Cash renewals in app.js
+    // already clear this; without it a Flitt renewal would silently never
+    // trigger another reminder.
+    expiringEmailSent: false,
     lastMembershipPaymentMethod: 'FLITT',
     lastMembershipHandledByRole: 'member',
     lastMembershipHandledByFullName: payerLabel(member),

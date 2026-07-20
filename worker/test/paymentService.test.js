@@ -233,6 +233,8 @@ describe('callback processing', () => {
     expect(member.subscriptionType).toBe('unlimited');
     expect(member.subscriptionPrice).toBe(110);
     expect(new Date(member.subscriptionEndDate).getTime()).toBeGreaterThan(Date.now());
+    // The expiry reminder must re-arm, or a Flitt renewal never triggers one.
+    expect(member.expiringEmailSent).toBe(false);
 
     const payment = db.getDoc('payments', checkout.orderId);
     expect(payment.status).toBe(STATUS.PAID);
