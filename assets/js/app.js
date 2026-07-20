@@ -2432,6 +2432,28 @@ ${memberPortalUrl}
       }
     };
 
+    window.toggleRegisterTrainerSession = function() {
+      const checked = Boolean(document.getElementById('regTrainerSessionIncluded')?.checked);
+      const wrap = document.getElementById('regTrainerSessionWrap');
+      const track = document.getElementById('regTrainerSessionTrack');
+      const thumb = document.getElementById('regTrainerSessionThumb');
+      if (wrap) wrap.style.display = checked ? 'block' : 'none';
+      if (track) {
+        track.style.background = checked ? '#2563eb' : '#1e293b';
+        track.style.borderColor = checked ? '#3b82f6' : '#334155';
+      }
+      if (thumb) {
+        thumb.style.transform = checked ? 'translateX(24px)' : 'none';
+        thumb.style.background = checked ? '#fff' : '#64748b';
+      }
+      if (!checked) {
+        const price = document.getElementById('regTrainerSessionPrice');
+        const gift = document.getElementById('regTrainerSessionGift');
+        if (price) price.value = '';
+        if (gift) gift.checked = false;
+      }
+    };
+
     window.toggleEditTrainer = function(id) {
       const checked = document.getElementById(`e_trainerService_${id}`).checked;
       const wrap = document.getElementById(`e_trainerSelectWrap_${id}`);
@@ -4078,6 +4100,12 @@ ${memberPortalUrl}
           document.getElementById('customSubscriptionFields').style.display = 'none';
           const regTrainerWrap = document.getElementById('regTrainerSelectWrap');
           if (regTrainerWrap) regTrainerWrap.style.display = 'none';
+          const regTrainerService = document.getElementById('regTrainerService');
+          if (regTrainerService) regTrainerService.checked = false;
+          window.toggleRegTrainer();
+          const regTrainerSessionIncluded = document.getElementById('regTrainerSessionIncluded');
+          if (regTrainerSessionIncluded) regTrainerSessionIncluded.checked = false;
+          window.toggleRegisterTrainerSession();
           showToast("რეგისტრაცია წარმატებით დასრულდა!");
         } else if (context.mode === 'renew') {
           const existingMember = window.members.find((item) => item.id === context.memberId);
@@ -6220,9 +6248,9 @@ ${memberPortalUrl}
             subscriptionStartDate: start.toISOString(),
             subscriptionEndDate: end.toISOString(),
             remainingVisits: visits,
-            trainerSessionIncluded: false,
-            trainerSessionGifted: false,
-            trainerSessionPrice: 0,
+            trainerSessionIncluded: document.getElementById('regTrainerSessionIncluded')?.checked || false,
+            trainerSessionGifted: document.getElementById('regTrainerSessionIncluded')?.checked ? Boolean(document.getElementById('regTrainerSessionGift')?.checked) : false,
+            trainerSessionPrice: document.getElementById('regTrainerSessionIncluded')?.checked ? Math.max(0, Number(document.getElementById('regTrainerSessionPrice')?.value || 0)) : 0,
             totalVisits: 0,
             status: 'active',
             lastVisit: null,

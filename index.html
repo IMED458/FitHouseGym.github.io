@@ -281,6 +281,29 @@
             </div>
           </div>
 
+          <div class="mt-6" style="border:2px dashed rgba(59,130,246,0.28);border-radius:20px;padding:20px;background:linear-gradient(135deg,rgba(59,130,246,0.08),rgba(37,99,235,0.03));">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+              <div>
+                <div style="font-weight:800;font-size:1rem;color:#f1f5f9;">ტრენერის ერთჯერადი მომსახურება</div>
+                <div style="font-size:0.78rem;color:#64748b;margin-top:2px;">რეგისტრაციიდანვე შეგიძლია მიუთითო ფასიანი ან საჩუქარი სესია</div>
+              </div>
+              <label style="position:relative;display:inline-block;width:52px;height:28px;cursor:pointer;">
+                <input type="checkbox" id="regTrainerSessionIncluded" onchange="window.toggleRegisterTrainerSession()" style="opacity:0;width:0;height:0;position:absolute;">
+                <span id="regTrainerSessionTrack" style="position:absolute;inset:0;background:#1e293b;border-radius:14px;transition:background 0.2s;border:2px solid #334155;"></span>
+                <span id="regTrainerSessionThumb" style="position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#64748b;transition:all 0.2s;"></span>
+              </label>
+            </div>
+            <div id="regTrainerSessionWrap" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid rgba(59,130,246,0.16);">
+              <div class="form-grid">
+                <input type="number" id="regTrainerSessionPrice" placeholder="ტრენერის ფასი ₾" class="form-input" min="0" step="0.01">
+                <label style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-radius:14px;border:1px solid #334155;background:#0f172a;color:#cbd5e1;cursor:pointer;">
+                  <input type="checkbox" id="regTrainerSessionGift" style="width:18px;height:18px;accent-color:#3b82f6;">
+                  <span>საჩუქრად</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
           <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-4 mt-8 w-full">
             რეგისტრაცია
           </button>
