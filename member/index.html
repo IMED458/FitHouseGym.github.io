@@ -712,6 +712,22 @@ let flittPlans = [];
 let flittSelectedPlanId = null;
 
 function renderFlittSection() {
+  // A session created before online payment shipped has no server token, so we
+  // cannot tell whether this member is allowed to pay. Say so instead of
+  // silently hiding the section — otherwise it looks like a bug.
+  if (session && !session.token) {
+    return `
+      <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;">
+        <h3 style="font-size:1rem;font-weight:900;color:white;margin-bottom:6px;">ონლაინ გადახდა</h3>
+        <p style="color:#64748b;font-size:0.85rem;margin-bottom:14px;">
+          ონლაინ გადახდის გასააქტიურებლად საჭიროა ხელახლა შესვლა.
+        </p>
+        <button class="btn-primary" onclick="window.doLogout()">
+          <i class="fas fa-right-from-bracket mr-2"></i> გასვლა და ხელახლა შესვლა
+        </button>
+      </div>
+    `;
+  }
   if (!flittEnabled) return '';
   return `
     <div style="background:#020617;border:1px solid #1e293b;border-radius:16px;padding:20px 24px;">

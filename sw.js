@@ -1,4 +1,4 @@
-const CACHE = 'fithouse-v1';
+const CACHE = 'fithouse-v2';
 const ASSETS = ['/', '/index.html', '/assets/css/styles.css', '/assets/js/app.js', '/fithause logo.png', '/member/', '/trainer/'];
 
 self.addEventListener('install', e => {
