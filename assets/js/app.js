@@ -837,6 +837,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>ბოლო ვიზიტი:</strong> ${member.lastVisit ? formatDate(member.lastVisit) : '—'}</div>
             ${member.createdByFullName ? `<div><strong>რეგისტრავტორი:</strong> <span style="color:#94a3b8;">${member.createdByFullName}${member.createdByUsername ? ' (@'+member.createdByUsername+')' : ''}</span></div>` : ''}
             ${member.lastMembershipHandledByFullName && member.lastMembershipHandledByFullName !== member.createdByFullName ? `<div><strong>ბოლო განახლება:</strong> <span style="color:#94a3b8;">${member.lastMembershipHandledByFullName}</span></div>` : ''}
+            <div><strong>ტრენერი:</strong> ${member.trainerSessionIncluded ? (member.trainerSessionGifted ? `ერთჯერადი • საჩუქრად` : `ერთჯერადი • ${formatCurrency(member.trainerSessionPrice)}`) : 'არა'}</div>
           </div>
           ${member.trainerServiceEnabled && member.trainerId ? `
             <div style="margin-bottom:16px;padding:12px 16px;background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(220,38,38,0.06));border:1px solid rgba(239,68,68,0.3);border-radius:14px;display:flex;align-items:center;gap:10px;">
@@ -3811,6 +3812,18 @@ ${memberPortalUrl}
       return ['12visits', 'morning', 'unlimited', 'single_visit'].includes(type);
     }
 
+    function getTrainerServiceSelection() {
+      const included = Boolean(document.getElementById('membershipTrainerIncluded')?.checked);
+      const gifted = Boolean(document.getElementById('membershipTrainerGift')?.checked);
+      const price = included ? Math.max(0, Number(document.getElementById('membershipTrainerPrice')?.value || 0)) : 0;
+      return {
+        included,
+        gifted,
+        price,
+        charge: included && !gifted ? price : 0
+      };
+    }
+
     function getMembershipDurationDays(startDateIso, endDateIso) {
       const start = new Date(startDateIso || new Date());
       const end = new Date(endDateIso || new Date());
@@ -3893,10 +3906,15 @@ ${memberPortalUrl}
       document.getElementById('membershipPaymentCustomPrice')?.value !== undefined && (document.getElementById('membershipPaymentCustomPrice').value = '');
       document.getElementById('membershipPaymentCustomDuration')?.value !== undefined && (document.getElementById('membershipPaymentCustomDuration').value = '');
       document.getElementById('membershipPaymentCustomVisits')?.value !== undefined && (document.getElementById('membershipPaymentCustomVisits').value = '');
+      document.getElementById('membershipTrainerIncluded')?.checked !== undefined && (document.getElementById('membershipTrainerIncluded').checked = false);
+      document.getElementById('membershipTrainerGift')?.checked !== undefined && (document.getElementById('membershipTrainerGift').checked = false);
+      document.getElementById('membershipTrainerPrice')?.value !== undefined && (document.getElementById('membershipTrainerPrice').value = '');
       const subscriptionTypeField = document.getElementById('membershipPaymentSubscriptionTypeField');
       const customFields = document.getElementById('membershipPaymentCustomFields');
+      const trainerFields = document.getElementById('membershipTrainerFields');
       if (subscriptionTypeField) subscriptionTypeField.style.display = 'none';
       if (customFields) customFields.style.display = 'none';
+      if (trainerFields) trainerFields.style.display = 'none';
     }
 
     window.updateMembershipPaymentSelection = function() {
@@ -3904,15 +3922,16 @@ ${memberPortalUrl}
       const isRenew = context?.mode === 'renew';
       const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
       const customFields = document.getElementById('membershipPaymentCustomFields');
+      const trainerFields = document.getElementById('membershipTrainerFields');
 
       if (!isRenew) {
         if (subscriptionField) subscriptionField.style.display = 'none';
         if (customFields) customFields.style.display = 'none';
-        return;
       }
 
       const selectedType = document.getElementById('membershipPaymentSubscriptionType').value;
-      customFields.style.display = selectedType === 'other' ? 'block' : 'none';
+      if (customFields) customFields.style.display = selectedType === 'other' ? 'block' : 'none';
+      if (trainerFields) trainerFields.style.display = document.getElementById('membershipTrainerIncluded')?.checked ? 'block' : 'none';
 
       const selection = getMembershipPaymentSelection();
       if (!selection?.valid) {
@@ -3921,22 +3940,31 @@ ${memberPortalUrl}
         return;
       }
 
+      const trainerSelection = getTrainerServiceSelection();
+      const trainerMeta = trainerSelection.included
+        ? ` • ტრენერი ${trainerSelection.gifted ? 'საჩუქრად' : formatCurrency(trainerSelection.price)}`
+        : '';
+
       document.getElementById('membershipPaymentMeta').textContent =
-        `${selection.displayName} • ვადა ${formatDate(selection.subscriptionEndDate)}`;
+        `${selection.displayName} • ვადა ${formatDate(selection.subscriptionEndDate)}${trainerMeta}`;
       document.getElementById('membershipPaymentAmount').textContent =
-        `თანხა: ${formatCurrency(selection.subscriptionPrice)}`;
+        `თანხა: ${formatCurrency(selection.subscriptionPrice + trainerSelection.charge)}`;
     };
 
-    function buildMembershipRenewalPayload(member, paymentMethod, note, selection) {
+    function buildMembershipRenewalPayload(member, paymentMethod, note, selection, trainerSelection) {
       return {
         ...member,
         subscriptionType: selection.subscriptionType,
-        subscriptionPrice: selection.subscriptionPrice,
+        subscriptionPrice: selection.subscriptionPrice + trainerSelection.charge,
+        baseSubscriptionPrice: selection.subscriptionPrice,
         subscriptionStartDate: selection.subscriptionStartDate,
         subscriptionEndDate: selection.subscriptionEndDate,
         remainingVisits: selection.remainingVisits,
         status: 'active',
         expiringEmailSent: false,
+        trainerSessionIncluded: trainerSelection.included,
+        trainerSessionGifted: trainerSelection.included ? trainerSelection.gifted : false,
+        trainerSessionPrice: trainerSelection.included ? trainerSelection.price : 0,
         lastMembershipPaymentMethod: paymentMethod,
         lastMembershipPaymentNote: note || null,
         lastMembershipHandledByUserId: currentUser?.id || null,
@@ -3962,12 +3990,14 @@ ${memberPortalUrl}
       // Populate dynamic plan options
       const renewSel = document.getElementById('membershipPaymentSubscriptionType');
       if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
-
-      if (isRenew) {
-        const subscriptionField = document.getElementById('membershipPaymentSubscriptionTypeField');
-        subscriptionField.style.display = 'block';
-        if (member) {
-          const isStandardType = isStandardMembershipType(member.subscriptionType);
+      // Populate dynamic plan options
+      const renewSel = document.getElementById('membershipPaymentSubscriptionType');
+      if (renewSel) renewSel.innerHTML = buildSubscriptionOptions('');
+      if (context.member?.trainerSessionIncluded) {
+        document.getElementById('membershipTrainerIncluded').checked = true;
+        document.getElementById('membershipTrainerGift').checked = Boolean(context.member.trainerSessionGifted);
+        document.getElementById('membershipTrainerPrice').value = Number(context.member.trainerSessionPrice || 0) || '';
+      }
           document.getElementById('membershipPaymentSubscriptionType').value = isStandardType ? member.subscriptionType : 'other';
           if (!isStandardType) {
             document.getElementById('membershipPaymentCustomDescription').value = member.subscriptionType || '';
@@ -3977,9 +4007,14 @@ ${memberPortalUrl}
             document.getElementById('membershipPaymentCustomVisits').value =
               member.remainingVisits == null ? '' : member.remainingVisits;
           }
+          if (member.trainerSessionIncluded) {
+            document.getElementById('membershipTrainerIncluded').checked = true;
+            document.getElementById('membershipTrainerGift').checked = Boolean(member.trainerSessionGifted);
+            document.getElementById('membershipTrainerPrice').value = Number(member.trainerSessionPrice || 0) || '';
+          }
         }
-        window.updateMembershipPaymentSelection();
       }
+      window.updateMembershipPaymentSelection();
 
       const btn = document.getElementById('confirmMembershipPaymentBtn');
       if (btn) {
@@ -4022,7 +4057,15 @@ ${memberPortalUrl}
 
       try {
         if (context.mode === 'register') {
-          const saved = await createMember(context.member, { paymentMethod, note });
+          const trainerSelection = getTrainerServiceSelection();
+          const registerMember = {
+            ...context.member,
+            subscriptionPrice: Number(context.member.baseSubscriptionPrice || context.member.subscriptionPrice || 0) + trainerSelection.charge,
+            trainerSessionIncluded: trainerSelection.included,
+            trainerSessionGifted: trainerSelection.included ? trainerSelection.gifted : false,
+            trainerSessionPrice: trainerSelection.included ? trainerSelection.price : 0
+          };
+          const saved = await createMember(registerMember, { paymentMethod, note });
           if (!saved) throw new Error('membership registration failed');
           document.getElementById('registrationForm')?.reset();
           window.selectedSubscription = null;
@@ -4035,6 +4078,7 @@ ${memberPortalUrl}
           const existingMember = window.members.find((item) => item.id === context.memberId);
           if (!existingMember) throw new Error('member not found');
           const selection = getMembershipPaymentSelection();
+          const trainerSelection = getTrainerServiceSelection();
           if (!selection?.valid) {
             showToast(selection?.reason || 'შეავსე აბონემენტის მონაცემები', 'error');
             if (btn) {
@@ -4043,7 +4087,7 @@ ${memberPortalUrl}
             }
             return;
           }
-          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note, selection);
+          const updated = buildMembershipRenewalPayload(existingMember, paymentMethod, note, selection, trainerSelection);
           const saved = await updateMember(updated);
           if (!saved) throw new Error('membership renewal failed');
           const membershipTransactionSaved = await recordMembershipTransaction('membership_renewal', updated, { paymentMethod, note });
@@ -6167,9 +6211,13 @@ ${memberPortalUrl}
             note: document.getElementById('note').value.trim() || null,
             subscriptionType: type,
             subscriptionPrice: price,
+            baseSubscriptionPrice: price,
             subscriptionStartDate: start.toISOString(),
             subscriptionEndDate: end.toISOString(),
             remainingVisits: visits,
+            trainerSessionIncluded: false,
+            trainerSessionGifted: false,
+            trainerSessionPrice: 0,
             totalVisits: 0,
             status: 'active',
             lastVisit: null,
