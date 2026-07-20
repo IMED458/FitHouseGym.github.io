@@ -259,6 +259,34 @@ describe('callback processing', () => {
     });
   });
 
+  test('credits the payment to the member by name, not to "Flitt"', async () => {
+    const db = seed();
+    const { service, checkout } = await createPaidCheckout(db, okFlitt());
+
+    await service.applyProviderResult(
+      await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
+    );
+
+    // Finance reports render actorFullName — it must name the payer.
+    const tx = Object.values(db.dump('transactions'))[0];
+    expect(tx.actorFullName).toBe('გიორგი ტესტი (Flitt)');
+    expect(tx.actorRole).toBe('member');
+
+    // Same on the member record, which the admin panel surfaces.
+    expect(db.getDoc('members', 'm1').lastMembershipHandledByFullName).toBe('გიორგი ტესტი (Flitt)');
+  });
+
+  test('falls back to "Flitt" when the member has no name', async () => {
+    const db = seed({ member: { firstName: '', lastName: '' } });
+    const { service, checkout } = await createPaidCheckout(db, okFlitt());
+
+    await service.applyProviderResult(
+      await signedCallback({ order_id: checkout.orderId, order_status: 'approved', amount: 11000 })
+    );
+
+    expect(Object.values(db.dump('transactions'))[0].actorFullName).toBe('Flitt');
+  });
+
   test('declined callback does not activate the membership', async () => {
     const db = seed();
     const { service, checkout } = await createPaidCheckout(db, okFlitt());

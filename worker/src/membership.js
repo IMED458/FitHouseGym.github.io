@@ -54,7 +54,13 @@ function computeSubscriptionPeriod(plan, startDate = new Date()) {
  * Builds the member document patch for an activation/renewal.
  * Pure function — the caller persists it inside a transaction.
  */
-function buildMembershipUpdate({ plan, priceGel, isRenewal, now = new Date() }) {
+/** "გიორგი იმედაშვილი (Flitt)" — who actually paid, not just the channel. */
+function payerLabel(member) {
+  const name = `${member?.firstName || ''} ${member?.lastName || ''}`.trim();
+  return name ? `${name} (Flitt)` : 'Flitt';
+}
+
+function buildMembershipUpdate({ member, plan, priceGel, isRenewal, now = new Date() }) {
   const { startDate, endDate } = computeSubscriptionPeriod(plan, now);
 
   return {
@@ -65,8 +71,8 @@ function buildMembershipUpdate({ plan, priceGel, isRenewal, now = new Date() }) 
     subscriptionEndDate: endDate,
     remainingVisits: plan.remainingVisits === null ? null : Number(plan.remainingVisits),
     lastMembershipPaymentMethod: 'FLITT',
-    lastMembershipHandledByRole: 'system',
-    lastMembershipHandledByFullName: 'Flitt (ონლაინ გადახდა)',
+    lastMembershipHandledByRole: 'member',
+    lastMembershipHandledByFullName: payerLabel(member),
     lastMembershipActionAt: now.toISOString(),
     lastMembershipAction: isRenewal ? 'membership_renewal' : 'membership_registration',
   };
@@ -89,11 +95,12 @@ function buildTransactionRecord({ member, plan, priceGel, isRenewal, orderId, no
     subscriptionType: plan.type,
     subscriptionName: plan.name,
     paymentMethod: 'FLITT',
-    note: `Flitt ონლაინ გადახდა • ${orderId}`,
+    note: `ონლაინ გადახდა • ${orderId}`,
     actorUserId: null,
     actorUsername: null,
-    actorFullName: 'Flitt (ონლაინ გადახდა)',
-    actorRole: 'system',
+    // The member paid for themselves — show who, with the channel in brackets.
+    actorFullName: payerLabel(member),
+    actorRole: 'member',
     description: isRenewal
       ? `აბონემენტის განახლება: ${plan.name}`
       : `ახალი აბონემენტი: ${plan.name}`,

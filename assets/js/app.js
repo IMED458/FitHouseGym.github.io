@@ -100,7 +100,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         TBC: 'TBC',
         BOG: 'BOG',
         CASH: 'CASH',
-        TRANSFER: 'გადარიცხვა'
+        TRANSFER: 'გადარიცხვა',
+        FLITT: 'Flitt (ონლაინ)'
       };
       return map[method] || method || '—';
     }
@@ -974,7 +975,12 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       const transferAmount = allTransactions
         .filter((tx) => tx.paymentMethod === 'TRANSFER')
         .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
-      const cardAmount = tbcAmount + bogAmount;
+      const flittAmount = allTransactions
+        .filter((tx) => tx.paymentMethod === 'FLITT')
+        .reduce((sum, tx) => sum + Number(tx.amount || 0), 0);
+      // Flitt is a card payment, so it belongs in the card total — without this
+      // online payments were counted in the day total but in no method bucket.
+      const cardAmount = tbcAmount + bogAmount + flittAmount;
 
       const setText = (id, value) => {
         const el = document.getElementById(id);
@@ -992,6 +998,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       setText('daySalesTbcAmount', formatCurrency(tbcAmount));
       setText('daySalesBogAmount', formatCurrency(bogAmount));
       setText('daySalesTransferAmount', formatCurrency(transferAmount));
+      setText('daySalesFlittAmount', formatCurrency(flittAmount));
 
       const membershipList = document.getElementById('daySalesMembershipList');
       const recentList = document.getElementById('daySalesRecentList');
@@ -1004,7 +1011,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
           .map((tx) => buildTransactionRowHtml({
             title: tx.memberName || tx.subscriptionName || 'აბონემენტი',
-            meta: `${tx.type === 'membership_registration' ? 'ახალი აბონემენტი' : 'განახლება'} • ${tx.subscriptionName || tx.subscriptionType || 'აბონემენტი'} • ${formatDateTime(tx.createdAt)}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
+            meta: `${tx.type === 'membership_registration' ? 'ახალი აბონემენტი' : 'განახლება'} • ${tx.subscriptionName || tx.subscriptionType || 'აბონემენტი'} • ${getPaymentMethodLabel(tx.paymentMethod)} • ${formatDateTime(tx.createdAt)}${tx.actorFullName ? ` • ${tx.actorFullName}` : ''}`,
             amount: formatCurrency(tx.amount),
             tx
           })).join('');

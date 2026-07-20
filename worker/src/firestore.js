@@ -138,6 +138,10 @@ class DocRef {
   async get() {
     const res = await this.client._request('GET', `/${this.path}`);
     if (res.status === 404) return { exists: false, id: this.id, data: () => undefined };
+    // Anything else non-OK (429 quota, 5xx) must throw. Treating it as a
+    // successful read would hand callers an "empty" document and, during a
+    // callback, silently corrupt the payment decision.
+    await this.client._assertOk(res);
     const doc = await res.json();
     return { exists: true, id: this.id, data: () => fromFields(doc.fields) };
   }
@@ -266,6 +270,8 @@ class Transaction {
       `/${ref.path}?transaction=${encodeURIComponent(this.transactionId)}`
     );
     if (res.status === 404) return { exists: false, id: ref.id, data: () => undefined };
+    // Throw rather than return a phantom empty doc — see DocRef.get().
+    await this.client._assertOk(res);
     const doc = await res.json();
     return { exists: true, id: ref.id, data: () => fromFields(doc.fields) };
   }

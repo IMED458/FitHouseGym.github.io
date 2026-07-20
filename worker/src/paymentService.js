@@ -289,6 +289,7 @@ class PaymentService {
         tx.update(
           memberRef,
           buildMembershipUpdate({
+            member,
             plan,
             priceGel,
             isRenewal: Boolean(payment.isRenewal),
