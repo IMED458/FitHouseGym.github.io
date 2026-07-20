@@ -936,7 +936,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
             <div><strong>ტელეფონი:</strong> ${member.phone || '—'}</div>
-            <div><strong>Email:</strong> ${member.email || '—'}</div>
+            <div><strong>Email:</strong> ${member.email || '—'}${emailWarningBadge(member)}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(member.subscriptionType)}</div>
             <div><strong>ფასი:</strong> ${member.subscriptionPrice}₾</div>
             <div><strong>გააქტიურდა:</strong> ${formatDate(member.subscriptionStartDate)}</div>
@@ -1487,8 +1487,118 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       }
     };
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // EMAIL DELIVERABILITY
+    //
+    // The quota is finite, so an address that has already failed should not be
+    // retried forever. Note: EmailJS reports send-time rejections only — a true
+    // bounce happens after delivery is accepted and is invisible from the
+    // browser. Staff can therefore also flag a bad address by hand.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    const EMAIL_FAIL_LIMIT = 2; // after this many rejections, stop trying
+
+    function isValidEmailAddress(email) {
+      const value = String(email || '').trim();
+      if (!value || value.length > 254) return false;
+      // Deliberately simple: catch typos and empty values, not exotic RFC cases.
+      return /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(value);
+    }
+
+    /** True when we should not spend quota on this member at all. */
+    function isEmailBlocked(member) {
+      if (!member) return false;
+      if (member.emailBlocked) return true;
+      return Number(member.emailFailCount || 0) >= EMAIL_FAIL_LIMIT;
+    }
+
+    function emailBlockReason(member) {
+      if (!member) return '';
+      if (member.emailBlocked) return 'ხელით გამორთულია';
+      if (Number(member.emailFailCount || 0) >= EMAIL_FAIL_LIMIT) {
+        return `${member.emailFailCount} წარუმატებელი ცდა`;
+      }
+      if (!isValidEmailAddress(member.email)) return 'მისამართი არასწორია';
+      return '';
+    }
+
+    async function recordEmailFailure(member, reason) {
+      if (!member?.id) return;
+      const count = Number(member.emailFailCount || 0) + 1;
+      try {
+        await updateMemberFields(member.id, {
+          emailFailCount: count,
+          emailLastError: String(reason || '').slice(0, 200),
+          emailLastFailedAt: new Date().toISOString(),
+        });
+      } catch (_) { /* never let bookkeeping break the caller */ }
+    }
+
+    /** Inline warning shown next to a member's address in the admin panel. */
+    function emailWarningBadge(member) {
+      if (!member?.email) return '';
+      const reason = emailBlockReason(member);
+      if (!reason) return '';
+      const blocked = isEmailBlocked(member);
+      return `<span onclick="event.stopPropagation();window.toggleMemberEmailBlock('${member.id}')"
+        title="${blocked ? 'დააჭირეთ ჩასართავად' : 'დააჭირეთ გამოსართავად'}"
+        style="display:inline-flex;align-items:center;gap:5px;margin-left:8px;padding:2px 9px;border-radius:9999px;
+               font-size:0.68rem;font-weight:800;cursor:pointer;vertical-align:middle;
+               background:${blocked ? 'rgba(239,68,68,0.15)' : 'rgba(245,158,11,0.15)'};
+               border:1px solid ${blocked ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.4)'};
+               color:${blocked ? '#f87171' : '#fbbf24'};">
+        <i class="fas fa-triangle-exclamation" style="font-size:0.62rem;"></i>${reason}</span>`;
+    }
+
+    /** Manual override — bounces are invisible to the browser, so staff need this. */
+    window.toggleMemberEmailBlock = async function(memberId) {
+      const member = window.members.find((m) => m.id === memberId);
+      if (!member) return;
+      const blocked = isEmailBlocked(member);
+      const label = `${member.firstName || ''} ${member.lastName || ''}`.trim();
+
+      if (blocked) {
+        if (!confirm(`${label}\n\nმეილის გაგზავნა ისევ ჩაირთოს ამ მისამართზე?`)) return;
+        await updateMemberFields(memberId, { emailBlocked: false, emailFailCount: 0, emailLastError: null });
+        showToast(`მეილი ჩაირთო: ${label}`);
+      } else {
+        if (!confirm(`${label}\n\nმეილის გაგზავნა გამოირთოს ამ მისამართზე?\nმასობრივ დაგზავნებში აღარ მოხვდება.`)) return;
+        await updateMemberFields(memberId, { emailBlocked: true });
+        showToast(`მეილი გამოირთო: ${label}`);
+      }
+    };
+
+    async function recordEmailSuccess(member) {
+      // A previously flaky address that works again should not stay penalised.
+      if (!member?.id || !Number(member.emailFailCount || 0)) return;
+      try {
+        await updateMemberFields(member.id, { emailFailCount: 0, emailLastError: null });
+      } catch (_) {}
+    }
+
+    /**
+     * Sends to a member with quota protection. Returns:
+     *   'sent' | 'blocked' | 'invalid' | 'failed'
+     */
+    window.sendEmailToMember = async function(member, subject, message, extraParams = {}) {
+      if (!member) return 'invalid';
+
+      if (!isValidEmailAddress(member.email)) return 'invalid';
+      if (isEmailBlocked(member)) return 'blocked';
+
+      const ok = await sendEmail(member.email, member.firstName, subject, message, {
+        ...extraParams,
+        _silent: true, // bulk callers report their own totals
+      });
+
+      if (ok) { await recordEmailSuccess(member); return 'sent'; }
+      await recordEmailFailure(member, window._lastEmailError);
+      return 'failed';
+    };
+
     // ფუნქცია ემეილის გასაგზავნად
     window.sendEmail = async function(toEmail, toName, subject, message, extraParams = {}) {
+      const { _silent, ...params } = extraParams;
       try {
         const templateParams = {
           to_email: toEmail,
@@ -1497,14 +1607,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
           message: message,
           from_name: 'Fit House Gym',
           reply_to: 'noreply@fithousegym.local',
-          ...extraParams
+          ...params
         };
 
         await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams);
+        window._lastEmailError = null;
         return true;
       } catch (error) {
         console.error('Email error:', error);
-        showToast(`მეილი ვერ გაიგზავნა${error?.text ? `: ${error.text}` : ''}`, 'error');
+        window._lastEmailError = error?.text || error?.message || 'unknown';
+        if (!_silent) {
+          showToast(`მეილი ვერ გაიგზავნა${error?.text ? `: ${error.text}` : ''}`, 'error');
+        }
         return false;
       }
     };
@@ -1611,14 +1725,19 @@ ${portalUrl}
     };
 
     window.sendQrToActiveMembers = async function() {
-      const targets = window.members.filter(
-        m => m.email && String(m.email).trim() && getEffectiveStatus(m) === 'active'
-      );
+      const active = window.members.filter(m => getEffectiveStatus(m) === 'active');
+      // Filter before asking, so the confirmation shows the real send count.
+      const targets = active.filter(m => isValidEmailAddress(m.email) && !isEmailBlocked(m));
+      const skipped = active.length - targets.length;
+
       if (targets.length === 0) {
-        showToast('აქტიური წევრები Email-ით ვერ მოიძებნა', 'error');
+        showToast('გასაგზავნი მისამართი ვერ მოიძებნა', 'error');
         return;
       }
-      const ok = confirm(`გაიგზავნოს კაბინეტის ლინკი ${targets.length} აქტიურ მომხმარებელთან?`);
+      const ok = confirm(
+        `გაიგზავნოს კაბინეტის ლინკი ${targets.length} მომხმარებელთან?` +
+        (skipped ? `\n\n${skipped} გამოტოვდება (არასწორი ან გამორთული მისამართი).` : '')
+      );
       if (!ok) return;
 
       const portalUrl = 'https://fithouse.imed.com.ge/member';
@@ -1648,11 +1767,11 @@ ${portalUrl}
           <p style="color:#94a3b8;font-size:0.85rem;margin-top:16px;">📧 მეილი: ${member.email}<br>🔒 პაროლი: თქვენი პირადი ნომერი</p>
         </div>`;
 
-        const sent = await sendEmail(member.email, member.firstName || 'მომხმარებელი', subject, message, {
+        const result = await sendEmailToMember(member, subject, message, {
           html_message: htmlMessage
         });
 
-        if (sent) success++;
+        if (result === 'sent') success++;
         else failed++;
         await new Promise(resolve => setTimeout(resolve, 450));
       }
@@ -1871,7 +1990,8 @@ ${memberPortalUrl}
       now.setHours(0, 0, 0, 0);
 
       for (const member of window.members) {
-        if (member.status !== 'active' || !member.email) continue;
+        if (member.status !== 'active') continue;
+        if (!isValidEmailAddress(member.email) || isEmailBlocked(member)) continue;
 
         if (member.expiringEmailSent) continue;
 
@@ -1896,8 +2016,8 @@ ${memberPortalUrl}
 
 გელოდებით Fit House Gym-ში!`;
 
-          const sent = await sendEmail(member.email, member.firstName, subject, message);
-          
+          const sent = (await sendEmailToMember(member, subject, message)) === 'sent';
+
           if (sent) {
             await updateMemberFields(member.id, { expiringEmailSent: true });
             console.log('Expiring notification sent to:', member.firstName, member.lastName);
@@ -1989,12 +2109,18 @@ ${memberPortalUrl}
         });
       }
       
+      // Drop unreachable addresses before counting, so the confirmation is honest.
+      const beforeFilter = recipients.length;
+      recipients = recipients.filter(m => isValidEmailAddress(m.email) && !isEmailBlocked(m));
+      const skipped = beforeFilter - recipients.length;
+
       if (recipients.length === 0) {
         showToast('მიმღები ვერ მოიძებნა!', 'error');
         return;
       }
-      
-      const confirmMsg = `გაიგზავნება ${recipients.length} შეტყობინება. გაგრძელება?`;
+
+      const confirmMsg = `გაიგზავნება ${recipients.length} შეტყობინება. გაგრძელება?` +
+        (skipped ? `\n\n${skipped} გამოტოვდება (არასწორი ან გამორთული მისამართი).` : '');
       if (!confirm(confirmMsg)) return;
       
       const btn = document.getElementById('sendBulkBtn');
@@ -2004,7 +2130,7 @@ ${memberPortalUrl}
       let successCount = 0;
       for (const member of recipients) {
         const personalizedMessage = message.replace(/{name}/g, member.firstName);
-        const sent = await sendEmail(member.email, member.firstName, subject, personalizedMessage);
+        const sent = (await sendEmailToMember(member, subject, personalizedMessage)) === 'sent';
         if (sent) successCount++;
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -6312,7 +6438,7 @@ ${memberPortalUrl}
           <div class="info-grid text-sm">
             <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
-            <div><strong>Email:</strong> ${m.email || '—'}</div>
+            <div><strong>Email:</strong> ${m.email || '—'}${emailWarningBadge(m)}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>ვადა გავიდა:</strong> <span class="text-red-400 font-bold">${formatDate(m.subscriptionEndDate)}</span></div>
           </div>
@@ -6393,7 +6519,7 @@ ${memberPortalUrl}
           <div class="grid grid-cols-2 gap-3">
             <div><strong>სახელი:</strong> ${m.firstName} ${m.lastName}</div>
             <div><strong>პირადი:</strong> ${m.personalId}</div>
-            <div><strong>Email:</strong> ${m.email || '—'}</div>
+            <div><strong>Email:</strong> ${m.email || '—'}${emailWarningBadge(m)}</div>
             <div><strong>აბონემენტი:</strong> ${getSubscriptionName(m.subscriptionType)}</div>
             <div><strong>ვადა:</strong> <span class="text-orange-400 font-bold">${formatDate(m.subscriptionEndDate)} (${days} დღე)</span></div>
           </div>
