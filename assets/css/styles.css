@@ -1847,8 +1847,8 @@ body.admin-mode .nav-tabs {
   top: 106px;
   left: auto;
   width: 100%;
-  max-height: calc(100vh - 162px);
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
   align-self: start;
   margin-bottom: 0;
   padding: 18px;
@@ -3015,6 +3015,7 @@ body.admin-mode .nav-tab.active {
 }
 
 body.admin-mode .utility-nav-tab.utility-nav-tab-message {
+  margin-top: 6px;
   background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
 }
 
