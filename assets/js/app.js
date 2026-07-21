@@ -712,6 +712,18 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return member.status;
     }
 
+    /**
+     * Rejects if `promise` has not settled in `ms`.
+     * The Firestore SDK retries failed reads forever instead of rejecting, so
+     * anything on a user-blocking path needs a ceiling.
+     */
+    function withTimeout(promise, ms, label = 'timeout') {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
+      ]);
+    }
+
     async function sha256Hex(text) {
       const encoder = new TextEncoder();
       const data = encoder.encode(text);
@@ -1186,17 +1198,43 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         return;
       }
 
+      const loginBtn = document.getElementById('loginSubmitBtn');
+      const restoreLoginBtn = () => {
+        if (loginBtn) { loginBtn.disabled = false; loginBtn.innerHTML = loginBtn.dataset.originalHtml || 'შესვლა'; }
+      };
+      if (loginBtn) {
+        loginBtn.dataset.originalHtml = loginBtn.dataset.originalHtml || loginBtn.innerHTML;
+        loginBtn.disabled = true;
+        loginBtn.innerHTML = '<div class="spinner"></div> მოწმდება...';
+      }
+
       if (!usersLoadedOnce && window.users.length === 0) {
         try {
-          await ensureDefaultUsers();
+          // The Firestore SDK retries a failing read indefinitely rather than
+          // rejecting, so an exhausted quota used to leave this await pending
+          // forever — the button simply did nothing. Cap the wait, then try
+          // REST, which does return a real status code.
+          await withTimeout(ensureDefaultUsers(), 8000);
         } catch (e) {
           console.error('default users bootstrap failed', e);
-          if (String(e?.message || '').includes('403')) {
-            showToast('Firestore rules ბლოკავს users კოლექციას', 'error');
-          } else {
-            showToast('იუზერების ჩატვირთვა ვერ მოხერხდა', 'error');
+          try {
+            await withTimeout(hydrateUsersFromRest(), 8000);
+          } catch (restError) {
+            console.error('users rest fallback failed', restError);
           }
-          return;
+
+          if (window.users.length === 0) {
+            const msg = String(e?.message || '');
+            if (msg.includes('403')) {
+              showToast('Firestore rules ბლოკავს users კოლექციას', 'error');
+            } else if (msg.includes('429') || msg.includes('RESOURCE_EXHAUSTED') || msg.includes('timeout')) {
+              showToast('ბაზის დღიური ლიმიტი ამოწურულია. სცადეთ მოგვიანებით.', 'error');
+            } else {
+              showToast('იუზერების ჩატვირთვა ვერ მოხერხდა', 'error');
+            }
+            restoreLoginBtn();
+            return;
+          }
         }
       }
 
@@ -1218,9 +1256,11 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
         );
         if (possibleExpiredTempUser) {
           showToast('ერთჯერადი პაროლის ვადა ამოიწურა. მოითხოვე ახალი პაროლი.', 'error');
+          restoreLoginBtn();
           return;
         }
         showToast("იუზერი ან პაროლი არასწორია!", "error");
+        restoreLoginBtn();
         return;
       }
 
@@ -1250,6 +1290,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       startExpiringNotificationsScheduler();
       // Real-time listener; it falls back to polling on its own if it fails.
       startCheckInListener();
+      restoreLoginBtn();
       showToast(`ავტორიზაცია წარმატებით განხორციელდა! (${getRoleLabel()})`, "success");
       if (shouldForcePasswordReset(matchedUser, { usedPersonalId })) {
         openForcedPasswordResetModal(matchedUser);
