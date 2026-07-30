@@ -1365,17 +1365,19 @@ async function autoProcessCheckin(gymToken) {
     lastProcessedAt = Date.now();
 
     // 4. If approved, update member stats
+    let remainingAfter = m.remainingVisits; // unchanged unless approved & limited
     if (result === 'approved') {
       const updates = { lastVisit: now.toISOString(), totalVisits: (m.totalVisits || 0) + 1 };
       if (m.remainingVisits !== null) {
         updates.remainingVisits = m.remainingVisits - 1;
+        remainingAfter = updates.remainingVisits;
         if (updates.remainingVisits <= 0) updates.status = 'expired';
       }
       await updateDoc(doc(db, 'members', m.id), updates);
     }
 
-    // 5. Log check-in
-    await logCheckin(result, reason, gymToken, m);
+    // 5. Log check-in — record visits left after this entry
+    await logCheckin(result, reason, gymToken, m, remainingAfter);
 
     // 6. Show result
     showCheckinResult(result, m, reasonText(reason), reason);
@@ -1436,7 +1438,7 @@ window.retryCheckin = function() {
   startQrScanner();
 };
 
-async function logCheckin(result, reason, gymToken, m) {
+async function logCheckin(result, reason, gymToken, m, remainingAfter = undefined) {
   try {
     await addDoc(collection(db, 'check_ins'), {
       memberId: session.memberId,
@@ -1445,6 +1447,11 @@ async function logCheckin(result, reason, gymToken, m) {
       personalId: m?.personalId || '—',
       subscriptionStatus: m ? effectiveStatus(m) : 'unknown',
       subscriptionType: m?.subscriptionType || '—',
+      subscriptionStartDate: m?.subscriptionStartDate || null,
+      subscriptionEndDate: m?.subscriptionEndDate || null,
+      subscriptionPrice: m?.subscriptionPrice != null ? m.subscriptionPrice : null,
+      // Visits left AFTER this check-in. null = unlimited.
+      remainingVisits: remainingAfter !== undefined ? remainingAfter : (m?.remainingVisits ?? null),
       result,
       reason: reason || '',
       qrToken: gymToken || '',

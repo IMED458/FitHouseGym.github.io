@@ -1426,6 +1426,27 @@
     </div>
   </div>
 
+  <!-- Member visit history. Read-only audit: when each visit happened and how
+       many visits were left afterwards, grouped by subscription period, so a
+       miscounted balance can be traced and restored. -->
+  <div id="memberVisitsModal" class="modal">
+    <div class="modal-content" style="max-width:640px;">
+      <div class="modal-header">
+        <h3><i class="fas fa-list-check"></i> ვიზიტების ისტორია</h3>
+        <button class="modal-close" onclick="window.closeMemberVisits()">×</button>
+      </div>
+      <div class="sale-product-summary">
+        <div class="sale-product-name" id="memberVisitsName">—</div>
+        <div class="sale-product-meta" id="memberVisitsMeta"></div>
+      </div>
+      <div id="memberVisitsBody" style="margin-top:16px;max-height:60vh;overflow-y:auto;">
+        <div style="text-align:center;padding:32px;color:var(--text-muted,#94a3b8);">
+          <i class="fas fa-spinner fa-spin"></i> იტვირთება...
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="planFormModal" class="modal">
     <div class="modal-content" style="max-width:500px;">
       <div class="modal-header">

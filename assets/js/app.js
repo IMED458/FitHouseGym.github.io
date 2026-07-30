@@ -974,6 +974,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             <button class="btn btn-warning text-sm px-6 py-2" onclick="window.renewMembership('${member.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 text-sm px-6 py-2" onclick="window.showEditForm(event, '${member.id}')">რედაქტირება</button>
             <button class="btn bg-indigo-600 hover:bg-indigo-700 text-sm px-6 py-2" onclick="window.showMemberQr('${member.id}')"><i class="fas fa-qrcode"></i> QR</button>
+            <button class="btn bg-sky-700 hover:bg-sky-600 text-sm px-6 py-2" onclick="window.openMemberVisits('${member.id}')"><i class="fas fa-list-check"></i> ვიზიტები</button>
             ${member.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 text-sm px-6 py-2" onclick="window.sendMemberQrEmail('${member.id}')"><i class="fas fa-paper-plane"></i> კაბინეტი გაგზავნა</button>` : ''}
             ${member.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 text-sm px-6 py-2" onclick="window.openIndividualMessageModal('${member.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-teal-600 hover:bg-teal-700 text-sm px-6 py-2" onclick="window.resetMemberPassword('${member.id}')"><i class="fas fa-key"></i> ერთჯერადი პაროლი</button>
@@ -3890,7 +3891,7 @@ ${memberPortalUrl}
       }
       const saved = await updateMember(updated);
       if (!saved) return;
-      logMemberVisit(member, 'approved', '', 'admin_qr');
+      logMemberVisit(member, 'approved', '', 'admin_qr', updated.remainingVisits ?? null);
 
       const remainingText = updated.remainingVisits != null
         ? `<div><strong>დარჩენილი ვიზიტი:</strong> ${updated.remainingVisits}</div>`
@@ -3910,7 +3911,7 @@ ${memberPortalUrl}
 
     function checkUrlQrParam() {}
 
-    async function logMemberVisit(member, result, reason, source) {
+    async function logMemberVisit(member, result, reason, source, remainingAfter = undefined) {
       if (!member?.id) return;
       try {
         const { collection: col, addDoc: aDoc } = await import('https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js');
@@ -3921,6 +3922,13 @@ ${memberPortalUrl}
           personalId: member.personalId || '—',
           subscriptionStatus: getEffectiveStatus(member),
           subscriptionType: member.subscriptionType || '—',
+          // Snapshot of the subscription this visit belonged to, so the history
+          // can group visits by the exact plan/period they were used against.
+          subscriptionStartDate: member.subscriptionStartDate || null,
+          subscriptionEndDate: member.subscriptionEndDate || null,
+          subscriptionPrice: member.subscriptionPrice != null ? member.subscriptionPrice : null,
+          // Visits left AFTER this check-in. null = unlimited plan.
+          remainingVisits: remainingAfter !== undefined ? remainingAfter : (member.remainingVisits ?? null),
           result,
           reason: reason || '',
           qrToken: '',
@@ -3930,6 +3938,147 @@ ${memberPortalUrl}
         });
       } catch(_) {}
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MEMBER VISIT HISTORY (admin/operator audit)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function formatCheckInDateTime(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      if (isNaN(d)) return '—';
+      const p = (n) => String(n).padStart(2, '0');
+      return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+    }
+
+    /** A stable key + label for the subscription period a visit belonged to. */
+    function visitPeriodKey(v) {
+      const start = v.subscriptionStartDate || '';
+      const end = v.subscriptionEndDate || '';
+      const type = v.subscriptionType || '—';
+      return `${type}|${start}|${end}`;
+    }
+
+    window.openMemberVisits = async function(memberId) {
+      const member = window.members.find((m) => m.id === memberId);
+      const modal = document.getElementById('memberVisitsModal');
+      const body = document.getElementById('memberVisitsBody');
+      document.getElementById('memberVisitsName').textContent = member
+        ? `${member.firstName || ''} ${member.lastName || ''}`.trim() : 'მომხმარებელი';
+      document.getElementById('memberVisitsMeta').textContent = member
+        ? `პირადი: ${member.personalId || '—'} • მიმდინარე ბალანსი: ${member.remainingVisits != null ? member.remainingVisits + ' ვიზიტი' : 'ულიმიტო'}`
+        : '';
+      body.innerHTML = '<div style="text-align:center;padding:32px;color:#94a3b8;"><i class="fas fa-spinner fa-spin"></i> იტვირთება...</div>';
+      modal.style.display = 'flex';
+
+      let docs = [];
+      try {
+        // Newest first; filter by member client-side to avoid a composite index.
+        const pid = firebaseConfig.projectId;
+        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=1000`;
+        const r = await fetch(url, { cache: 'no-store' });
+        if (!r.ok) throw new Error(`status ${r.status}`);
+        const data = await r.json();
+        docs = (data.documents || [])
+          .map((d) => {
+            const f = d.fields || {};
+            const num = (x) => (x?.integerValue != null ? Number(x.integerValue)
+              : x?.doubleValue != null ? Number(x.doubleValue)
+              : (x?.nullValue !== undefined ? null : undefined));
+            return {
+              memberId: f.memberId?.stringValue || '',
+              result: f.result?.stringValue || '—',
+              reason: f.reason?.stringValue || '',
+              source: f.source?.stringValue || '',
+              checkInTime: f.checkInTime?.stringValue || '',
+              subscriptionType: f.subscriptionType?.stringValue || '—',
+              subscriptionStartDate: f.subscriptionStartDate?.stringValue || '',
+              subscriptionEndDate: f.subscriptionEndDate?.stringValue || '',
+              remainingVisits: num(f.remainingVisits),
+            };
+          })
+          .filter((v) => v.memberId === memberId);
+      } catch (e) {
+        console.error('member visits load failed', e);
+        body.innerHTML = `<div style="text-align:center;padding:32px;color:#f87171;">
+          ისტორია ვერ ჩაიტვირთა.${String(e.message).includes('429') ? '<br>ბაზის დღიური ლიმიტი ამოწურულია.' : ''}
+        </div>`;
+        return;
+      }
+
+      if (docs.length === 0) {
+        body.innerHTML = '<div style="text-align:center;padding:32px;color:#64748b;"><i class="fas fa-inbox" style="font-size:2rem;display:block;margin-bottom:10px;"></i>ვიზიტები ვერ მოიძებნა</div>';
+        return;
+      }
+
+      // Group by the subscription period each visit was used against.
+      const groups = new Map();
+      for (const v of docs) {
+        const key = visitPeriodKey(v);
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(v);
+      }
+
+      body.innerHTML = [...groups.entries()].map(([, visits]) => {
+        const first = visits[0];
+        const planName = getSubscriptionName(first.subscriptionType);
+        const period = (first.subscriptionStartDate || first.subscriptionEndDate)
+          ? `${first.subscriptionStartDate ? formatDate(first.subscriptionStartDate) : '?'} — ${first.subscriptionEndDate ? formatDate(first.subscriptionEndDate) : '?'}`
+          : 'პერიოდი მითითებული არ არის';
+        const approvedCount = visits.filter((v) => v.result === 'approved').length;
+
+        const rows = visits.map((v) => {
+          const approved = v.result === 'approved';
+          const left = v.remainingVisits === null ? 'ულიმიტო'
+            : v.remainingVisits === undefined ? '—'
+            : `${v.remainingVisits}`;
+          return `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-radius:10px;
+                        background:${approved ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)'};
+                        border:1px solid ${approved ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'};margin-bottom:8px;">
+              <div style="min-width:0;">
+                <div style="font-weight:800;color:var(--text,#e2e8f0);font-size:0.9rem;">
+                  <i class="fas fa-${approved ? 'check' : 'xmark'}" style="color:${approved ? '#34d399' : '#f87171'};margin-right:6px;"></i>
+                  ${formatCheckInDateTime(v.checkInTime)}
+                </div>
+                ${!approved && v.reason ? `<div style="color:#f87171;font-size:0.74rem;margin-top:2px;">${reasonLabelKa(v.reason)}</div>` : ''}
+              </div>
+              <div style="text-align:right;white-space:nowrap;">
+                <div style="font-size:0.66rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">დარჩა</div>
+                <div style="font-weight:900;color:${approved ? '#34d399' : '#94a3b8'};">${left}</div>
+              </div>
+            </div>`;
+        }).join('');
+
+        return `
+          <div style="margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
+                        padding:8px 12px;border-radius:10px;background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);margin-bottom:10px;">
+              <div style="font-weight:900;color:var(--text,#e2e8f0);">${planName}</div>
+              <div style="font-size:0.76rem;color:#94a3b8;">${period}</div>
+            </div>
+            <div style="font-size:0.72rem;color:#64748b;margin:0 4px 8px;">${approvedCount} დადასტურებული ვიზიტი • სულ ${visits.length} ჩანაწერი</div>
+            ${rows}
+          </div>`;
+      }).join('');
+    };
+
+    function reasonLabelKa(reason) {
+      const map = {
+        expired_subscription: 'აბონემენტი ვადაგასულია',
+        inactive_subscription: 'აბონემენტი არააქტიურია',
+        no_visits: 'ვიზიტები ამოწურულია',
+        no_subscription: 'აბონემენტი ვერ მოიძებნა',
+        time_restriction: 'დროის შეზღუდვა',
+        invalid_qr: 'QR კოდი არასწორია',
+      };
+      return map[reason] || reason;
+    }
+
+    window.closeMemberVisits = function() {
+      const modal = document.getElementById('memberVisitsModal');
+      if (modal) modal.style.display = 'none';
+    };
 
     // ═══════════════════════════════════════════════════════════════════════
     // QR CODE — ADMIN MANAGEMENT
@@ -4562,7 +4711,7 @@ ${memberPortalUrl}
         if (updated.remainingVisits <= 0) updated.status = 'expired';
       }
       await updateMember(updated);
-      logMemberVisit(m, 'approved', '', 'admin_manual');
+      logMemberVisit(m, 'approved', '', 'admin_manual', updated.remainingVisits ?? null);
       showToast("შესვლა დაფიქსირდა!");
       document.getElementById('checkinSearch').value = '';
       document.getElementById('checkinResult').innerHTML = '';
@@ -6552,6 +6701,7 @@ ${memberPortalUrl}
           <div class="mt-4 flex gap-3 justify-center text-sm">
             <button class="btn btn-warning px-5 py-2" onclick="window.renewMembership('${m.id}')">განახლება</button>
             <button class="btn bg-blue-600 hover:bg-blue-700 px-5 py-2" onclick="window.showEditForm(event, '${m.id}')">რედაქტირება</button>
+            <button class="btn bg-sky-700 hover:bg-sky-600 px-5 py-2" onclick="window.openMemberVisits('${m.id}')"><i class="fas fa-list-check"></i> ვიზიტები</button>
             ${m.email ? `<button class="btn bg-cyan-600 hover:bg-cyan-700 px-5 py-2" onclick="window.sendMemberQrEmail('${m.id}')"><i class="fas fa-paper-plane"></i> პირ. კაბინეტის ლინკი</button>` : ''}
             ${m.email ? `<button class="btn bg-purple-600 hover:bg-purple-700 px-5 py-2" onclick="window.openIndividualMessageModal('${m.id}')"><i class="fas fa-envelope"></i> Email</button>` : ''}
             <button class="btn bg-teal-600 hover:bg-teal-700 px-5 py-2" onclick="window.resetMemberPassword('${m.id}')"><i class="fas fa-key"></i> ერთჯერადი პაროლი</button>
