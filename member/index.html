@@ -180,6 +180,12 @@ let trainerPayUnsub = null;
 let qrScanner = null;
 let qrScannerRunning = false;
 let pendingCheckinToken = null;
+// Guards against a single scan deducting more than one visit. html5-qrcode
+// fires its success callback several times per scan (10 fps), and each check-in
+// tokens are also reused, so without this a refresh could re-deduct too.
+let checkinInProgress = false;
+let lastProcessedToken = null;
+let lastProcessedAt = 0;
 
 // ── Flitt payments (backend-only; nothing secret ever lives here) ──────────
 const API_BASE = 'https://fithouse-payments.gymfithouse1.workers.dev';
@@ -587,10 +593,14 @@ async function startDashboard(initialTab) {
   renderDashboardShell();
   await loadMemberData();
   if (pendingCheckinToken) {
+    const token = pendingCheckinToken;
+    pendingCheckinToken = null;
+    // Strip ?checkin= from the URL up front. Otherwise a refresh (or the PWA
+    // reopening its last URL) would re-run the check-in and deduct again.
+    try { window.history.replaceState({}, '', '/member'); } catch (_) {}
     activeTab = 'qr';
     renderTabContent();
-    autoProcessCheckin(pendingCheckinToken);
-    pendingCheckinToken = null;
+    autoProcessCheckin(token);
   } else {
     renderTabContent();
   }
@@ -1300,6 +1310,18 @@ async function handleScannedQr(decoded) {
 
 async function autoProcessCheckin(gymToken) {
   if (!gymToken) return;
+
+  // Guard 1: a scan already being processed must not start a second one.
+  if (checkinInProgress) return;
+
+  // Guard 2: ignore the same token seen again within a short window. Covers the
+  // scanner's repeated callbacks AND a page refresh landing on a ?checkin= URL.
+  const nowMs = Date.now();
+  if (gymToken === lastProcessedToken && (nowMs - lastProcessedAt) < 60000) {
+    return;
+  }
+
+  checkinInProgress = true;
   const resultEl = document.getElementById('checkin-result-area');
   if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:24px;color:#94a3b8;"><i class="fas fa-spinner fa-spin mr-2"></i>მოწმდება...</div>`;
 
@@ -1337,6 +1359,11 @@ async function autoProcessCheckin(gymToken) {
       result = 'denied'; reason = 'time_restriction';
     }
 
+    // Mark this token handled BEFORE the write, so any repeat callback that is
+    // already queued is rejected by Guard 2 rather than deducting again.
+    lastProcessedToken = gymToken;
+    lastProcessedAt = Date.now();
+
     // 4. If approved, update member stats
     if (result === 'approved') {
       const updates = { lastVisit: now.toISOString(), totalVisits: (m.totalVisits || 0) + 1 };
@@ -1355,7 +1382,11 @@ async function autoProcessCheckin(gymToken) {
 
   } catch(err) {
     console.error('checkin error', err);
+    // A failed attempt should be retryable, so forget the token on error.
+    if (lastProcessedToken === gymToken) { lastProcessedToken = null; }
     if (resultEl) resultEl.innerHTML = `<div style="text-align:center;padding:24px;color:#f87171;">შეცდომა. სცადეთ ხელახლა.</div>`;
+  } finally {
+    checkinInProgress = false;
   }
 }
 
