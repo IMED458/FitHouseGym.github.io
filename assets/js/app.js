@@ -3973,18 +3973,39 @@ ${memberPortalUrl}
 
       let docs = [];
       try {
-        // Newest first; filter by member client-side to avoid a composite index.
+        // Query ONLY this member's check-ins. Loading the whole collection and
+        // filtering client-side was slow and, past 1000 rows, silently dropped
+        // older visits. A single equality filter needs no composite index; we
+        // sort by time in JS afterwards.
         const pid = firebaseConfig.projectId;
-        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/${QR_CHECKIN_COLLECTION}?orderBy=checkInTime%20desc&pageSize=1000`;
-        const r = await fetch(url, { cache: 'no-store' });
+        const url = `https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents:runQuery`;
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            structuredQuery: {
+              from: [{ collectionId: QR_CHECKIN_COLLECTION }],
+              where: {
+                fieldFilter: {
+                  field: { fieldPath: 'memberId' },
+                  op: 'EQUAL',
+                  value: { stringValue: memberId },
+                },
+              },
+              limit: 1000,
+            },
+          }),
+        });
         if (!r.ok) throw new Error(`status ${r.status}`);
-        const data = await r.json();
-        docs = (data.documents || [])
-          .map((d) => {
-            const f = d.fields || {};
-            const num = (x) => (x?.integerValue != null ? Number(x.integerValue)
-              : x?.doubleValue != null ? Number(x.doubleValue)
-              : (x?.nullValue !== undefined ? null : undefined));
+        const rows = await r.json();
+        const num = (x) => (x?.integerValue != null ? Number(x.integerValue)
+          : x?.doubleValue != null ? Number(x.doubleValue)
+          : (x?.nullValue !== undefined ? null : undefined));
+        docs = (Array.isArray(rows) ? rows : [])
+          .filter((row) => row.document)
+          .map((row) => {
+            const f = row.document.fields || {};
             return {
               memberId: f.memberId?.stringValue || '',
               result: f.result?.stringValue || '—',
@@ -3997,7 +4018,8 @@ ${memberPortalUrl}
               remainingVisits: num(f.remainingVisits),
             };
           })
-          .filter((v) => v.memberId === memberId);
+          // Newest first.
+          .sort((a, b) => new Date(b.checkInTime || 0) - new Date(a.checkInTime || 0));
       } catch (e) {
         console.error('member visits load failed', e);
         body.innerHTML = `<div style="text-align:center;padding:32px;color:#f87171;">
