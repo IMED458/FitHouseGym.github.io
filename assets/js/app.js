@@ -3882,6 +3882,16 @@ ${memberPortalUrl}
       }
 
       // ✅ შესვლა დაშვებულია — processCheckIn-ის იგივე ლოგიკა
+      // Same duplicate protection as the manual path: block a re-scan already
+      // in flight, and confirm if this member checked in moments ago.
+      if (checkInInFlight.has(member.id)) return;
+      if (!confirmIfRecentVisit(member)) {
+        el.innerHTML = `<div class="member-card p-6">${noteBanner}
+          <div class="text-center text-lg font-bold text-yellow-400 py-4">გაუქმდა — ვიზიტი არ ჩამოჭრილა</div>
+        </div>`;
+        return;
+      }
+      checkInInFlight.add(member.id);
       let updated = { ...member };
       updated.lastVisit = now.toISOString();
       updated.totalVisits = (updated.totalVisits || 0) + 1;
@@ -3889,7 +3899,12 @@ ${memberPortalUrl}
         updated.remainingVisits = member.remainingVisits - 1;
         if (updated.remainingVisits <= 0) updated.status = 'expired';
       }
-      const saved = await updateMember(updated);
+      let saved;
+      try {
+        saved = await updateMember(updated);
+      } finally {
+        checkInInFlight.delete(member.id);
+      }
       if (!saved) return;
       logMemberVisit(member, 'approved', '', 'admin_qr', updated.remainingVisits ?? null);
 
@@ -4709,34 +4724,72 @@ ${memberPortalUrl}
       if (card) card.insertAdjacentHTML('afterend', detailsHTML);
     };
 
+    // ── Duplicate check-in protection (admin side) ─────────────────────────
+    // Two visits were logged for one member 16s apart — an operator pressing
+    // "შესვლა" twice. Two guards: an in-flight set stops a fast double-click
+    // before the first write lands, and a recent-visit check warns on an
+    // accidental repeat while still allowing a genuine second visit.
+    const checkInInFlight = new Set();
+    const DUPLICATE_CHECKIN_WINDOW_MS = 120000; // 2 min
+
+    /** Seconds since this member's last visit if within the window, else 0. */
+    function secondsSinceLastVisit(member) {
+      if (!member?.lastVisit) return 0;
+      const diff = Date.now() - new Date(member.lastVisit).getTime();
+      if (diff >= 0 && diff < DUPLICATE_CHECKIN_WINDOW_MS) return Math.round(diff / 1000);
+      return 0;
+    }
+
+    /** Returns true if the operator confirmed (or there was nothing to confirm). */
+    function confirmIfRecentVisit(member) {
+      const secs = secondsSinceLastVisit(member);
+      if (!secs) return true;
+      const ago = secs < 60 ? `${secs} წამის` : `${Math.round(secs / 60)} წუთის`;
+      return confirm(
+        `${member.firstName || ''} ${member.lastName || ''}-ს ${ago} წინ უკვე დაუფიქსირდა შესვლა.\n\n` +
+        `ნამდვილად გსურთ ხელახლა ჩაწერა? (ვიზიტი კიდევ ჩამოიჭრება)`
+      );
+    }
+
     window.processCheckIn = async function(id) {
       const m = window.members.find(x => x.id === id);
-      if (!m || m.status !== 'active') { 
-        showToast("არააქტიურია", 'error'); 
-        return; 
+      if (!m || m.status !== 'active') {
+        showToast("არააქტიურია", 'error');
+        return;
       }
+      // Guard 1: a second click while the first is still writing.
+      if (checkInInFlight.has(id)) return;
+
       const now = new Date(), hour = now.getHours();
-      if (isExpired(m.subscriptionEndDate)) { 
-        await updateMemberFields(m.id, { status: 'expired' }); 
-        showToast("ვადა გასულია!", 'error'); 
-        return; 
+      if (isExpired(m.subscriptionEndDate)) {
+        await updateMemberFields(m.id, { status: 'expired' });
+        showToast("ვადა გასულია!", 'error');
+        return;
       }
-      if (m.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) { 
-        showToast("მხოლოდ 09:00–16:00", 'error'); 
-        return; 
+      if (m.subscriptionType === 'morning' && (hour < 9 || hour >= 16)) {
+        showToast("მხოლოდ 09:00–16:00", 'error');
+        return;
       }
-      let updated = { ...m };
-      updated.lastVisit = now.toISOString();
-      updated.totalVisits = (updated.totalVisits || 0) + 1;
-      if (m.remainingVisits !== null) {
-        updated.remainingVisits = m.remainingVisits - 1;
-        if (updated.remainingVisits <= 0) updated.status = 'expired';
+      // Guard 2: same member checked in moments ago — confirm before repeating.
+      if (!confirmIfRecentVisit(m)) return;
+
+      checkInInFlight.add(id);
+      try {
+        let updated = { ...m };
+        updated.lastVisit = now.toISOString();
+        updated.totalVisits = (updated.totalVisits || 0) + 1;
+        if (m.remainingVisits !== null) {
+          updated.remainingVisits = m.remainingVisits - 1;
+          if (updated.remainingVisits <= 0) updated.status = 'expired';
+        }
+        await updateMember(updated);
+        logMemberVisit(m, 'approved', '', 'admin_manual', updated.remainingVisits ?? null);
+        showToast("შესვლა დაფიქსირდა!");
+        document.getElementById('checkinSearch').value = '';
+        document.getElementById('checkinResult').innerHTML = '';
+      } finally {
+        checkInInFlight.delete(id);
       }
-      await updateMember(updated);
-      logMemberVisit(m, 'approved', '', 'admin_manual', updated.remainingVisits ?? null);
-      showToast("შესვლა დაფიქსირდა!");
-      document.getElementById('checkinSearch').value = '';
-      document.getElementById('checkinResult').innerHTML = '';
     };
 
     window.checkMemberAccess = async function(member) {
