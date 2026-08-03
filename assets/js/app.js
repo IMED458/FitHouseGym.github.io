@@ -2588,26 +2588,43 @@ ${memberPortalUrl}
       );
       if (!ok) return;
 
+      // Phase 1: assign every code first, with no email delay in between. A
+      // failed write only advances past that one member — the next code is not
+      // consumed — so the numbering has no gaps and a re-run resumes cleanly.
+      // The previous version stepped `next` even on failure and sat on a 350ms
+      // email delay per member, so on a large list it stalled part-way through.
       let next = getNextMemberCode();
-      let done = 0, mailed = 0, failed = 0;
+      let done = 0, failed = 0;
+      const assigned = [];
       for (const m of missing) {
-        const code = String(next++);
-        try {
-          await updateMemberFields(m.id, { memberCode: code });
-          m.memberCode = code; // keep local list in sync for getNextMemberCode
+        const code = String(next);
+        let ok = await updateMemberFields(m.id, { memberCode: code }).then(() => true).catch(() => false);
+        if (!ok) { await new Promise((r) => setTimeout(r, 400)); ok = await updateMemberFields(m.id, { memberCode: code }).then(() => true).catch(() => false); }
+        if (ok) {
+          m.memberCode = code;
+          assigned.push(m);
           done++;
-          if (sendEmails && isValidEmailAddress(m.email) && !isEmailBlocked(m)) {
-            const sent = await sendMemberCodeEmail({ ...m, memberCode: code });
-            if (sent) mailed++;
-            await new Promise((r) => setTimeout(r, 350)); // gentle on the mail quota
-          }
-        } catch (e) {
-          console.error('code assign failed for', m.id, e);
+          next++; // only advance on success — no gaps, safe to re-run
+        } else {
           failed++;
         }
+        if (done % 25 === 0) showToast(`კოდები: ${done}/${missing.length}...`);
       }
-      showToast(`✅ კოდი მიენიჭა: ${done}${sendEmails ? ` • მეილი: ${mailed}` : ''}${failed ? ` • შეცდომა: ${failed}` : ''}`);
+
       safeUiUpdate('search', updateSearchMemberList);
+
+      // Phase 2: optional emails, after every code is safely stored.
+      let mailed = 0;
+      if (sendEmails) {
+        for (const m of assigned) {
+          if (!isValidEmailAddress(m.email) || isEmailBlocked(m)) continue;
+          const sent = await sendMemberCodeEmail(m);
+          if (sent) mailed++;
+          await new Promise((r) => setTimeout(r, 350)); // gentle on the mail quota
+        }
+      }
+
+      showToast(`✅ კოდი მიენიჭა: ${done}${sendEmails ? ` • მეილი: ${mailed}` : ''}${failed ? ` • შეცდომა: ${failed}` : ''}`);
     };
 
     async function sendMemberCodeEmail(member) {
