@@ -717,6 +717,21 @@
           <div id="subscriptionPlansTable"></div>
         </div>
 
+        <div class="section-panel" id="memberCodesPanel" style="display:none;margin-bottom:24px;">
+          <h3 class="panel-title" style="margin:0 0 8px;">მომხმარებელთა კოდები</h3>
+          <p style="color:var(--text-muted,#94a3b8);font-size:0.88rem;margin:0 0 16px;">
+            თითოეულ წევრს ენიჭება უნიკალური 4-ნიშნა კოდი (1000-დან). ახალი წევრები კოდს ავტომატურად იღებენ.
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn btn-success" onclick="window.assignMemberCodes(false)">
+              <i class="fas fa-id-card"></i> კოდების მინიჭება
+            </button>
+            <button class="btn bg-blue-600 hover:bg-blue-700" onclick="window.assignMemberCodes(true)">
+              <i class="fas fa-paper-plane"></i> მინიჭება + მეილზე გაგზავნა
+            </button>
+          </div>
+        </div>
+
         <div class="settings-grid">
           <div class="section-panel">
             <h3 class="panel-title">მიმდინარე ანგარიში</h3>

@@ -866,6 +866,12 @@ function renderOverview() {
         <h2 style="font-size:1.4rem;font-weight:900;color:white;">მომხმარებლის გვერდი</h2>
         <p style="color:#64748b;font-size:0.85rem;margin-top:4px;">თქვენი პროფილი და მიმდინარე მდგომარეობა</p>
       </div>
+      ${member?.memberCode ? `
+        <div style="text-align:center;padding:22px 18px;border-radius:18px;background:linear-gradient(135deg,rgba(37,99,235,0.18),rgba(59,130,246,0.06));border:1px solid rgba(59,130,246,0.4);">
+          <div style="font-size:0.72rem;font-weight:800;text-transform:uppercase;letter-spacing:0.1em;color:#60a5fa;margin-bottom:8px;"><i class="fas fa-id-card"></i> თქვენი უნიკალური კოდი</div>
+          <div style="font-size:2.8rem;font-weight:900;color:#fff;letter-spacing:0.1em;line-height:1;">${member.memberCode}</div>
+          <div style="font-size:0.78rem;color:#94a3b8;margin-top:10px;">ეს კოდი უთხარით ადმინისტრატორს დარბაზში შესვლისას</div>
+        </div>` : ''}
       ${!isActive ? `
         <div style="padding:16px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:12px;display:flex;gap:12px;">
           <i class="fas fa-exclamation-circle" style="color:#f87171;font-size:1.2rem;flex-shrink:0;margin-top:2px;"></i>

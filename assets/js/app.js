@@ -944,6 +944,13 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       return `
         <div id="details-${member.id}" class="member-details-card animate-fadeIn">
           ${noteBanner}
+          ${member.memberCode ? `<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding:14px 18px;border-radius:14px;background:linear-gradient(135deg,rgba(37,99,235,0.15),rgba(59,130,246,0.06));border:1px solid rgba(59,130,246,0.35);">
+            <i class="fas fa-id-card" style="color:#60a5fa;font-size:1.3rem;"></i>
+            <div>
+              <div style="font-size:0.68rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;color:#60a5fa;">უნიკალური კოდი</div>
+              <div style="font-weight:900;color:#fff;font-size:1.7rem;letter-spacing:0.08em;">${member.memberCode}</div>
+            </div>
+          </div>` : ''}
           <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-6">
             <div><strong>სახელი:</strong> ${member.firstName} ${member.lastName}</div>
             <div><strong>პირადი:</strong> ${member.personalId}</div>
@@ -1749,7 +1756,10 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
 კეთილი იყოს თქვენი მობრძანება Fit House Gym-ის ოჯახში! 🎉
 
 თქვენი აბონემენტი წარმატებით გააქტიურდა.
-
+${member.memberCode ? `
+🎫 თქვენი უნიკალური კოდი: ${member.memberCode}
+(ამ კოდით მოხდება დარბაზში შესვლის დაფიქსირება)
+` : ''}
 📋 აბონემენტის დეტალები:
 
 🎫 ტიპი: ${subType}
@@ -2494,10 +2504,27 @@ ${memberPortalUrl}
       }
     }
 
+    // ── Member code (human-facing ID) ──────────────────────────────────────
+    // Firestore document IDs are opaque (zlpUs5J4vdEy…) and referenced all over
+    // the data, so they cannot change. memberCode is a separate 4-digit ID from
+    // 1000 up that staff and members actually read out and search by.
+    const MEMBER_CODE_START = 1000;
+
+    function getNextMemberCode() {
+      let max = MEMBER_CODE_START - 1;
+      for (const m of (window.members || [])) {
+        const c = parseInt(m.memberCode, 10);
+        if (!Number.isNaN(c) && c > max) max = c;
+      }
+      return max + 1;
+    }
+
     async function createMember(m, options = {}) {
-      try { 
+      try {
         const memberPayload = {
           ...m,
+          // Assign a code at registration if one wasn't supplied.
+          memberCode: m.memberCode || String(getNextMemberCode()),
           createdByUserId: m.createdByUserId || currentUser?.id || null,
           createdByFullName: m.createdByFullName || getCurrentUserDisplayName() || null,
           createdByUsername: m.createdByUsername || currentUser?.username || null,
@@ -2538,13 +2565,81 @@ ${memberPortalUrl}
       }
     }
 
+    /**
+     * One-time backfill: give every member without a memberCode one, in
+     * registration order, starting from the next free number. Admin-only.
+     * Optionally emails each member their new code.
+     */
+    window.assignMemberCodes = async function(sendEmails) {
+      if (!isAdmin()) { showToast('მხოლოდ ადმინისტრატორისთვის', 'error'); return; }
+      await hydrateMembersFromRest().catch(() => {});
+
+      const missing = window.members
+        .filter((m) => !m.memberCode)
+        // Oldest first so codes track join order.
+        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0));
+
+      if (missing.length === 0) { showToast('ყველა წევრს უკვე აქვს კოდი'); return; }
+
+      const ok = confirm(
+        `${missing.length} წევრს მიენიჭება უნიკალური კოდი (${getNextMemberCode()}-დან).` +
+        (sendEmails ? '\n\nკოდი გაეგზავნება მათ მეილზეც.' : '') +
+        '\n\nგაგრძელება?'
+      );
+      if (!ok) return;
+
+      let next = getNextMemberCode();
+      let done = 0, mailed = 0, failed = 0;
+      for (const m of missing) {
+        const code = String(next++);
+        try {
+          await updateMemberFields(m.id, { memberCode: code });
+          m.memberCode = code; // keep local list in sync for getNextMemberCode
+          done++;
+          if (sendEmails && isValidEmailAddress(m.email) && !isEmailBlocked(m)) {
+            const sent = await sendMemberCodeEmail({ ...m, memberCode: code });
+            if (sent) mailed++;
+            await new Promise((r) => setTimeout(r, 350)); // gentle on the mail quota
+          }
+        } catch (e) {
+          console.error('code assign failed for', m.id, e);
+          failed++;
+        }
+      }
+      showToast(`✅ კოდი მიენიჭა: ${done}${sendEmails ? ` • მეილი: ${mailed}` : ''}${failed ? ` • შეცდომა: ${failed}` : ''}`);
+      safeUiUpdate('search', updateSearchMemberList);
+    };
+
+    async function sendMemberCodeEmail(member) {
+      if (!isValidEmailAddress(member.email)) return false;
+      const subject = '🎫 თქვენი უნიკალური კოდი — Fit House Gym';
+      const message = `გამარჯობა ${member.firstName || ''}!
+
+თქვენი უნიკალური საიდენტიფიკაციო კოდია:
+
+🎫  ${member.memberCode}
+
+ეს კოდი გამოგადგებათ დარბაზში შესვლის დასაფიქსირებლად — უბრალოდ უთხარით ადმინისტრატორს ან ოპერატორს.
+
+📍 Fit House Gym | +995 511 77 63 37`;
+      const htmlMessage = `<div style="text-align:center;padding:20px 0;">
+        <p style="color:#64748b;font-size:0.95rem;margin:0 0 14px;">თქვენი უნიკალური კოდი:</p>
+        <div style="display:inline-block;font-family:ui-monospace,'Courier New',monospace;font-size:2.6rem;font-weight:900;letter-spacing:0.22em;text-indent:0.22em;padding:22px 40px;border-radius:18px;background:#eff6ff;border:3px solid #2563eb;color:#1d4ed8;">${member.memberCode}</div>
+        <p style="color:#64748b;font-size:0.85rem;margin:16px 0 0;">დარბაზში შესვლისას უთხარით ეს კოდი ადმინისტრატორს.</p>
+      </div>`;
+      return sendEmail(member.email, member.firstName, subject, message, {
+        html_message: htmlMessage,
+        _memberId: member.id,
+      });
+    }
+
     async function updateMember(m) {
-      try { 
-        await setDoc(doc(db, "members", m.id), m, { merge: true }); 
+      try {
+        await setDoc(doc(db, "members", m.id), m, { merge: true });
         return true;
       }
-      catch (e) { 
-        console.error(e); 
+      catch (e) {
+        console.error(e);
         showToast('წევრის შენახვა ვერ მოხერხდა', 'error');
         return false;
       }
@@ -3358,6 +3453,8 @@ ${memberPortalUrl}
           renderSubscriptionPlansTable();
         }
       }
+      const codesPanel = document.getElementById('memberCodesPanel');
+      if (codesPanel) codesPanel.style.display = isAdmin() ? 'block' : 'none';
     }
 
     function updateStatsTab() {
@@ -6789,8 +6886,9 @@ ${memberPortalUrl}
       const container = document.getElementById('searchResults');
       const val = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
       let filtered = window.members;
-      if (val) filtered = window.members.filter(m => 
-        m.personalId.includes(val) || 
+      if (val) filtered = window.members.filter(m =>
+        String(m.memberCode || '').includes(val) ||
+        m.personalId.includes(val) ||
         (m.firstName + ' ' + m.lastName).toLowerCase().includes(val) ||
         (m.email || '').toLowerCase().includes(val)
       );
@@ -6804,6 +6902,7 @@ ${memberPortalUrl}
         <div class="search-member-card" data-member-id="${m.id}" onclick="toggleMemberDetails('${m.id}')">
           <div class="search-card-content">
             <div class="search-card-info">
+              ${m.memberCode ? `<div style="display:inline-flex;align-items:center;gap:6px;margin-bottom:6px;padding:3px 12px;border-radius:9999px;background:rgba(59,130,246,0.15);border:1px solid rgba(59,130,246,0.4);color:#60a5fa;font-weight:900;font-size:1.05rem;letter-spacing:0.06em;"><i class="fas fa-id-card" style="font-size:0.8rem;"></i> ${m.memberCode}</div>` : ''}
               <div class="search-name">${m.firstName} ${m.lastName}</div>
               <div class="search-id">პირადი: ${m.personalId}</div>
               <div class="search-id">Email: ${m.email || '—'}</div>
@@ -7371,8 +7470,9 @@ ${memberPortalUrl}
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
         if (v.length >= 2) {
-          const matches = window.members.filter(m => 
-            m.personalId.includes(v) || 
+          const matches = window.members.filter(m =>
+            String(m.memberCode || '').includes(v) ||
+            m.personalId.includes(v) ||
             (m.firstName + ' ' + m.lastName).toLowerCase().includes(v.toLowerCase())
           );
           const el = document.getElementById('checkinResult');
