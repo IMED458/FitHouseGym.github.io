@@ -6903,8 +6903,11 @@ ${memberPortalUrl}
       const container = document.getElementById('searchResults');
       const val = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
       let filtered = window.members;
-      if (val) filtered = window.members.filter(m =>
-        String(m.memberCode || '').includes(val) ||
+      // An exact code match returns only that one member — the whole point of
+      // the code is to pin down one person. Otherwise fall back to name/id/email.
+      const exactByCode = val ? window.members.filter(m => String(m.memberCode || '') === val) : [];
+      if (exactByCode.length) filtered = exactByCode;
+      else if (val) filtered = window.members.filter(m =>
         m.personalId.includes(val) ||
         (m.firstName + ' ' + m.lastName).toLowerCase().includes(val) ||
         (m.email || '').toLowerCase().includes(val)
@@ -7487,8 +7490,9 @@ ${memberPortalUrl}
       document.getElementById('checkinSearch')?.addEventListener('input', e => {
         const v = e.target.value.trim();
         if (v.length >= 2) {
-          const matches = window.members.filter(m =>
-            String(m.memberCode || '').includes(v) ||
+          // Exact code match wins — only the person that code belongs to.
+          const exactByCode = window.members.filter(m => String(m.memberCode || '') === v);
+          const matches = exactByCode.length ? exactByCode : window.members.filter(m =>
             m.personalId.includes(v) ||
             (m.firstName + ' ' + m.lastName).toLowerCase().includes(v.toLowerCase())
           );
