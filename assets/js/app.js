@@ -3586,11 +3586,13 @@ ${memberPortalUrl}
       const role = document.getElementById('userRole').value === 'admin' ? 'admin' : 'operator';
       const status = document.getElementById('userStatus').value === 'disabled' ? 'disabled' : 'active';
 
-      if (!firstName || !lastName || !username || !personalId || !email) {
-        showToast('სახელი, გვარი, იუზერი, პირადი ნომერი და Email სავალდებულოა', 'error');
+      // Email and personal ID are optional — a staff account needs only a name,
+      // username and (for a new account) a password.
+      if (!firstName || !lastName || !username) {
+        showToast('სახელი, გვარი და იუზერი სავალდებულოა', 'error');
         return;
       }
-      if (!isValidEmail(email)) {
+      if (email && !isValidEmail(email)) {
         showToast('Email არასწორია', 'error');
         return;
       }
@@ -3607,18 +3609,23 @@ ${memberPortalUrl}
         showToast('ეს იუზერი უკვე არსებობს', 'error');
         return;
       }
-      const personalIdTaken = window.users.some((item) =>
-        normalizePersonalId(item.personalId) === personalId &&
-        item.id !== id
-      );
-      if (personalIdTaken) {
-        showToast('ეს პირადი ნომერი უკვე გამოყენებულია', 'error');
-        return;
+      if (personalId) {
+        const personalIdTaken = window.users.some((item) =>
+          normalizePersonalId(item.personalId) === personalId &&
+          item.id !== id
+        );
+        if (personalIdTaken) {
+          showToast('ეს პირადი ნომერი უკვე გამოყენებულია', 'error');
+          return;
+        }
       }
 
       const existingUser = id ? window.users.find((item) => item.id === id) : null;
       const nowIso = new Date().toISOString();
-      const passwordHash = existingUser?.passwordHash || null;
+      // A typed password becomes the account's permanent password immediately —
+      // the account is created first, and emailing the password is a separate,
+      // optional step afterwards.
+      const passwordHash = password ? await sha256Hex(password) : (existingUser?.passwordHash || null);
       const payload = {
         firstName,
         lastName,
@@ -3628,43 +3635,25 @@ ${memberPortalUrl}
         passwordHash,
         role,
         status,
-        mustChangePassword: existingUser?.mustChangePassword || false,
+        mustChangePassword: false,
         temporaryPasswordHash: existingUser?.temporaryPasswordHash || null,
         temporaryPasswordIssuedAt: existingUser?.temporaryPasswordIssuedAt || null,
         temporaryPasswordExpiresAt: existingUser?.temporaryPasswordExpiresAt || null,
-        passwordUpdatedAt: existingUser?.passwordUpdatedAt || null,
+        passwordUpdatedAt: password ? nowIso : (existingUser?.passwordUpdatedAt || null),
         updatedAt: nowIso,
         createdAt: existingUser?.createdAt || nowIso
       };
       if (existingUser?.isSystemDefault) payload.isSystemDefault = true;
       if (id) payload.id = id;
 
-      if (password) {
-        pendingPasswordDelivery = {
-          mode: 'save_user',
-          payload,
-          temporaryPassword: password,
-          userLabel: `${firstName} ${lastName}`.trim(),
-          username,
-          personalId,
-          email
-        };
-        document.getElementById('resetUserId').value = id || '';
-        document.getElementById('resetUserName').textContent = `${firstName} ${lastName}`.trim();
-        document.getElementById('resetUserUsername').textContent = `იუზერი: ${username}`;
-        document.getElementById('resetUserEmail').textContent = `Email: ${email}`;
-        document.getElementById('resetUserPassword').value = password;
-        document.getElementById('resetUserPasswordInfo').textContent = 'ეს პაროლი ჩაითვლება ერთჯერად პაროლად, გაიგზავნება მითითებულ Email-ზე და შემდეგ შესვლაზე მომხმარებელს პაროლის შეცვლა მოეთხოვება.';
-        document.getElementById('resetUserPasswordModal').style.display = 'flex';
-        return;
-      }
-
       const saved = await saveUserRecord(payload);
       if (!saved.ok) return;
 
       showToast(id ? 'იუზერი განახლდა' : 'იუზერი დაემატა');
       window.closeUserForm();
-      hydrateUsersFromRest();
+      await hydrateUsersFromRest();
+      // Emailing the password is optional and lives on the user list as the
+      // "პაროლის აღდგენა" action — no modal is forced here.
     };
 
     window.openResetUserPasswordModal = function(userId) {
