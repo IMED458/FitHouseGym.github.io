@@ -7048,7 +7048,7 @@ ${memberPortalUrl}
           return;
         }
         const pid = 'fit-house-gym-d3595';
-        const res = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans?pageSize=50`);
+        const res = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans?pageSize=100`);
         if (!res.ok) {
           if (res.status === 429) {
             markRestRateLimited('subscription_plans');
@@ -7099,7 +7099,7 @@ ${memberPortalUrl}
       const defaults = DEFAULT_SUBSCRIPTION_PLANS;
       const pid = 'fit-house-gym-d3595';
       for (const p of defaults) {
-        const body = { fields: {
+        const fields = {
           name: {stringValue: p.name},
           type: {stringValue: p.type},
           price: {integerValue: String(p.price)},
@@ -7107,10 +7107,15 @@ ${memberPortalUrl}
           remainingVisits: p.remainingVisits === null ? {nullValue: null} : {integerValue: String(p.remainingVisits)},
           active: {booleanValue: true},
           order: {integerValue: String(p.order)}
-        }};
+        };
         try {
-          const response = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans`, {
-            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+          // Deterministic document id (the plan type) makes this idempotent:
+          // re-running overwrites the same doc instead of adding a duplicate.
+          // The old version POSTed a new doc every time, which is how the
+          // collection grew to over a thousand identical plans.
+          const mask = Object.keys(fields).map((k) => `updateMask.fieldPaths=${k}`).join('&');
+          const response = await fetch(`https://firestore.googleapis.com/v1/projects/${pid}/databases/(default)/documents/subscription_plans/${encodeURIComponent(p.type)}?${mask}`, {
+            method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ fields })
           });
           if (response.status === 429) {
             markRestRateLimited('subscription_plans');
