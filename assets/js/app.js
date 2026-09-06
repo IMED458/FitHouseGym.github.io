@@ -271,6 +271,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       const fullName = `${user.firstName || ''} ${user.lastName || ''}`.trim();
       return fullName || user.username || '';
     }
+    // Exposed for the isolated smart-card module (credential audit trail).
+    window.getCurrentUserDisplayName = getCurrentUserDisplayName;
 
     function getActorMetadata() {
       return {
@@ -4854,7 +4856,10 @@ ${memberPortalUrl}
       );
     }
 
-    window.processCheckIn = async function(id) {
+    window.processCheckIn = async function(id, options = {}) {
+      // options.source lets other check-in methods (e.g. smart card) reuse this
+      // exact validation/recording path. Defaults keep existing callers unchanged.
+      const source = options.source || 'admin_manual';
       const m = window.members.find(x => x.id === id);
       if (!m || m.status !== 'active') {
         showToast("არააქტიურია", 'error');
@@ -4886,10 +4891,12 @@ ${memberPortalUrl}
           if (updated.remainingVisits <= 0) updated.status = 'expired';
         }
         await updateMember(updated);
-        logMemberVisit(m, 'approved', '', 'admin_manual', updated.remainingVisits ?? null);
+        logMemberVisit(m, 'approved', '', source, updated.remainingVisits ?? null);
         showToast("შესვლა დაფიქსირდა!");
-        document.getElementById('checkinSearch').value = '';
-        document.getElementById('checkinResult').innerHTML = '';
+        const searchEl = document.getElementById('checkinSearch');
+        const resultEl = document.getElementById('checkinResult');
+        if (searchEl) searchEl.value = '';
+        if (resultEl) resultEl.innerHTML = '';
       } finally {
         checkInInFlight.delete(id);
       }

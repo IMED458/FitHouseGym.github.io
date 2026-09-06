@@ -55,6 +55,9 @@ service cloud.firestore {
     match /products/{doc}           { allow read, write: if true; }
     match /subscription_plans/{doc} { allow read, write: if true; }
 
+    // ─── Smart Card — ბარათის credentials (additive, feature-flagged UI) ──
+    match /member_credentials/{doc} { allow read, write: if true; }
+
     // ─── ყველა სხვა — DENY ────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
