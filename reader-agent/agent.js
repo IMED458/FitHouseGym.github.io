@@ -227,6 +227,13 @@ function applyCors(req, res) {
   }
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Private Network Access: an HTTPS page (https://fithouse.imed.com.ge) calling
+  // this local http://127.0.0.1 service is a "public → local" request. Chrome
+  // sends a preflight with Access-Control-Request-Private-Network and blocks the
+  // call unless we grant it here. Without this the LIVE site can't reach the reader.
+  if (req.headers['access-control-request-private-network']) {
+    res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  }
 }
 
 function sendJson(res, status, obj) {
