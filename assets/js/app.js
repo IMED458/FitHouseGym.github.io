@@ -990,8 +990,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
             ${member.trainerServiceEnabled && member.trainerId ? `<button class="btn bg-orange-600 hover:bg-orange-700 text-sm px-6 py-2" onclick="window.removeTrainerFromMember('${member.id}')"><i class="fas fa-user-minus"></i> ტრენერი ამოხსნა</button>` : ''}
             <button class="btn bg-red-600 hover:bg-red-700 text-sm px-6 py-2" onclick="window.deleteMember('${member.id}')">წაშლა</button>
           </div>
+          <!-- Smart Card credentials — populated async by smartcard.js (flag-gated). -->
+          <div id="smartcard-profile-${member.id}"></div>
         </div>
       `;
+    }
+
+    // Fill a member's smart-card credentials once their details are in the DOM.
+    function mountSmartCardForMember(memberId) {
+      if (window.FitSmartCard) window.FitSmartCard.renderMemberCredentials(memberId);
     }
 
     function renderProductCart() {
@@ -1396,6 +1403,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
     };
 
     window.logout = function() {
+      if (window.FitSmartCard) window.FitSmartCard.stopAutoListen();
       isAuthenticated = false;
       currentUserRole = null;
       currentUser = null;
@@ -2558,6 +2566,10 @@ ${memberPortalUrl}
           // მხოლოდ ერთი წერილი: welcome + QR იმავე წერილში
           setTimeout(() => sendWelcomeEmail(memberWithId), 1000);
         }
+        // Link a card read during registration, if one is pending (flag-gated).
+        if (window.FitSmartCard && window.FitSmartCard.hasPendingRegisterCard()) {
+          window.FitSmartCard.commitPendingEnrollment(memberWithId);
+        }
         return true;
       }
       catch (e) { 
@@ -3474,6 +3486,12 @@ ${memberPortalUrl}
       }
       const codesPanel = document.getElementById('memberCodesPanel');
       if (codesPanel) codesPanel.style.display = isAdmin() ? 'block' : 'none';
+      // Smart Card settings (isolated module; admin only).
+      const scPanel = document.getElementById('smartcard-settings-panel');
+      if (scPanel) {
+        if (isAdmin() && window.FitSmartCard) { window.FitSmartCard.mountSettingsPanel(); }
+        else { scPanel.style.display = 'none'; }
+      }
     }
 
     function updateStatsTab() {
@@ -4752,6 +4770,18 @@ ${memberPortalUrl}
       document.getElementById(tab).classList.add('active');
       const activeButton = document.querySelector(`[onclick="showTab('${tab}')"]`);
       if (activeButton) activeButton.classList.add('active');
+      // Smart Card slots (isolated module; render only when the tab is shown).
+      if (window.FitSmartCard) {
+        if (tab === 'checkin') {
+          window.FitSmartCard.renderCheckinButton();
+          window.FitSmartCard.startAutoListen('checkin'); // tap card → auto check-in
+        } else if (tab === 'search') {
+          window.FitSmartCard.startAutoListen('search');  // tap card → open that member
+        } else {
+          if (tab === 'register') window.FitSmartCard.renderRegisterSlot();
+          window.FitSmartCard.stopAutoListen();           // no listener on other tabs
+        }
+      }
       if (tab === 'search') {
         document.getElementById('searchResults').innerHTML = '';
         updateSearchMemberList();
@@ -4827,6 +4857,24 @@ ${memberPortalUrl}
       const detailsHTML = buildMemberDetailsHTML(member);
       const card = document.querySelector(`[data-member-id="${id}"]`);
       if (card) card.insertAdjacentHTML('afterend', detailsHTML);
+      mountSmartCardForMember(id);
+    };
+
+    // Called by the Smart Card auto-listener on the search tab: a card tap pulls
+    // up exactly that member (filters the list to them and expands the details).
+    window.showMemberFromCard = function(member) {
+      if (!member) return;
+      const input = document.getElementById('searchInput');
+      if (input) input.value = member.memberCode || member.personalId || '';
+      expandedSearchMemberId = member.id;
+      updateSearchMemberList();
+      const card = document.querySelector(`[data-member-id="${member.id}"]`);
+      if (card && !document.getElementById(`details-${member.id}`)) {
+        card.insertAdjacentHTML('afterend', buildMemberDetailsHTML(member));
+        mountSmartCardForMember(member.id);
+      }
+      if (card && card.scrollIntoView) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      showToast(`${member.firstName || ''} ${member.lastName || ''}`.trim(), 'success');
     };
 
     // ── Duplicate check-in protection (admin side) ─────────────────────────
@@ -4937,6 +4985,9 @@ ${memberPortalUrl}
           </div>
           ${allowed ? `<button class="btn btn-success w-full text-lg py-4" onclick="processCheckIn('${member.id}')">შესვლა</button>` : ''}
         </div>`;
+      // Additive: let other check-in methods (smart card) reuse this exact
+      // validation + display and learn the decision. Existing callers ignore it.
+      return { allowed, msg };
     };
 
     function isStandardMembershipType(type) {
@@ -6940,6 +6991,7 @@ ${memberPortalUrl}
         const card = document.querySelector(`[data-member-id="${expandedSearchMemberId}"]`);
         if (expandedMember && card && !document.getElementById(`details-${expandedSearchMemberId}`)) {
           card.insertAdjacentHTML('afterend', buildMemberDetailsHTML(expandedMember));
+          mountSmartCardForMember(expandedSearchMemberId);
         }
       }
     }

@@ -1,0 +1,14 @@
+{
+  "name": "fithouse-reader-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local PC/SC bridge for FitHouse smart-card check-in (SCR3310, macOS)",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "mock": "MOCK=1 node agent.js"
+  },
+  "optionalDependencies": {
+    "pcsclite": "^1.0.1"
+  }
+}

@@ -30,9 +30,9 @@
   <!-- QR Code Scanner -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   
-  <script type="module" src="/assets/js/app.js"></script>
+  <script type="module" src="/assets/js/app.js?v=20260907e"></script>
   <!-- Smart Card layer — isolated & additive. Safe to remove; the rest works unchanged. -->
-  <script defer src="/assets/js/smartcard.js"></script>
+  <script defer src="/assets/js/smartcard.js?v=20260907e"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <link rel="stylesheet" href="/assets/css/styles.css">
   <style>
@@ -340,6 +340,10 @@
             </div>
           </div>
 
+          <!-- Smart Card enrollment (optional). Filled by smartcard.js only when
+               the feature flag is on; otherwise stays empty and invisible. -->
+          <div id="smartcard-register-slot"></div>
+
           <button type="submit" id="registerBtn" class="btn btn-success text-xl px-12 py-4 mt-8 w-full">
             რეგისტრაცია
           </button>
@@ -360,6 +364,8 @@
             <i class="fas fa-qrcode"></i> QR სკანი
           </button>
         </div>
+        <!-- Smart Card check-in button — added by smartcard.js when enabled -->
+        <div id="smartcard-checkin-slot"></div>
         <div id="checkinResult" class="mt-8"></div>
       </div>
       
@@ -733,6 +739,9 @@
             </button>
           </div>
         </div>
+
+        <!-- Smart Card settings — filled by smartcard.js (admin only) -->
+        <div class="section-panel" id="smartcard-settings-panel" style="display:none;margin-bottom:24px;"></div>
 
         <div class="settings-grid">
           <div class="section-panel">
