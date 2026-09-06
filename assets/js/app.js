@@ -3333,38 +3333,40 @@ ${memberPortalUrl}
           normalizeUsername(t.specialization).includes(searchValue);
       });
 
-      const rows = filtered.map((t, idx) => {
-        const rank = idx + 1;
-        const rankBadge = rank <= 3
-          ? `<span class="status-badge status-active" style="font-weight:800;">#${rank}</span>`
-          : `<span style="color:#94a3b8;font-weight:700;">#${rank}</span>`;
-        const photo = t.photoUrl
-          ? `<img src="${t.photoUrl}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;" onerror="this.style.display='none'">`
-          : `<div style="width:36px;height:36px;border-radius:50%;background:rgba(239,68,68,0.15);color:#ef4444;display:flex;align-items:center;justify-content:center;font-weight:800;">${(t.firstName || '?').charAt(0)}</div>`;
-        return `
-          <tr>
-            <td>${rankBadge}</td>
-            <td><div style="display:flex;align-items:center;gap:10px;">${photo}<span>${t.firstName || '—'} ${t.lastName || ''}</span></div></td>
-            <td><strong>${t.clientCount}</strong> კლიენტი</td>
-            <td>${t.phone || '—'}</td>
-            <td>${t.username || '—'}</td>
-            <td><span class="status-badge ${t.status === 'disabled' ? 'status-expired' : 'status-active'}">${t.status === 'disabled' ? 'არააქტიური' : 'აქტიური'}</span></td>
-            <td>
-              <div class="admin-action-row">
-                ${isAdmin() ? `<button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>` : ''}
-                ${isAdmin() ? `<button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deleteTrainer('${t.id}')"><i class="fas fa-trash"></i> წაშლა</button>` : ''}
-                ${!isAdmin() ? `<span style="color:#64748b;font-size:0.82rem;">— მხოლოდ ნახვა —</span>` : ''}
-              </div>
-            </td>
-          </tr>
-        `;
-      });
+      if (!filtered.length) {
+        container.innerHTML = `<p style="text-align:center;padding:60px 0;color:var(--text-light);font-size:1.1rem;">ტრენერები ჯერ არ არის</p>`;
+        return;
+      }
 
-      container.innerHTML = buildAdminTable(
-        ['რენქი', 'სახელი / გვარი', 'კლიენტები', 'ტელეფონი', 'იუზერი', 'სტატუსი', 'ქმედება'],
-        rows,
-        'ტრენერები ჯერ არ არის'
-      );
+      const cards = filtered.map((t) => {
+        const active = t.status !== 'disabled';
+        const avatar = t.photoUrl
+          ? `<div class="trainer-avatar"><img src="${t.photoUrl}" onerror="this.parentElement.innerHTML='<i class=&quot;fas fa-dumbbell&quot;></i>'"></div>`
+          : `<div class="trainer-avatar"><i class="fas fa-dumbbell"></i></div>`;
+        // Show a real rating if one exists; otherwise a status pill (no fake data).
+        const corner = (t.rating != null && t.rating !== '')
+          ? `<span class="trainer-rating"><i class="fas fa-star"></i> ${Number(t.rating).toFixed(1)}</span>`
+          : `<span class="trainer-status-pill ${active ? 'on' : 'off'}">${active ? 'აქტიური' : 'არააქტიური'}</span>`;
+        const actions = isAdmin()
+          ? `<div class="trainer-card-actions">
+               <button class="btn bg-blue-600 hover:bg-blue-700 compact-btn" onclick="window.openTrainerForm('${t.id}')"><i class="fas fa-pen"></i> რედაქტ.</button>
+               <button class="btn bg-red-600 hover:bg-red-700 compact-btn" onclick="window.deleteTrainer('${t.id}')"><i class="fas fa-trash"></i> წაშლა</button>
+             </div>`
+          : `<div class="trainer-card-actions"><span class="trainer-view-note">— მხოლოდ ნახვა —</span></div>`;
+        return `
+          <div class="trainer-card">
+            <div class="trainer-card-top">${avatar}${corner}</div>
+            <div class="trainer-name">${t.firstName || '—'} ${t.lastName || ''}</div>
+            <div class="trainer-spec">${t.specialization || 'ტრენერი'}</div>
+            <div class="trainer-stats">
+              <div class="trainer-stat-row"><span class="lbl">აქტიური კლიენტები:</span><span class="val">${t.clientCount} წევრი</span></div>
+              <div class="trainer-stat-row"><span class="lbl">ტელეფონი:</span><span class="val plain">${t.phone || '—'}</span></div>
+            </div>
+            ${actions}
+          </div>`;
+      }).join('');
+
+      container.innerHTML = `<div class="trainers-grid">${cards}</div>`;
     }
 
     async function saveTrainerRecord(trainer) {
@@ -5511,18 +5513,19 @@ ${memberPortalUrl}
 
       return `
         <div class="product-card ${canSell ? '' : 'product-card-empty'} ${cardClickableClass}" ${cardClick}>
-          ${cartQuantity > 0 ? `<div class="product-card-cart-badge">${cartQuantity}</div>` : ''}
-          <div class="product-card-media">${imageHtml}</div>
+          <div class="product-card-media">
+            <span class="product-price-badge">${formatCurrency(product.price)}</span>
+            <span class="product-stock-badge ${canSell ? '' : 'out'}">${canSell ? stock.toLocaleString() : 'ამოიწურა'}</span>
+            ${cartQuantity > 0 ? `<div class="product-card-cart-badge">${cartQuantity}</div>` : ''}
+            ${imageHtml}
+          </div>
           <div class="product-card-body">
             <div class="product-card-head">
               <div>
                 <div class="product-card-title">${product.name}</div>
-                <div class="product-card-code">კოდი: ${product.code}</div>
+                <div class="product-card-code2">${product.code}</div>
               </div>
-              <span class="status-badge ${canSell ? 'status-active' : 'status-expired'}">${canSell ? 'მარაგშია' : 'ამოიწურა'}</span>
             </div>
-            <div class="product-card-price">${formatCurrency(product.price)}</div>
-            <div class="product-card-meta">მარაგი: ${stock}</div>
             <div class="product-card-actions">
               <button class="btn btn-success product-card-select-btn" ${canSell ? '' : 'disabled'} onclick="event.stopPropagation(); window.addProductToCart('${product.id}')">
                 <i class="fas fa-plus"></i> ${cartQuantity > 0 ? 'კალათაში დამატება' : 'კალათაში'}

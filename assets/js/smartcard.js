@@ -499,8 +499,8 @@
     try { creds = await listMemberCredentials(memberId); } catch (_) { loadFailed = true; }
     if (loadFailed) {
       slot.innerHTML = `
-        <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
-          <div style="font-weight:800;color:#e2e8f0;font-size:0.9rem;margin-bottom:8px;"><i class="fas fa-id-card" style="color:#60a5fa;margin-right:6px;"></i> შესასვლელი ბარათები</div>
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border,#e2e8f0);">
+          <div style="font-weight:800;color:var(--text,#1e293b);font-size:0.9rem;margin-bottom:8px;"><i class="fas fa-id-card" style="color:var(--accent,#3b82f6);margin-right:6px;"></i> შესასვლელი ბარათები</div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.25);">
             <span style="color:#f87171;font-size:0.84rem;"><i class="fas fa-triangle-exclamation"></i> ბარათები ვერ ჩაიტვირთა (სერვერი დროებით მიუწვდომელია)</span>
             <button onclick="window.FitSmartCard._reload('${memberId}')" class="btn bg-blue-600 hover:bg-blue-700 text-sm px-3 py-1"><i class="fas fa-rotate-right"></i> თავიდან</button>
@@ -511,20 +511,20 @@
 
     // QR is implicit and always present.
     const qrRow = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:10px;background:#0b1220;border:1px solid #1e293b;margin-bottom:8px;">
-        <div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-qrcode" style="color:#94a3b8;"></i>
-          <div><div style="font-weight:800;color:#e2e8f0;font-size:0.88rem;">QR კოდი</div>
-          <div style="font-size:0.72rem;color:#64748b;">ავტომატური</div></div></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(148,163,184,0.08);border:1px solid var(--border,#e2e8f0);margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-qrcode" style="color:var(--text-light,#64748b);"></i>
+          <div><div style="font-weight:800;color:var(--text,#1e293b);font-size:0.88rem;">QR კოდი</div>
+          <div style="font-size:0.72rem;color:var(--text-light,#64748b);">ავტომატური</div></div></div>
         <span style="font-size:0.7rem;font-weight:800;color:#34d399;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);padding:2px 10px;border-radius:9999px;">აქტიური</span>
       </div>`;
 
     const cardRows = creds.map((c) => {
       const active = c.status === 'active';
       return `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:10px;background:#0b1220;border:1px solid ${active ? '#1e293b' : 'rgba(239,68,68,0.25)'};margin-bottom:8px;">
-          <div style="display:flex;align-items:center;gap:10px;min-width:0;"><i class="fas fa-id-card" style="color:${active ? '#60a5fa' : '#64748b'};"></i>
-            <div style="min-width:0;"><div style="font-weight:800;color:#e2e8f0;font-size:0.88rem;">${TYPE_LABEL_KA[c.type] || 'ბარათი'} <span style="font-family:ui-monospace,monospace;color:#94a3b8;">${c.maskedId}</span></div>
-            <div style="font-size:0.72rem;color:#64748b;">${c.createdByFullName || ''}</div></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(148,163,184,0.08);border:1px solid ${active ? 'var(--border,#e2e8f0)' : 'rgba(239,68,68,0.35)'};margin-bottom:8px;">
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;"><i class="fas fa-id-card" style="color:${active ? 'var(--accent,#3b82f6)' : 'var(--text-light,#64748b)'};"></i>
+            <div style="min-width:0;"><div style="font-weight:800;color:var(--text,#1e293b);font-size:0.88rem;">${TYPE_LABEL_KA[c.type] || 'ბარათი'} <span style="font-family:ui-monospace,monospace;color:var(--text-light,#64748b);">${c.maskedId}</span></div>
+            <div style="font-size:0.72rem;color:var(--text-light,#64748b);">${c.createdByFullName || ''}</div></div></div>
           <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
             <span style="font-size:0.7rem;font-weight:800;color:${active ? '#34d399' : '#f87171'};background:${active ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)'};border:1px solid ${active ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'};padding:2px 10px;border-radius:9999px;">${active ? 'აქტიური' : 'გათიშული'}</span>
             <button title="ბარათის შეცვლა" onclick="window.FitSmartCard._replace('${c.id}','${memberId}')" style="background:none;border:none;color:#60a5fa;cursor:pointer;padding:4px;"><i class="fas fa-pen"></i></button>
@@ -537,9 +537,9 @@
     }).join('');
 
     slot.innerHTML = `
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid #1e293b;">
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border,#e2e8f0);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
-          <div style="font-weight:800;color:#e2e8f0;font-size:0.9rem;"><i class="fas fa-id-card" style="color:#60a5fa;margin-right:6px;"></i> შესასვლელი ბარათები</div>
+          <div style="font-weight:800;color:var(--text,#1e293b);font-size:0.9rem;"><i class="fas fa-id-card" style="color:var(--accent,#3b82f6);margin-right:6px;"></i> შესასვლელი ბარათები</div>
           <button onclick="window.FitSmartCard._assign('${memberId}')" class="btn bg-blue-600 hover:bg-blue-700 text-sm px-4 py-2"><i class="fas fa-plus"></i> ბარათის მიბმა</button>
         </div>
         ${qrRow}${cardRows}
@@ -675,9 +675,9 @@
       <div style="margin-top:22px;border:2px dashed ${has ? 'rgba(16,185,129,0.4)' : 'rgba(59,130,246,0.3)'};border-radius:16px;padding:18px;background:${has ? 'rgba(16,185,129,0.05)' : 'rgba(59,130,246,0.04)'};">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
           <div style="display:flex;align-items:center;gap:12px;">
-            <i class="fas fa-id-card" style="color:${has ? '#34d399' : '#60a5fa'};font-size:1.3rem;"></i>
-            <div><div style="font-weight:800;color:#f1f5f9;">შესასვლელი ბარათი <span style="color:#64748b;font-weight:400;font-size:0.85rem;">(არჩევითი)</span></div>
-              <div style="font-size:0.78rem;color:#64748b;">${has ? 'ბარათი მზადაა — რეგისტრაციისას მიება წევრს' : 'შეგიძლიათ მიაბათ smart ბარათი ან გამოტოვოთ'}</div></div>
+            <i class="fas fa-id-card" style="color:${has ? 'var(--success,#10b981)' : 'var(--accent,#3b82f6)'};font-size:1.3rem;"></i>
+            <div><div style="font-weight:800;color:var(--text,#1e293b);">შესასვლელი ბარათი <span style="color:var(--text-light,#64748b);font-weight:400;font-size:0.85rem;">(არჩევითი)</span></div>
+              <div style="font-size:0.78rem;color:var(--text-light,#64748b);">${has ? 'ბარათი მზადაა — რეგისტრაციისას მიება წევრს' : 'შეგიძლიათ მიაბათ smart ბარათი ან გამოტოვოთ'}</div></div>
           </div>
           ${has
             ? `<div style="display:flex;align-items:center;gap:10px;"><span style="font-family:ui-monospace,monospace;font-weight:800;color:#34d399;">${maskCredential(has.uid)}</span><button type="button" onclick="window.FitSmartCard._clearRegisterCard()" style="background:none;border:none;color:#f87171;cursor:pointer;"><i class="fas fa-times"></i></button></div>`
