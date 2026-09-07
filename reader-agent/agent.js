@@ -128,51 +128,58 @@ async function readPresentCard(reader) {
   if (!state.waiters.length) return;  // nobody is waiting — don't hold the card
   state.reading = true;
 
-  let protocol;
-  try {
-    protocol = await new Promise((res, rej) =>
-      reader.connect({ share_mode: reader.SCARD_SHARE_SHARED }, (e, p) => (e ? rej(e) : res(p))));
-  } catch (err) {
-    state.reading = false;
-    // "No smart card inserted" means our cached present-state was stale (card
-    // removed or not fully seated). Clear it so we wait for a real insertion
-    // event instead of hammering connect on every read.
-    if (/no smart card/i.test(err.message || '')) {
-      const e = state.readers.get(reader.name);
-      if (e) e.present = false;
-    }
-    console.error('[agent] connect:', err.message);
-    return; // leave waiters pending; a real insertion will serve them
-  }
-
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let result = { ok: false, error: 'no_stable_id', code: 'no_stable_id' };
-  try {
-    // 1) Contactless UID (FF CA). Reader-handled; contact cards usually reject.
-    try {
-      const uidr = await transmit(reader, protocol, APDU_GET_UID);
-      if (uidr.sw1 === 0x90 && uidr.sw2 === 0x00 && uidr.body.length) {
-        result = { ok: true, type: 'GENERIC_SMART_CARD', uid: uidr.body.toString('hex').toUpperCase() };
-      }
-    } catch (_) { /* fall through to CPLC */ }
 
-    // 2) CPLC (GET DATA 9F7F) — chip serial for contact JavaCard/GP cards.
-    //    Try class 0x00 first, then the proprietary class 0x80 (Georgian eID).
-    if (!result.ok) {
-      for (const apdu of [APDU_GET_CPLC, APDU_GET_CPLC_80]) {
-        try {
-          const cplc = await transmit(reader, protocol, apdu);
-          if (cplc.sw1 === 0x90 && cplc.sw2 === 0x00 && cplc.body.length >= 16) {
-            result = { ok: true, type: 'FIT_MANAGER_SMART_CARD', uid: cplc.body.toString('hex').toUpperCase() };
-            break;
-          }
-        } catch (_) { /* try next */ }
+  // Contact chips (especially the Georgian eID) can seat imperfectly and fail an
+  // APDU exchange that succeeds on the very next try. Retry a few times, resetting
+  // the card between attempts, before giving up — so a flaky contact still reads.
+  for (let attempt = 0; attempt < 4 && !result.ok; attempt++) {
+    let protocol;
+    try {
+      protocol = await new Promise((res, rej) =>
+        reader.connect({ share_mode: reader.SCARD_SHARE_SHARED }, (e, p) => (e ? rej(e) : res(p))));
+    } catch (err) {
+      // "No smart card inserted" → genuinely no card; clear stale present, stop.
+      if (/no smart card/i.test(err.message || '')) {
+        const e = state.readers.get(reader.name);
+        if (e) e.present = false;
+        break;
       }
+      await sleep(180); // transient connect error → retry
+      continue;
     }
-  } finally {
-    reader.disconnect(reader.SCARD_LEAVE_CARD, () => {});
-    state.reading = false;
-    resolveWaiters(result);
+
+    try {
+      // 1) Contactless UID (FF CA). Reader-handled; contact cards usually reject.
+      try {
+        const uidr = await transmit(reader, protocol, APDU_GET_UID);
+        if (uidr.sw1 === 0x90 && uidr.sw2 === 0x00 && uidr.body.length) {
+          result = { ok: true, type: 'GENERIC_SMART_CARD', uid: uidr.body.toString('hex').toUpperCase() };
+        }
+      } catch (_) { /* try CPLC */ }
+
+      // 2) CPLC (GET DATA 9F7F). Class 0x00 first, then 0x80 (Georgian eID).
+      if (!result.ok) {
+        for (const apdu of [APDU_GET_CPLC, APDU_GET_CPLC_80]) {
+          try {
+            const cplc = await transmit(reader, protocol, apdu);
+            if (cplc.sw1 === 0x90 && cplc.sw2 === 0x00 && cplc.body.length >= 16) {
+              result = { ok: true, type: 'FIT_MANAGER_SMART_CARD', uid: cplc.body.toString('hex').toUpperCase() };
+              break;
+            }
+          } catch (_) { /* try next */ }
+        }
+      }
+    } finally {
+      // Keep the card powered on success; reset it on failure to re-seat contact.
+      reader.disconnect(result.ok ? reader.SCARD_LEAVE_CARD : reader.SCARD_RESET_CARD, () => {});
+    }
+    if (!result.ok) await sleep(200);
   }
+
+  state.reading = false;
+  resolveWaiters(result);
 }
 
 if (mode === 'real') {
