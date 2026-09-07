@@ -1175,22 +1175,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebas
       } else {
         document.getElementById('loginScreen').style.display = 'none';
         document.getElementById('mainApp').style.display = 'block';
-        mountSidebarBrand();
       }
       applyRoleVisibility();
-    }
-
-    // Puts the FitHouse logo + name at the top of the sidebar (design only).
-    function mountSidebarBrand() {
-      const nav = document.getElementById('main-nav');
-      if (!nav || nav.querySelector('.fm-sidebar-brand')) return;
-      const brand = document.createElement('div');
-      brand.className = 'fm-sidebar-brand';
-      brand.innerHTML = `
-        <img src="/fithause logo.png" alt="Fit House" onerror="this.style.display='none'">
-        <div><div class="fm-brand-name">Fit House</div><div class="fm-brand-sub">GYM MANAGEMENT</div></div>`;
-      const firstTab = nav.querySelector('.nav-tab');
-      nav.insertBefore(brand, firstTab || nav.firstChild);
     }
 
     window.openForgotPasswordModal = function() {
@@ -7423,12 +7409,9 @@ ${memberPortalUrl}
           window.login();
         }
       });
-      // Light theme is the default (matches the Fit Manager design); users can
-      // still switch to dark, which is remembered.
-      if (localStorage.getItem('gym-theme') !== 'dark') {
+      if (localStorage.getItem('gym-theme') === 'light') {
         document.body.classList.add('light-mode');
-        const ti = document.querySelector('.theme-toggle i');
-        if (ti) ti.className = 'fas fa-moon';
+        document.querySelector('.theme-toggle i').className = 'fas fa-moon';
       }
       document.querySelectorAll('.subscription-card').forEach(c => c.addEventListener('click', function() {
         document.querySelectorAll('.subscription-card').forEach(x => x.classList.remove('selected'));
