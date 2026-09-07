@@ -55,6 +55,9 @@ const ALLOWED_ORIGINS = new Set([
 //      with the exact Le.
 const APDU_GET_UID = Buffer.from([0xff, 0xca, 0x00, 0x00, 0x00]);
 const APDU_GET_CPLC = Buffer.from([0x00, 0xca, 0x9f, 0x7f, 0x00]);
+// Some cards (e.g. the Georgian eID "GeorgiaEIDv1") expose CPLC only under the
+// proprietary class 0x80, rejecting class 0x00 with 6A88. Try this as well.
+const APDU_GET_CPLC_80 = Buffer.from([0x80, 0xca, 0x9f, 0x7f, 0x00]);
 
 // ── PC/SC backend (loaded lazily; falls back to mock if unavailable) ────────
 let pcsc = null;
@@ -153,13 +156,17 @@ async function readPresentCard(reader) {
     } catch (_) { /* fall through to CPLC */ }
 
     // 2) CPLC (GET DATA 9F7F) — chip serial for contact JavaCard/GP cards.
+    //    Try class 0x00 first, then the proprietary class 0x80 (Georgian eID).
     if (!result.ok) {
-      try {
-        const cplc = await transmit(reader, protocol, APDU_GET_CPLC);
-        if (cplc.sw1 === 0x90 && cplc.sw2 === 0x00 && cplc.body.length >= 16) {
-          result = { ok: true, type: 'FIT_MANAGER_SMART_CARD', uid: cplc.body.toString('hex').toUpperCase() };
-        }
-      } catch (_) { /* no stable id */ }
+      for (const apdu of [APDU_GET_CPLC, APDU_GET_CPLC_80]) {
+        try {
+          const cplc = await transmit(reader, protocol, apdu);
+          if (cplc.sw1 === 0x90 && cplc.sw2 === 0x00 && cplc.body.length >= 16) {
+            result = { ok: true, type: 'FIT_MANAGER_SMART_CARD', uid: cplc.body.toString('hex').toUpperCase() };
+            break;
+          }
+        } catch (_) { /* try next */ }
+      }
     }
   } finally {
     reader.disconnect(reader.SCARD_LEAVE_CARD, () => {});
