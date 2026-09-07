@@ -3963,3 +3963,110 @@ body.admin-mode.light-mode .admin-table-wrap tr:hover td {
 }
 .product-card-code2 { color: var(--text-light); font-size: 0.82rem; font-family: ui-monospace, monospace; }
 .product-card-media .product-card-cart-badge { top: auto; bottom: 10px; left: 10px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Fit Manager-style redesign — Stage 1: app shell (sidebar + light theme)
+   Design only; no functionality changed. Desktop uses a fixed left sidebar;
+   mobile keeps the existing hamburger drawer.
+   ══════════════════════════════════════════════════════════════════════════ */
+body.light-mode { background: #eef3f9 !important; }
+body.light-mode #mainApp { background: #eef3f9; }
+
+/* Sidebar brand (logo + name), injected at top of the nav by app.js */
+.fm-sidebar-brand {
+  display: flex; align-items: center; gap: 12px;
+  padding: 6px 10px 20px; margin-bottom: 8px;
+}
+.fm-sidebar-brand img { height: 40px; width: 40px; border-radius: 11px; object-fit: cover; }
+.fm-sidebar-brand .fm-brand-name { font-weight: 900; font-size: 1.15rem; color: #0f172a; line-height: 1; }
+.fm-sidebar-brand .fm-brand-sub { font-size: 0.62rem; letter-spacing: 0.18em; color: #94a3b8; font-weight: 700; margin-top: 3px; }
+
+@media (min-width: 1025px) {
+  body.light-mode #mainApp .container {
+    max-width: none !important; margin: 0 !important;
+    padding: 26px 30px 30px 292px !important;
+  }
+  /* Sidebar */
+  body.light-mode #mainApp #main-nav.nav-tabs {
+    position: fixed !important; left: 0; top: 0; bottom: 0; width: 262px;
+    flex-direction: column !important; flex-wrap: nowrap !important;
+    justify-content: flex-start !important; align-items: stretch !important;
+    gap: 3px !important; margin: 0 !important; padding: 22px 16px !important;
+    background: #ffffff !important; border-right: 1px solid #e7edf4 !important;
+    border-radius: 0 !important; box-shadow: 0 0 40px rgba(15,23,42,0.04) !important;
+    overflow-y: auto; z-index: 900;
+  }
+  body.light-mode #mainApp #main-nav .nav-drawer-header { display: none !important; }
+  body.light-mode #mainApp #main-nav .nav-tab {
+    display: flex !important; align-items: center; gap: 13px;
+    width: 100% !important; min-width: 0 !important; text-align: left !important;
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    color: #64748b !important; font-weight: 700 !important; font-size: 0.94rem !important;
+    padding: 11px 14px !important; border-radius: 12px !important; transform: none !important;
+  }
+  body.light-mode #mainApp #main-nav .nav-tab:hover {
+    background: #f1f5f9 !important; color: #1e293b !important; transform: none !important;
+  }
+  body.light-mode #mainApp #main-nav .nav-tab.active {
+    background: #eaf1ff !important; color: #2563eb !important;
+  }
+  body.light-mode #mainApp #main-nav .nav-tab-icon {
+    width: 22px; text-align: center; font-size: 1rem; flex: 0 0 22px;
+  }
+  body.light-mode #mainApp #main-nav .nav-tab-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* utility tabs (message/excel) sit in the sidebar too, muted */
+  body.light-mode #mainApp #main-nav .utility-nav-tab { margin-top: 6px; }
+  body.light-mode #mainApp #main-nav .utility-nav-tab-message.active,
+  body.light-mode #mainApp #main-nav .utility-nav-tab-message { color: #7c3aed !important; }
+  body.light-mode #mainApp #main-nav .utility-nav-tab-excel { color: #16a34a !important; }
+
+  /* Header becomes a top bar within the content area */
+  body.light-mode #mainApp .header {
+    background: #ffffff !important; backdrop-filter: none !important;
+    border: 1px solid #e7edf4 !important; border-radius: 18px !important;
+    justify-content: space-between !important; text-align: left !important;
+    padding: 14px 22px !important; margin-bottom: 24px !important;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.05) !important;
+  }
+  body.light-mode #mainApp .header .logo { display: none !important; }  /* logo now in sidebar */
+  body.light-mode #mainApp .header .gym-title {
+    font-size: 1.4rem !important; -webkit-text-fill-color: initial !important;
+    background: none !important; color: #0f172a !important;
+  }
+  /* Content cards on light ground */
+  body.light-mode #mainApp .tab-content {
+    background: transparent !important; border: none !important;
+    box-shadow: none !important; padding: 0 !important;
+  }
+  /* Floating theme toggle out of the way of the top bar */
+  body.light-mode .theme-toggle { width: 42px; height: 42px; font-size: 18px; top: 26px; right: 30px; }
+}
+
+/* ── Stage 2: dashboard stat cards (light, Fit Manager style) ───────────── */
+body.light-mode .stat-card {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border: 1px solid #e7edf4 !important;
+  border-radius: 18px !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,0.05) !important;
+  padding: 22px !important;
+}
+body.light-mode .stat-card:hover { box-shadow: 0 10px 26px rgba(15,23,42,0.08) !important; }
+body.light-mode .stat-card .text-4xl { color: #0f172a !important; }
+body.light-mode .admin-stat-label {
+  color: #94a3b8 !important; text-transform: none !important;
+  letter-spacing: 0 !important; font-size: 0.9rem !important; font-weight: 700 !important;
+}
+body.light-mode .admin-stat-note { color: #94a3b8 !important; font-weight: 600 !important; }
+body.light-mode .admin-stat-icon {
+  background: #eff4ff !important; color: #3b82f6 !important;
+  backdrop-filter: none !important; border-radius: 14px !important;
+}
+body.light-mode .admin-stat-icon-blue   { background: #eaf1ff !important; color: #2563eb !important; }
+body.light-mode .admin-stat-icon-cyan   { background: #e0f7fb !important; color: #0891b2 !important; }
+body.light-mode .admin-stat-icon-green  { background: #e8f8f0 !important; color: #16a34a !important; }
+body.light-mode .admin-stat-icon-rose   { background: #fdeef1 !important; color: #e11d48 !important; }
+body.light-mode .admin-stat-icon-amber  { background: #fdf3e5 !important; color: #d97706 !important; }
+body.light-mode .admin-stat-icon-violet { background: #f2ecfe !important; color: #7c3aed !important; }
+/* dashboard heading like the reference (left aligned, dark) */
+body.light-mode #dashboard > h2 { text-align: left !important; color: #0f172a !important; font-size: 1.7rem !important; margin-bottom: 20px !important; }
